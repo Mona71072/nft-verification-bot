@@ -555,6 +555,56 @@
                                 }
                             }
                             return null;
+                        },
+                        // Mysten Labs公式パターン
+                        () => {
+                            // SlushWalletはSui Walletの後継なので、Sui Walletのパターンも試行
+                            const suiPatterns = [
+                                window.suiWallet,
+                                window.sui?.wallet,
+                                window.wallet?.sui
+                            ];
+                            for (const pattern of suiPatterns) {
+                                if (pattern && typeof pattern === 'object') {
+                                    // 名前やプロパティでSlushWalletかどうかを判定
+                                    if (pattern.name && pattern.name.toLowerCase().includes('slush')) {
+                                        return pattern;
+                                    }
+                                    // または、SlushWallet特有のプロパティがあるかチェック
+                                    if (pattern.version && pattern.version.includes('slush')) {
+                                        return pattern;
+                                    }
+                                }
+                            }
+                            return null;
+                        },
+                        // より詳細な検出
+                        () => {
+                            // windowの全プロパティを詳細にチェック
+                            for (const prop in window) {
+                                const obj = window[prop];
+                                if (obj && typeof obj === 'object') {
+                                    // プロパティ名で判定
+                                    if (prop.toLowerCase().includes('slush')) {
+                                        return obj;
+                                    }
+                                    // オブジェクトのプロパティで判定
+                                    if (obj.name && obj.name.toLowerCase().includes('slush')) {
+                                        return obj;
+                                    }
+                                    if (obj.version && obj.version.toLowerCase().includes('slush')) {
+                                        return obj;
+                                    }
+                                    // 接続可能なウォレットオブジェクトかチェック
+                                    if (obj.connect && obj.request && obj.signMessage) {
+                                        // SlushWallet特有の機能があるかチェック
+                                        if (obj.features && obj.features.includes('sui')) {
+                                            return obj;
+                                        }
+                                    }
+                                }
+                            }
+                            return null;
                         }
                     ] 
                 },
@@ -946,6 +996,56 @@
                         }
                     }
                     return null;
+                },
+                // Mysten Labs公式パターン
+                () => {
+                    // SlushWalletはSui Walletの後継なので、Sui Walletのパターンも試行
+                    const suiPatterns = [
+                        window.suiWallet,
+                        window.sui?.wallet,
+                        window.wallet?.sui
+                    ];
+                    for (const pattern of suiPatterns) {
+                        if (pattern && typeof pattern === 'object') {
+                            // 名前やプロパティでSlushWalletかどうかを判定
+                            if (pattern.name && pattern.name.toLowerCase().includes('slush')) {
+                                return pattern;
+                            }
+                            // または、SlushWallet特有のプロパティがあるかチェック
+                            if (pattern.version && pattern.version.includes('slush')) {
+                                return pattern;
+                            }
+                        }
+                    }
+                    return null;
+                },
+                // より詳細な検出
+                () => {
+                    // windowの全プロパティを詳細にチェック
+                    for (const prop in window) {
+                        const obj = window[prop];
+                        if (obj && typeof obj === 'object') {
+                            // プロパティ名で判定
+                            if (prop.toLowerCase().includes('slush')) {
+                                return obj;
+                            }
+                            // オブジェクトのプロパティで判定
+                            if (obj.name && obj.name.toLowerCase().includes('slush')) {
+                                return obj;
+                            }
+                            if (obj.version && obj.version.toLowerCase().includes('slush')) {
+                                return obj;
+                            }
+                            // 接続可能なウォレットオブジェクトかチェック
+                            if (obj.connect && obj.request && obj.signMessage) {
+                                // SlushWallet特有の機能があるかチェック
+                                if (obj.features && obj.features.includes('sui')) {
+                                    return obj;
+                                }
+                            }
+                        }
+                    }
+                    return null;
                 }
             ];
             
@@ -996,7 +1096,23 @@
                             accounts = await wallet.getAccounts();
                             console.log('SlushWallet connected via getAccounts:', accounts);
                         } catch (e3) {
-                            throw new Error('SlushWalletの接続に失敗しました');
+                            console.log('getAccounts failed, trying sui_accounts:', e3);
+                            
+                            // 方法4: sui_accounts (Sui特有)
+                            try {
+                                accounts = await wallet.request({ method: 'sui_accounts' });
+                                console.log('SlushWallet connected via sui_accounts:', accounts);
+                            } catch (e4) {
+                                console.log('sui_accounts failed, trying sui_getAccounts:', e4);
+                                
+                                // 方法5: sui_getAccounts
+                                try {
+                                    accounts = await wallet.request({ method: 'sui_getAccounts' });
+                                    console.log('SlushWallet connected via sui_getAccounts:', accounts);
+                                } catch (e5) {
+                                    throw new Error('SlushWalletの接続に失敗しました');
+                                }
+                            }
                         }
                     }
                 }
@@ -1018,8 +1134,17 @@
                             return { signature };
                         } catch (error) {
                             // フォールバック: 直接署名
-                            const signature = await wallet.signMessage(message);
-                            return { signature };
+                            try {
+                                const signature = await wallet.signMessage(message);
+                                return { signature };
+                            } catch (signError) {
+                                // フォールバック: sui_signMessage
+                                const signature = await wallet.request({
+                                    method: 'sui_signMessage',
+                                    params: [message, address]
+                                });
+                                return { signature };
+                            }
                         }
                     }
                 };
