@@ -674,6 +674,12 @@
                 address: demoAddress,
                 signMessage: async (message) => {
                     // デモ用の署名を生成
+                    // messageがUint8Arrayの場合は文字列に変換
+                    let messageStr = message;
+                    if (message instanceof Uint8Array) {
+                        messageStr = new TextDecoder().decode(message);
+                    }
+                    console.log('Demo wallet signing message:', messageStr);
                     const signature = '0x' + Math.random().toString(16).substr(2, 128);
                     return { signature };
                 }
