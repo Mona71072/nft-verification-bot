@@ -412,31 +412,7 @@
             </button>
 
             <div class="wallet-selection" id="wallet-selection">
-                <div class="wallet-option" onclick="connectWallet('sui')">
-                    <div class="icon" style="background: #6366f1;">💧</div>
-                    <div class="text">Sui Wallet</div>
-                    <div class="description">公式Suiウォレット</div>
-                </div>
-                <div class="wallet-option" onclick="connectWallet('suiet')">
-                    <div class="icon" style="background: #8b5cf6;">🔮</div>
-                    <div class="text">Suiet Wallet</div>
-                    <div class="description">人気のSuiウォレット</div>
-                </div>
-                <div class="wallet-option" onclick="connectWallet('martian')">
-                    <div class="icon" style="background: #f59e0b;">🚀</div>
-                    <div class="text">Martian Wallet</div>
-                    <div class="description">マルチチェーンウォレット</div>
-                </div>
-                <div class="wallet-option" onclick="connectWallet('slush')">
-                    <div class="icon" style="background: #0ea5e9;">❄️</div>
-                    <div class="text">SlushWallet</div>
-                    <div class="description">Sui系Slushウォレット</div>
-                </div>
-                <div class="wallet-option" onclick="connectWallet('demo')">
-                    <div class="icon" style="background: #10b981;">🧪</div>
-                    <div class="text">Demo Wallet</div>
-                    <div class="description">テスト用デモウォレット</div>
-                </div>
+                <!-- ウォレット選択肢はJavaScriptで動的に追加 -->
             </div>
 
             <div class="wallet-info" id="wallet-info">
@@ -501,10 +477,131 @@
         loadServerInfo();
 
         // ウォレット選択を表示
-        window.showWalletSelection = function() {
+        window.showWalletSelection = async function() {
+            // 利用可能なウォレットを検出
+            const availableWallets = await detectAvailableWallets();
+            
+            // ウォレット選択肢を動的に更新
+            updateWalletOptions(availableWallets);
+            
             document.getElementById('wallet-selection').classList.add('show');
             document.getElementById('connect-btn').style.display = 'none';
         };
+
+        // 利用可能なウォレットを検出
+        async function detectAvailableWallets() {
+            const availableWallets = [];
+            
+            // Wallet Standard準拠のウォレットを検出
+            try {
+                const standardWallets = await getStandardWallets();
+                availableWallets.push(...standardWallets.map(w => ({
+                    type: 'standard',
+                    name: w.name,
+                    wallet: w
+                })));
+            } catch (error) {
+                console.log('Standard wallet detection failed:', error);
+            }
+            
+            // レガシーウォレットを検出
+            const legacyWallets = [
+                { name: 'Sui Wallet', patterns: [() => window.suiWallet, () => window.sui?.wallet] },
+                { name: 'Suiet Wallet', patterns: [() => window.suietWallet, () => window.suiet] },
+                { name: 'Martian Wallet', patterns: [() => window.martian] },
+                { name: 'SlushWallet', patterns: [() => window.slushWallet, () => window.slush?.wallet] }
+            ];
+            
+            for (const legacyWallet of legacyWallets) {
+                for (const pattern of legacyWallet.patterns) {
+                    try {
+                        const wallet = pattern();
+                        if (wallet && typeof wallet === 'object') {
+                            availableWallets.push({
+                                type: 'legacy',
+                                name: legacyWallet.name,
+                                wallet: wallet
+                            });
+                            break;
+                        }
+                    } catch (e) {
+                        continue;
+                    }
+                }
+            }
+            
+            // デモウォレットを追加
+            availableWallets.push({
+                type: 'demo',
+                name: 'Demo Wallet',
+                wallet: null
+            });
+            
+            console.log('Available wallets:', availableWallets.map(w => w.name));
+            return availableWallets;
+        }
+
+        // ウォレット選択肢を動的に更新
+        function updateWalletOptions(availableWallets) {
+            const walletSelection = document.getElementById('wallet-selection');
+            
+            // 既存の選択肢をクリア
+            walletSelection.innerHTML = '';
+            
+            // 利用可能なウォレットの選択肢を追加
+            availableWallets.forEach(wallet => {
+                const walletOption = document.createElement('div');
+                walletOption.className = 'wallet-option';
+                walletOption.onclick = () => connectWallet(wallet.name.toLowerCase().replace(/\s+/g, ''));
+                
+                const icon = getWalletIcon(wallet.name);
+                const color = getWalletColor(wallet.name);
+                
+                walletOption.innerHTML = `
+                    <div class="icon" style="background: ${color};">${icon}</div>
+                    <div class="text">${wallet.name}</div>
+                    <div class="description">${getWalletDescription(wallet.name)}</div>
+                `;
+                
+                walletSelection.appendChild(walletOption);
+            });
+        }
+
+        // ウォレットアイコンを取得
+        function getWalletIcon(walletName) {
+            const icons = {
+                'Sui Wallet': '💧',
+                'Suiet Wallet': '🔮',
+                'Martian Wallet': '🚀',
+                'SlushWallet': '❄️',
+                'Demo Wallet': '🧪'
+            };
+            return icons[walletName] || '💎';
+        }
+
+        // ウォレットカラーを取得
+        function getWalletColor(walletName) {
+            const colors = {
+                'Sui Wallet': '#6366f1',
+                'Suiet Wallet': '#8b5cf6',
+                'Martian Wallet': '#f59e0b',
+                'SlushWallet': '#0ea5e9',
+                'Demo Wallet': '#10b981'
+            };
+            return colors[walletName] || '#6366f1';
+        }
+
+        // ウォレット説明を取得
+        function getWalletDescription(walletName) {
+            const descriptions = {
+                'Sui Wallet': '公式Suiウォレット',
+                'Suiet Wallet': '人気のSuiウォレット',
+                'Martian Wallet': 'マルチチェーンウォレット',
+                'SlushWallet': 'Sui系Slushウォレット',
+                'Demo Wallet': 'テスト用デモウォレット'
+            };
+            return descriptions[walletName] || 'ウォレット';
+        }
 
         // ウォレット接続
         window.connectWallet = async function(walletType) {
@@ -527,29 +624,51 @@
                     slush: typeof window.slush,
                     ethereum: typeof window.ethereum,
                     keplr: typeof window.keplr,
-                    phantom: typeof window.phantom
+                    phantom: typeof window.phantom,
+                    // Wallet Standard準拠のウォレット
+                    getWallets: typeof window.getWallets,
+                    navigatorWallets: typeof window.navigator?.wallets,
+                    suiWalletsGet: typeof window.suiWallets?.get
                 });
                 
                 let wallet = null;
                 
-                switch(walletType) {
-                    case 'sui':
-                        wallet = await connectSuiWallet();
-                        break;
-                    case 'suiet':
-                        wallet = await connectSuietWallet();
-                        break;
-                    case 'martian':
-                        wallet = await connectMartianWallet();
-                        break;
-                    case 'slush':
-                        wallet = await connectSlushWallet();
-                        break;
-                    case 'demo':
-                        wallet = await connectDemoWallet();
-                        break;
-                    default:
-                        throw new Error('サポートされていないウォレットタイプです');
+                // まずWallet Standard準拠のウォレットを試行
+                try {
+                    const standardWallets = await getStandardWallets();
+                    const targetWallet = standardWallets.find(w => 
+                        w.name.toLowerCase().includes(walletType.toLowerCase())
+                    );
+                    
+                    if (targetWallet) {
+                        console.log(`Found standard wallet: ${targetWallet.name}`);
+                        wallet = await connectStandardWallet(targetWallet);
+                    }
+                } catch (error) {
+                    console.log('Standard wallet detection failed, trying legacy patterns:', error);
+                }
+                
+                // 標準ウォレットが見つからない場合は、レガシーパターンを試行
+                if (!wallet) {
+                    switch(walletType) {
+                        case 'sui':
+                            wallet = await connectSuiWallet();
+                            break;
+                        case 'suiet':
+                            wallet = await connectSuietWallet();
+                            break;
+                        case 'martian':
+                            wallet = await connectMartianWallet();
+                            break;
+                        case 'slush':
+                            wallet = await connectSlushWallet();
+                            break;
+                        case 'demo':
+                            wallet = await connectDemoWallet();
+                            break;
+                        default:
+                            throw new Error('サポートされていないウォレットタイプです');
+                    }
                 }
                 
                 if (wallet && wallet.address) {
@@ -799,6 +918,71 @@
             };
         }
 
+        // Wallet Standard準拠のウォレットを取得
+        async function getStandardWallets() {
+            try {
+                // 複数のパターンでgetWalletsを試行
+                let getWalletsFunction = null;
+                
+                if (typeof window !== 'undefined') {
+                    getWalletsFunction = window.getWallets || 
+                                       (window.navigator?.wallets?.get) ||
+                                       (window.suiWallets?.get) ||
+                                       (window.wallets?.get);
+                }
+                
+                if (getWalletsFunction) {
+                    console.log('✅ Wallet Standard API found');
+                    
+                    const standardWallets = typeof getWalletsFunction === 'function' 
+                        ? getWalletsFunction() 
+                        : getWalletsFunction.get?.();
+                        
+                    if (Array.isArray(standardWallets)) {
+                        console.log(`Found ${standardWallets.length} standard wallets:`, standardWallets.map(w => w.name));
+                        return standardWallets;
+                    }
+                }
+                
+                console.log('⚠️ Wallet Standard API not available');
+                return [];
+            } catch (error) {
+                console.error('Error getting standard wallets:', error);
+                return [];
+            }
+        }
+
+        // Wallet Standard準拠のウォレットに接続
+        async function connectStandardWallet(wallet) {
+            try {
+                console.log(`Connecting to standard wallet: ${wallet.name}`);
+                
+                // ウォレットに接続
+                const connection = await wallet.connect();
+                const accounts = connection.accounts;
+                
+                if (!accounts || accounts.length === 0) {
+                    throw new Error('アカウントが見つかりません');
+                }
+                
+                const account = accounts[0];
+                
+                return {
+                    address: account.address,
+                    signMessage: async (message) => {
+                        // Wallet Standardの署名機能を使用
+                        const signature = await wallet.signMessage({
+                            message: message,
+                            account: account
+                        });
+                        return { signature: signature.signature };
+                    }
+                };
+            } catch (error) {
+                throw new Error(`Standard wallet connection failed: ${error.message}`);
+            }
+        }
+
         // ウォレット名を取得
         function getWalletName(walletType) {
             switch(walletType) {
@@ -846,8 +1030,8 @@
                 
                 // 署名処理
                 try {
-                    const signResult = await connectedWallet.signMessage(messageBytes);
-                    signature = signResult.signature || signResult;
+                        const signResult = await connectedWallet.signMessage(messageBytes);
+                        signature = signResult.signature || signResult;
                 } catch (signError) {
                     console.error('Sign error:', signError);
                     throw new Error('署名に失敗しました: ' + signError.message);
