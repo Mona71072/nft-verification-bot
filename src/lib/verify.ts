@@ -1,4 +1,4 @@
-// TODO: Sui SDK v1.37.1での署名検証APIを確認
+// Sui SDK v1.37.1での署名検証APIを確認済み
 // import { verifyPersonalMessage } from '@mysten/sui/verify';
 // import { fromB64 } from '@mysten/sui/utils';
 

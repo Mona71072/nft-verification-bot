@@ -94,11 +94,11 @@ app.get('/health', (req, res) => {
 // 認証済みユーザー一覧取得（デバッグ用）
 app.get('/api/verified-users', async (req, res) => {
   try {
-    // TODO: KVストレージから認証済みユーザー一覧を取得
+    // KVストレージから認証済みユーザー一覧を取得（実装予定）
     res.json({
       success: true,
       users: [],
-      message: 'Not implemented yet'
+      message: 'KV storage integration pending'
     });
   } catch (error) {
     console.error('Error fetching verified users:', error);

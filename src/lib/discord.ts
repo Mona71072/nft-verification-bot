@@ -13,7 +13,6 @@ export async function giveRole(
   guildId?: string
 ): Promise<boolean> {
   try {
-    // TODO: guildIdが渡されない場合の処理を実装
     if (!guildId) {
       console.error('Guild ID is required for role assignment');
       return false;
@@ -141,11 +140,12 @@ export async function hasRole(
   return roles.includes(roleId);
 }
 
-// TODO: Cron Jobs用の関数 - NFTを手放したユーザーから役割を削除
+/**
+ * NFTを手放したユーザーから役割を削除（Cron Jobs用）
+ * @returns Promise<void>
+ */
 export async function revokeRolesForNonHolders(): Promise<void> {
-  // TODO: 実装予定
-  // 1. KVから検証済みユーザーリストを取得
-  // 2. 各ユーザーのNFT保有状況を再確認
-  // 3. NFTを持たないユーザーから役割を削除
-  console.log('TODO: Implement role revocation for non-NFT holders');
+  // 実装予定: KVから検証済みユーザーリストを取得し、
+  // 各ユーザーのNFT保有状況を再確認して、NFTを持たないユーザーから役割を削除
+  console.log('Role revocation for non-NFT holders - Implementation pending');
 } 
