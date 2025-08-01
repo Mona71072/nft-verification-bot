@@ -541,6 +541,14 @@
                         () => window.slush?.wallet,
                         () => window.wallet?.slush
                     ] 
+                },
+                // MetaMask経由でSuiにアクセス
+                { 
+                    name: 'MetaMask (Sui)', 
+                    patterns: [
+                        () => window.ethereum?.sui,
+                        () => window.ethereum
+                    ] 
                 }
             ];
             
@@ -617,6 +625,7 @@
                 'Suiet Wallet': '🔮',
                 'Martian Wallet': '🚀',
                 'SlushWallet': '❄️',
+                'MetaMask (Sui)': '🦊',
                 'Demo Wallet': '🧪'
             };
             return icons[walletName] || '💎';
@@ -629,6 +638,7 @@
                 'Suiet Wallet': '#8b5cf6',
                 'Martian Wallet': '#f59e0b',
                 'SlushWallet': '#0ea5e9',
+                'MetaMask (Sui)': '#f6851b',
                 'Demo Wallet': '#10b981'
             };
             return colors[walletName] || '#6366f1';
@@ -641,6 +651,7 @@
                 'Suiet Wallet': '人気のSuiウォレット',
                 'Martian Wallet': 'マルチチェーンウォレット',
                 'SlushWallet': 'Sui系Slushウォレット',
+                'MetaMask (Sui)': 'MetaMask経由でSui接続',
                 'Demo Wallet': 'テスト用デモウォレット'
             };
             return descriptions[walletName] || 'ウォレット';
@@ -709,6 +720,9 @@
                             break;
                         case 'slush':
                             wallet = await connectSlushWallet();
+                            break;
+                        case 'metamask':
+                            wallet = await connectMetaMaskSui();
                             break;
                         case 'demo':
                             wallet = await connectDemoWallet();
@@ -944,6 +958,36 @@
             }
         }
 
+        // MetaMask経由でSuiにアクセス
+        async function connectMetaMaskSui() {
+            if (typeof window.ethereum === 'undefined') {
+                throw new Error('MetaMaskがインストールされていません。');
+            }
+
+            try {
+                const accounts = await window.ethereum.request({
+                    method: 'eth_requestAccounts'
+                });
+
+                if (!accounts || accounts.length === 0) {
+                    throw new Error('アカウントが見つかりません');
+                }
+
+                return {
+                    address: accounts[0],
+                    signMessage: async (message) => {
+                        const signature = await window.ethereum.request({
+                            method: 'personal_sign',
+                            params: [message, accounts[0]]
+                        });
+                        return { signature };
+                    }
+                };
+            } catch (error) {
+                throw new Error('MetaMask経由でのSui接続に失敗しました: ' + error.message);
+            }
+        }
+
         // Demo Wallet接続
         async function connectDemoWallet() {
             // デモ用のウォレットアドレスを生成
@@ -1037,6 +1081,7 @@
                 case 'suiet': return 'Suiet Wallet';
                 case 'martian': return 'Martian Wallet';
                 case 'slush': return 'SlushWallet';
+                case 'metamask': return 'MetaMask (Sui)';
                 case 'demo': return 'Demo Wallet';
                 default: return 'Unknown Wallet';
             }
