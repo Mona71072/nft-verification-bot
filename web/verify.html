@@ -349,8 +349,8 @@
         
         // APIベースURLを環境に応じて設定
         const API_BASE_URL = window.location.hostname === 'localhost' 
-            ? 'http://localhost:8787' 
-            : 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
+            ? 'http://localhost:3000' 
+            : window.location.origin;
 
         // URLパラメータからDiscord IDを取得
         const urlParams = new URLSearchParams(window.location.search);
