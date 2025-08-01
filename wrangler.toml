@@ -1,7 +1,7 @@
 name = "nft-verification"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"
-nodejs_compat = true
+compatibility_flags = ["nodejs_compat"]
 
 [env.production.vars]
 DISCORD_TOKEN = ""
@@ -9,6 +9,10 @@ DISCORD_GUILD_ID = "1214855750917160960"
 DISCORD_ROLE_ID = "1400485848008491059"
 SUI_NETWORK = "mainnet"
 NFT_COLLECTION_ID = "0x2::coin::Coin<0x2::sui::SUI>"
+
+[[env.production.kv_namespaces]]
+binding = "KV"
+id = "b406f15ba00b4a18abe98bf9bbe968ef"
 
 [[kv_namespaces]]
 binding = "KV"

@@ -7,13 +7,13 @@ import type { Env, ReqBody, VerificationResult } from './types';
 
 const app = new Hono<{ Bindings: Env }>();
 
-// Discord Bot API
-const discordBot = new DiscordBotAPI();
-
 // Discord Bot通信関数
-async function notifyDiscordBot(discordId: string, action: 'grant_role' | 'revoke_role'): Promise<boolean> {
+async function notifyDiscordBot(discordId: string, action: 'grant_role' | 'revoke_role', env: Env): Promise<boolean> {
   try {
     console.log(`🔄 Discord Bot API: ${action} for user ${discordId}`);
+    
+    // Cloudflare Workers環境では、環境変数をenvオブジェクトから取得
+    const discordBot = new DiscordBotAPI(env);
     
     if (action === 'grant_role') {
       return await discordBot.grantRole(discordId);
@@ -49,12 +49,8 @@ app.get('/verify.html', (c) => {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NFT認証</title>
-    <script type="module">
-        // Wallet Standard ライブラリを CDN から読み込み
-        import { getWallets } from 'https://unpkg.com/@mysten/wallet-standard@latest/dist/esm/index.js';
-        window.getWallets = getWallets;
-    </script>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
         * {
             margin: 0;
             padding: 0;
@@ -943,7 +939,7 @@ app.post('/verify', async (c) => {
     }
 
     // Discord Bot経由での役割付与を通知
-    const roleGranted = await notifyDiscordBot(discord_id, 'grant_role');
+    const roleGranted = await notifyDiscordBot(discord_id, 'grant_role', c.env);
     
     // ナンスを削除（一度だけ使用可能）
     await c.env.KV.delete(`nonce:${wallet_address}`);

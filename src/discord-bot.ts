@@ -1,9 +1,5 @@
 // 設定（本番環境では環境変数から取得）
-const config = {
-  DISCORD_TOKEN: process.env.DISCORD_TOKEN || '',
-  DISCORD_GUILD_ID: process.env.DISCORD_GUILD_ID || '',
-  DISCORD_ROLE_ID: process.env.DISCORD_ROLE_ID || ''
-};
+// Cloudflare Workers環境では、環境変数はコンストラクタで渡されます
 
 // Discord Bot API機能
 export class DiscordBotAPI {
@@ -11,10 +7,18 @@ export class DiscordBotAPI {
   private guildId: string;
   private roleId: string;
 
-  constructor() {
-    this.token = config.DISCORD_TOKEN;
-    this.guildId = config.DISCORD_GUILD_ID;
-    this.roleId = config.DISCORD_ROLE_ID;
+  constructor(env?: any) {
+    // Cloudflare Workers環境では環境変数をenvオブジェクトから取得
+    if (env) {
+      this.token = env.DISCORD_TOKEN || '';
+      this.guildId = env.DISCORD_GUILD_ID || '';
+      this.roleId = env.DISCORD_ROLE_ID || '';
+    } else {
+      // ローカル環境ではデフォルト値を使用
+      this.token = '';
+      this.guildId = '';
+      this.roleId = '';
+    }
   }
 
   // ロール付与
