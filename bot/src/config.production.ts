@@ -1,0 +1,22 @@
+export const config = {
+  // Discord Bot設定（本番環境）
+  DISCORD_TOKEN: process.env.DISCORD_TOKEN || '',
+  DISCORD_CLIENT_ID: process.env.DISCORD_CLIENT_ID || '',
+  DISCORD_GUILD_ID: process.env.DISCORD_GUILD_ID || '',
+  DISCORD_ROLE_ID: process.env.DISCORD_ROLE_ID || '',
+  
+  // Sui Network設定（本番環境）
+  SUI_NETWORK: process.env.SUI_NETWORK || 'mainnet',
+  NFT_COLLECTION_ID: process.env.NFT_COLLECTION_ID || '',
+  
+  // API設定（本番環境）
+  API_BASE_URL: process.env.API_BASE_URL || '',
+  
+  // 認証チャンネル設定
+  VERIFICATION_CHANNEL_ID: process.env.VERIFICATION_CHANNEL_ID || '',
+  VERIFICATION_CHANNEL_NAME: 'nft-verification',
+  VERIFICATION_URL: process.env.VERIFICATION_URL || '',
+  
+  // 管理者ユーザーID
+  ADMIN_USER_ID: process.env.ADMIN_USER_ID || ''
+}; 

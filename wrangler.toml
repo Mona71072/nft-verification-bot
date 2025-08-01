@@ -1,0 +1,26 @@
+name = "nft-verification"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+nodejs_compat = true
+
+[env.production.vars]
+DISCORD_TOKEN = ""
+DISCORD_GUILD_ID = "1214855750917160960"
+DISCORD_ROLE_ID = "1400485848008491059"
+SUI_NETWORK = "mainnet"
+NFT_COLLECTION_ID = "0x2::coin::Coin<0x2::sui::SUI>"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "b406f15ba00b4a18abe98bf9bbe968ef"
+
+[env.development.vars]
+DISCORD_TOKEN = "DEV_TOKEN"
+DISCORD_GUILD_ID = "DEV_GUILD_ID"
+DISCORD_ROLE_ID = "DEV_ROLE_ID"
+SUI_NETWORK = "testnet"
+NFT_COLLECTION_ID = "DEV_COLLECTION_ID"
+
+[[env.development.kv_namespaces]]
+binding = "KV"
+preview_id = "50a1cd67e9db4ccfa15669a0ba3aa9a4" 

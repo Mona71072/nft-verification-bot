@@ -1,0 +1,31 @@
+{
+  "name": "nft-verification",
+  "version": "1.0.0",
+  "description": "Sui NFT verification service for Discord role gating",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler publish",
+    "test": "node --test test/*.test.ts",
+    "type-check": "tsc --noEmit"
+  },
+  "keywords": [
+    "sui",
+    "nft",
+    "discord",
+    "cloudflare-workers",
+    "verification"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@mysten/sui": "^1.37.1",
+    "@mysten/wallet-standard": "^0.12.0",
+    "discord.js": "^14.21.0",
+    "hono": "^3.12.12"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250731.0",
+    "typescript": "^5.8.3"
+  }
+}

@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NFT認証システム | Discord Role Verification</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        :root {
+            --primary-50: #f0f9ff;
+            --primary-100: #e0f2fe;
+            --primary-500: #0ea5e9;
+            --primary-600: #0284c7;
+            --primary-700: #0369a1;
+            --primary-900: #0c4a6e;
+            
+            --success-50: #f0fdf4;
+            --success-500: #22c55e;
+            --success-600: #16a34a;
+            
+            --error-50: #fef2f2;
+            --error-500: #ef4444;
+            --error-600: #dc2626;
+            
+            --warning-50: #fffbeb;
+            --warning-500: #f59e0b;
+            
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-300: #d1d5db;
+            --gray-400: #9ca3af;
+            --gray-500: #6b7280;
+            --gray-600: #4b5563;
+            --gray-700: #374151;
+            --gray-800: #1f2937;
+            --gray-900: #111827;
+            
+            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+            --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+            --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, var(--primary-600) 0%, var(--primary-900) 100%);
+            background-attachment: fixed;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--gray-900);
+            line-height: 1.6;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 24px;
+            padding: 3rem;
+            box-shadow: var(--shadow-2xl);
+            max-width: 600px;
+            width: 95%;
+            margin: 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            animation: slideUp 0.8s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        .logo {
+            width: 90px;
+            height: 90px;
+            background: linear-gradient(135deg, var(--primary-500), var(--primary-700));
+            border-radius: 20px;
+            margin: 0 auto 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+            box-shadow: var(--shadow-lg);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.05);
+            }
+        }
+
+        h1 {
+            color: var(--gray-900);
+            margin-bottom: 0.75rem;
+            font-size: 2.5rem;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+        }
+
+        .subtitle {
+            color: var(--gray-600);
+            margin-bottom: 0.5rem;
+            font-size: 1.125rem;
+            font-weight: 400;
+        }
+
+        .discord-info {
+            background: linear-gradient(135deg, var(--primary-50), var(--primary-100));
+            border-radius: 16px;
+            padding: 1.25rem;
+            margin: 2rem 0;
+            border: 1px solid var(--primary-200);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .discord-info .icon {
+            width: 40px;
+            height: 40px;
+            background: var(--primary-500);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+        }
+
+        .discord-info strong {
+            color: var(--primary-700);
+            font-weight: 600;
+        }
+
+        .step {
+            background: var(--gray-50);
+            border-radius: 16px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid var(--gray-200);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .step::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: linear-gradient(135deg, var(--primary-500), var(--primary-600));
+        }
+
+        .step:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .step-number {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            background: var(--primary-500);
+            color: white;
+            border-radius: 50%;
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-right: 0.75rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .step h3 {
+            color: var(--gray-900);
+            margin-bottom: 0.75rem;
+            font-size: 1.125rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+        }
+
+        .step p {
+            color: var(--gray-600);
+            font-size: 0.9375rem;
+            line-height: 1.6;
+        }
+
+        .wallet-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin: 2rem 0;
+        }
+
+        .wallet-button {
+            background: linear-gradient(135deg, var(--primary-500), var(--primary-600));
+            color: white;
+            border: none;
+            border-radius: 16px;
+            padding: 1.25rem 1.5rem;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+            box-shadow: var(--shadow-md);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .wallet-button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.05));
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .wallet-button:hover::before {
+            opacity: 1;
+        }
+
+        .wallet-button:hover {
+            transform: translateY(-3px);
+            box-shadow: var(--shadow-xl);
+        }
+
+        .wallet-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .wallet-button .icon {
+            font-size: 2rem;
+        }
+
+        .verify-button {
+            background: linear-gradient(135deg, var(--success-500), var(--success-600));
+            color: white;
+            border: none;
+            border-radius: 16px;
+            padding: 1.25rem 2rem;
+            font-size: 1.125rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin: 2rem auto;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            box-shadow: var(--shadow-md);
+            width: 100%;
+            justify-content: center;
+        }
+
+        .verify-button:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .status {
+            margin: 2rem 0;
+            padding: 1.25rem;
+            border-radius: 16px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            box-shadow: var(--shadow-sm);
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .status .icon {
+            font-size: 1.25rem;
+        }
+
+        .status.loading {
+            background: var(--warning-50);
+            color: var(--warning-500);
+            border: 1px solid rgba(245, 158, 11, 0.2);
+        }
+
+        .status.success {
+            background: var(--success-50);
+            color: var(--success-600);
+            border: 1px solid rgba(34, 197, 94, 0.2);
+        }
+
+        .status.error {
+            background: var(--error-50);
+            color: var(--error-600);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(245, 158, 11, 0.3);
+            border-top: 2px solid var(--warning-500);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: var(--gray-200);
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 1rem 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary-500), var(--primary-600));
+            width: 0;
+            transition: width 0.5s ease;
+            border-radius: 4px;
+        }
+
+        @media (max-width: 640px) {
+            .container {
+                padding: 2rem;
+                margin: 0.5rem;
+            }
+            
+            .wallet-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            h1 {
+                font-size: 2rem;
+            }
+            
+            .step {
+                padding: 1.25rem;
+            }
+        }
+
+        /* Dark mode support */
+        @media (prefers-color-scheme: dark) {
+            .container {
+                background: rgba(17, 24, 39, 0.95);
+                color: var(--gray-100);
+            }
+            
+            h1 {
+                color: var(--gray-100);
+            }
+            
+            .subtitle {
+                color: var(--gray-400);
+            }
+            
+            .step {
+                background: var(--gray-800);
+                border-color: var(--gray-700);
+            }
+            
+            .step h3 {
+                color: var(--gray-100);
+            }
+            
+            .step p {
+                color: var(--gray-300);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">🎨</div>
+            <h1>NFT認証システム</h1>
+            <p class="subtitle">Suiウォレットを接続してNFT保有を認証しましょう</p>
+        </div>
+
+        <div id="discord-info" class="discord-info">
+            <div class="icon">💬</div>
+            <div>
+                <strong>Discord ID:</strong> <span id="discord-id">取得中...</span>
+            </div>
+        </div>
+
+        <div id="progress-container" class="progress-bar hidden">
+            <div id="progress-fill" class="progress-fill"></div>
+        </div>
+
+        <div class="step">
+            <h3><span class="step-number">1</span>📱 ウォレット接続</h3>
+            <p>対応するSuiウォレットを選択して接続してください</p>
+        </div>
+
+        <div class="wallet-grid">
+            <button class="wallet-button" onclick="connectWallet('suiet')">
+                <div class="icon">🦄</div>
+                <span>Suiet Wallet</span>
+            </button>
+            <button class="wallet-button" onclick="connectWallet('sui')">
+                <div class="icon">🔷</div>
+                <span>Sui Wallet</span>
+            </button>
+        </div>
+
+        <div class="step">
+            <h3><span class="step-number">2</span>✍️ 署名認証</h3>
+            <p>ウォレットで認証メッセージに署名してください</p>
+        </div>
+
+        <div class="step">
+            <h3><span class="step-number">3</span>🎯 NFT確認</h3>
+            <p>NFT保有が確認されると、自動的にDiscordロールが付与されます</p>
+        </div>
+
+        <div id="status" class="status hidden">
+            <div class="spinner hidden" id="status-spinner"></div>
+            <div class="icon" id="status-icon"></div>
+            <span id="status-text"></span>
+        </div>
+
+        <button id="verify-button" class="verify-button hidden" onclick="startVerification()">
+            <span>🔐</span>
+            認証を開始
+        </button>
+    </div>
+
+    <script>
+        let connectedWallet = null;
+        let walletAddress = null;
+        let discordId = null;
+
+        // URLパラメータからDiscord IDを取得
+        function getDiscordId() {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get('discord_id');
+        }
+
+        // ページ読み込み時の初期化
+        window.onload = function() {
+            discordId = getDiscordId();
+            if (discordId) {
+                document.getElementById('discord-id').textContent = discordId;
+            } else {
+                document.getElementById('discord-id').textContent = '❌ 無効なリンクです';
+                showStatus('error', 'Discord IDが見つかりません。Discordから正しいリンクでアクセスしてください。');
+            }
+            
+            // ウォレット検出状況をデバッグ表示
+            setTimeout(checkWalletAvailability, 1000);
+        };
+        
+        // ウォレット利用可能性チェック
+        function checkWalletAvailability() {
+            const walletStatus = {
+                suietWallet: typeof window.suietWallet,
+                suiet: typeof window.suiet,
+                suiWallet: typeof window.suiWallet,
+                sui: typeof window.sui,
+                wallet: typeof window.wallet,
+                suiWallets: typeof window.suiWallets,
+                ethereum: typeof window.ethereum,
+                keplr: typeof window.keplr,
+                phantom: typeof window.phantom
+            };
+            
+            console.log('🔍 ウォレット検出状況:', walletStatus);
+            
+            // より詳細なSui関連オブジェクトの検索
+            const suiRelatedObjects = [];
+            for (const prop in window) {
+                if (prop.toLowerCase().includes('sui')) {
+                    suiRelatedObjects.push({
+                        name: prop,
+                        type: typeof window[prop],
+                        hasConnect: window[prop]?.connect ? 'Yes' : 'No',
+                        hasSignMessage: window[prop]?.signMessage ? 'Yes' : 'No'
+                    });
+                }
+            }
+            
+            if (suiRelatedObjects.length > 0) {
+                console.log('🔍 Sui関連オブジェクト:', suiRelatedObjects);
+            }
+            
+            // 利用可能なウォレットを表示
+            const availableWallets = [];
+            
+            if (window.suietWallet || window.suiet) {
+                availableWallets.push('Suiet Wallet');
+            }
+            
+            // Sui Wallet検出の強化
+            const suiWalletPatterns = [
+                window.suiWallet,
+                window.sui?.wallet,
+                window.wallet?.sui,
+                window.suiWallets?.[0],
+                window.ethereum?.sui,
+                window.keplr?.sui,
+                window.phantom?.sui
+            ];
+            
+            const foundSuiWallet = suiWalletPatterns.find(w => w && typeof w === 'object');
+            if (foundSuiWallet) {
+                availableWallets.push('Sui Wallet');
+            }
+            
+            if (availableWallets.length > 0) {
+                console.log('✅ 利用可能なウォレット:', availableWallets.join(', '));
+                showStatus('success', `検出されたウォレット: ${availableWallets.join(', ')}`);
+            } else {
+                console.log('❌ ウォレットが検出されませんでした');
+                console.log('💡 ヒント: ブラウザの開発者ツール(F12)のコンソールタブで詳細を確認できます');
+                showStatus('error', 'ウォレットが検出されませんでした。ウォレット拡張機能が有効になっているか確認してください。詳細はコンソール(F12)をご確認ください。');
+            }
+        }
+
+        // ウォレット接続
+        async function connectWallet(walletType) {
+            showStatus('loading', `${walletType} ウォレットに接続中...`);
+
+            try {
+                if (walletType === 'suiet') {
+                    // Suiet Wallet検出
+                    if (typeof window.suietWallet === 'undefined' && typeof window.suiet === 'undefined') {
+                        throw new Error('Suiet Walletがインストールされていません。https://suiet.app/ からインストールしてください。');
+                    }
+                    
+                    const wallet = window.suietWallet || window.suiet;
+                    const result = await wallet.connect();
+                    walletAddress = result.address || result.accounts[0].address;
+                    connectedWallet = 'suiet';
+                    
+                } else if (walletType === 'sui') {
+                    // Sui Wallet検出（複数の可能性をチェック）
+                    let wallet = null;
+                    let walletFound = false;
+                    
+                    // 一般的なSui Wallet検出パターン
+                    const detectionPatterns = [
+                        () => window.suiWallet,
+                        () => window.sui?.wallet,
+                        () => window.wallet?.sui,
+                        () => window.suiWallets?.[0],
+                        () => window.ethereum?.sui, // MetaMask Snap経由
+                        () => window.keplr?.sui, // Keplr経由
+                        () => window.solana?.sui, // 他のウォレット経由
+                        () => window.phantom?.sui,
+                        // より汎用的な検出
+                        () => {
+                            // windowの全プロパティをチェック
+                            for (const prop in window) {
+                                const obj = window[prop];
+                                if (obj && typeof obj === 'object' && 
+                                    (prop.toLowerCase().includes('sui') || 
+                                     (obj.connect && obj.signMessage))) {
+                                    return obj;
+                                }
+                            }
+                            return null;
+                        }
+                    ];
+                    
+                    for (const detect of detectionPatterns) {
+                        try {
+                            wallet = detect();
+                            if (wallet) {
+                                walletFound = true;
+                                console.log('Found wallet via pattern:', wallet);
+                                break;
+                            }
+                        } catch (e) {
+                            continue;
+                        }
+                    }
+                    
+                    if (!walletFound || !wallet) {
+                        throw new Error('Sui Walletが見つかりません。\\n\\n対処法:\\n1. Sui Wallet拡張機能がインストールされているか確認\\n2. ブラウザでSui Walletが有効になっているか確認\\n3. ページを再読み込み');
+                    }
+                    
+                    console.log('Attempting to connect with wallet:', wallet);
+                    const result = await wallet.connect();
+                    console.log('Connection result:', result);
+                    
+                    // 様々なレスポンス形式に対応
+                    walletAddress = result.address || 
+                                   result.accounts?.[0]?.address || 
+                                   result[0]?.address ||
+                                   result.account?.address ||
+                                   (Array.isArray(result) ? result[0] : null);
+                    
+                    connectedWallet = 'sui';
+                }
+
+                if (!walletAddress) {
+                    throw new Error('ウォレットアドレスが取得できませんでした');
+                }
+
+                showStatus('success', `✅ ウォレット接続成功: ${walletAddress.slice(0, 8)}...${walletAddress.slice(-6)}`);
+                document.getElementById('verify-button').classList.remove('hidden');
+                
+                // ウォレット接続成功のアニメーション
+                setTimeout(() => {
+                    const verifyBtn = document.getElementById('verify-button');
+                    verifyBtn.style.animation = 'pulse 2s infinite';
+                }, 500);
+
+            } catch (error) {
+                console.error('Wallet connection error:', error);
+                showStatus('error', `❌ ウォレット接続に失敗しました: ${error.message}`);
+                
+                // デバッグ情報を表示
+                console.log('Available wallet objects:', {
+                    suietWallet: typeof window.suietWallet,
+                    suiet: typeof window.suiet,
+                    suiWallet: typeof window.suiWallet,
+                    sui: typeof window.sui,
+                    wallet: typeof window.wallet,
+                    suiWallets: typeof window.suiWallets
+                });
+            }
+        }
+
+        // 認証プロセス開始（進捗バー付き）
+        async function startVerification() {
+            if (!walletAddress || !discordId) {
+                showStatus('error', '❌ ウォレットまたはDiscord IDが見つかりません');
+                return;
+            }
+
+            showProgress(0);
+            showStatus('loading', '🔄 認証処理を開始しています...');
+
+            try {
+                // Step 1: ナンス取得
+                showProgress(25);
+                showStatus('loading', '📝 ナンス生成中...');
+                
+                const nonceResponse = await fetch('http://localhost:8787/nonce', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        wallet_address: walletAddress
+                    })
+                });
+
+                if (!nonceResponse.ok) {
+                    throw new Error('ナンス生成に失敗しました');
+                }
+
+                const { nonce } = await nonceResponse.json();
+
+                // Step 2: 署名生成
+                showProgress(50);
+                showStatus('loading', '✍️ 署名生成中... ウォレットのポップアップを確認してください');
+                
+                const message = `Verify NFT ownership for Discord role.\\nNonce: ${nonce}\\nAddress: ${walletAddress}`;
+                const signature = await signMessage(message);
+
+                // Step 3: 認証実行
+                showProgress(75);
+                showStatus('loading', '🔍 NFT保有確認とロール付与処理中...');
+                
+                const verifyResponse = await fetch('http://localhost:8787/verify', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        wallet_address: walletAddress,
+                        discord_id: discordId,
+                        signature: signature,
+                        nonce: nonce
+                    })
+                });
+
+                const result = await verifyResponse.json();
+
+                if (result.success) {
+                    showProgress(100);
+                    showStatus('success', '🎉 認証成功！Discordロールが付与されました。このページを閉じてDiscordに戻ってください。');
+                    
+                    // 5秒後に進捗バーを非表示
+                    setTimeout(() => {
+                        hideProgress();
+                    }, 5000);
+                } else {
+                    hideProgress();
+                    showStatus('error', `❌ 認証失敗: ${result.message}`);
+                }
+
+            } catch (error) {
+                console.error('Verification error:', error);
+                hideProgress();
+                showStatus('error', `❌ 認証エラー: ${error.message}`);
+            }
+        }
+
+        // メッセージ署名
+        async function signMessage(message) {
+            try {
+                const messageBytes = new TextEncoder().encode(message);
+                
+                if (connectedWallet === 'suiet') {
+                    const wallet = window.suietWallet || window.suiet;
+                    const result = await wallet.signMessage({
+                        message: messageBytes
+                    });
+                    return result.signature;
+                    
+                } else if (connectedWallet === 'sui') {
+                    let wallet = window.suiWallet;
+                    if (!wallet) {
+                        if (window.sui && window.sui.wallet) {
+                            wallet = window.sui.wallet;
+                        } else if (window.wallet && window.wallet.sui) {
+                            wallet = window.wallet.sui;
+                        } else if (window.suiWallets && window.suiWallets.length > 0) {
+                            wallet = window.suiWallets[0];
+                        }
+                    }
+                    
+                    if (!wallet || !wallet.signMessage) {
+                        throw new Error('署名機能が利用できません');
+                    }
+                    
+                    const result = await wallet.signMessage({
+                        message: messageBytes
+                    });
+                    return result.signature;
+                }
+                
+                throw new Error('Unknown wallet type');
+            } catch (error) {
+                console.error('Signing error:', error);
+                throw new Error(`署名に失敗しました: ${error.message}`);
+            }
+        }
+
+        // ステータス表示（改善版）
+        function showStatus(type, message) {
+            const statusEl = document.getElementById('status');
+            const iconEl = document.getElementById('status-icon');
+            const textEl = document.getElementById('status-text');
+            const spinnerEl = document.getElementById('status-spinner');
+            
+            statusEl.className = `status ${type}`;
+            textEl.textContent = message;
+            
+            // アイコンとスピナーの制御
+            spinnerEl.classList.add('hidden');
+            iconEl.classList.remove('hidden');
+            
+            switch(type) {
+                case 'loading':
+                    iconEl.classList.add('hidden');
+                    spinnerEl.classList.remove('hidden');
+                    break;
+                case 'success':
+                    iconEl.textContent = '✅';
+                    break;
+                case 'error':
+                    iconEl.textContent = '❌';
+                    break;
+                default:
+                    iconEl.textContent = 'ℹ️';
+            }
+            
+            statusEl.classList.remove('hidden');
+        }
+        
+        // 進捗バー表示
+        function showProgress(percentage) {
+            const progressContainer = document.getElementById('progress-container');
+            const progressFill = document.getElementById('progress-fill');
+            
+            progressContainer.classList.remove('hidden');
+            progressFill.style.width = `${percentage}%`;
+        }
+        
+        // 進捗バー非表示
+        function hideProgress() {
+            const progressContainer = document.getElementById('progress-container');
+            progressContainer.classList.add('hidden');
+        }
+
+        // Suiet Wallet検出
+        window.addEventListener('load', () => {
+            if (typeof window.suietWallet !== 'undefined') {
+                console.log('Suiet Wallet detected');
+            }
+        });
+    </script>
+
+    <!-- Suiet Wallet SDK -->
+    <script src="https://unpkg.com/@suiet/wallet-kit@latest/dist/index.umd.js"></script>
+</body>
+</html>
