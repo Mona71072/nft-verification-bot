@@ -28,6 +28,27 @@ app.get('/verify.html', (req, res) => {
   res.sendFile(path.join(__dirname, 'web', 'verify.html'));
 });
 
+// Discordサーバー情報取得
+app.get('/server-info', async (req, res) => {
+  try {
+    const guildId = process.env.DISCORD_GUILD_ID || '1214855750917160960';
+    
+    // 本番環境では実際のDiscord APIを呼び出す
+    // ここでは開発用のモック実装
+    const serverInfo = {
+      name: 'Mona Syndicate Tokyo',
+      id: guildId,
+      memberCount: 1500,
+      description: 'Suiエコシステムのコミュニティ'
+    };
+    
+    res.json(serverInfo);
+  } catch (error) {
+    console.error('Error fetching server info:', error);
+    res.status(500).json({ error: 'Failed to fetch server info' });
+  }
+});
+
 // ナンス生成エンドポイント
 app.post('/nonce', async (req, res) => {
   try {
