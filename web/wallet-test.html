@@ -76,7 +76,23 @@
                 { name: 'Sui Wallet', patterns: ['window.suiWallet', 'window.sui?.wallet', 'window.wallet?.sui'] },
                 { name: 'Suiet Wallet', patterns: ['window.suietWallet', 'window.suiet', 'window.wallet?.suiet'] },
                 { name: 'Martian Wallet', patterns: ['window.martian', 'window.wallet?.martian'] },
-                { name: 'SlushWallet', patterns: ['window.slushWallet', 'window.slush?.wallet', 'window.wallet?.slush'] },
+                { 
+                    name: 'SlushWallet', 
+                    patterns: [
+                        'window.slushWallet', 
+                        'window.slush?.wallet', 
+                        'window.wallet?.slush',
+                        'window.slush',
+                        'window.sui?.slush',
+                        'window.wallet?.slushWallet',
+                        // 追加の検出パターン
+                        'window.slushWallet?.wallet',
+                        'window.slush?.connect',
+                        'window.slushWallet?.connect',
+                        'window.slush?.request',
+                        'window.slushWallet?.request'
+                    ] 
+                },
                 { name: 'MetaMask', patterns: ['window.ethereum'] },
                 { name: 'Phantom', patterns: ['window.phantom'] },
                 { name: 'Keplr', patterns: ['window.keplr'] }
@@ -154,7 +170,11 @@
                             name: prop,
                             type: typeof value,
                             hasConnect: value?.connect ? 'Yes' : 'No',
-                            hasRequest: value?.request ? 'Yes' : 'No'
+                            hasRequest: value?.request ? 'Yes' : 'No',
+                            hasSignMessage: value?.signMessage ? 'Yes' : 'No',
+                            hasGetAccounts: value?.getAccounts ? 'Yes' : 'No',
+                            isFunction: typeof value === 'function' ? 'Yes' : 'No',
+                            isObject: typeof value === 'object' ? 'Yes' : 'No'
                         });
                     } catch (e) {
                         // 無視
@@ -167,7 +187,7 @@
                     results.innerHTML += `
                         <div class="wallet-item found">
                             <div class="status">${obj.name}: ${obj.type}</div>
-                            <div class="details">connect: ${obj.hasConnect}, request: ${obj.hasRequest}</div>
+                            <div class="details">connect: ${obj.hasConnect}, request: ${obj.hasRequest}, signMessage: ${obj.hasSignMessage}, getAccounts: ${obj.hasGetAccounts}, isFunction: ${obj.isFunction}, isObject: ${obj.isObject}</div>
                         </div>
                     `;
                 });
@@ -175,6 +195,50 @@
                 results.innerHTML += `
                     <div class="wallet-item not-found">
                         <div class="status">Sui関連のオブジェクトが見つかりません</div>
+                    </div>
+                `;
+            }
+            
+            // SlushWallet専用の詳細検出
+            results.innerHTML += '<h3>SlushWallet専用検出</h3>';
+            const slushPatterns = [
+                'window.slushWallet',
+                'window.slush',
+                'window.slushWallet?.wallet',
+                'window.slush?.wallet',
+                'window.wallet?.slush',
+                'window.wallet?.slushWallet',
+                'window.sui?.slush',
+                'window.sui?.slushWallet'
+            ];
+            
+            let slushFound = false;
+            slushPatterns.forEach(pattern => {
+                try {
+                    const value = eval(pattern);
+                    const status = value ? 'found' : 'not-found';
+                    const text = value ? '検出済み' : '未検出';
+                    results.innerHTML += `
+                        <div class="wallet-item ${status}">
+                            <div class="status">${pattern}: ${text}</div>
+                            <div class="details">${value ? typeof value : 'undefined'}</div>
+                        </div>
+                    `;
+                    if (value) slushFound = true;
+                } catch (e) {
+                    results.innerHTML += `
+                        <div class="wallet-item not-found">
+                            <div class="status">${pattern}: エラー</div>
+                            <div class="details">${e.message}</div>
+                        </div>
+                    `;
+                }
+            });
+            
+            if (!slushFound) {
+                results.innerHTML += `
+                    <div class="wallet-item not-found">
+                        <div class="status">SlushWalletが見つかりません。インストールを確認してください。</div>
                     </div>
                 `;
             }
