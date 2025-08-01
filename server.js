@@ -28,6 +28,11 @@ app.get('/verify.html', (req, res) => {
   res.sendFile(path.join(__dirname, 'web', 'verify.html'));
 });
 
+// ウォレット検出テストページの配信
+app.get('/wallet-test.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'web', 'wallet-test.html'));
+});
+
 // Discordサーバー情報取得
 app.get('/server-info', async (req, res) => {
   try {
