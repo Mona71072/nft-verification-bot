@@ -316,6 +316,11 @@
         let connectedWallet = null;
         let walletAddress = null;
         let discordId = null;
+        
+        // APIベースURLを環境に応じて設定
+        const API_BASE_URL = window.location.hostname === 'localhost' 
+            ? 'http://localhost:8787' 
+            : 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
 
         // URLパラメータからDiscord IDを取得
         const urlParams = new URLSearchParams(window.location.search);
@@ -327,71 +332,85 @@
             showStatus('error', 'Discord IDが見つかりません');
         }
 
+        // ウォレット検出関数
+        function detectWallets() {
+            console.log('🔍 Detecting wallets...');
+            
+            const wallets = [];
+            
+            // Suiet Wallet
+            if (window.suiet) {
+                wallets.push({ name: 'Suiet Wallet', wallet: window.suiet });
+            }
+            
+            // Martian Wallet
+            if (window.martian) {
+                wallets.push({ name: 'Martian Wallet', wallet: window.martian });
+            }
+            
+            // Ethos Wallet
+            if (window.ethos) {
+                wallets.push({ name: 'Ethos Wallet', wallet: window.ethos });
+            }
+            
+            // OneKey Wallet
+            if (window.onekey) {
+                wallets.push({ name: 'OneKey Wallet', wallet: window.onekey });
+            }
+            
+            // 一般的なSuiウォレット
+            if (window.suiWallet) {
+                wallets.push({ name: 'Sui Wallet', wallet: window.suiWallet });
+            }
+            
+            // その他のウォレット
+            for (const key in window) {
+                const obj = window[key];
+                if (obj && typeof obj === 'object' && 
+                    (key.toLowerCase().includes('sui') || 
+                     key.toLowerCase().includes('wallet'))) {
+                    wallets.push({ name: key, wallet: obj });
+                }
+            }
+            
+            console.log(`Found ${wallets.length} wallets:`, wallets.map(w => w.name));
+            return wallets;
+        }
+
         // ウォレット接続
         window.connectWallet = async function() {
             showStatus('loading', 'ウォレットを検索中...');
             
             try {
-                // 一般的なSuiウォレットパターンを検索
-                const walletKeys = [
-                    'suiWallet',
-                    'sui',
-                    'wallet',
-                    'suiet',
-                    'martian',
-                    'ethos',
-                    'onekey'
-                ];
-
-                let wallet = null;
-                let walletName = '';
-
-                // windowオブジェクトからウォレットを検索
-                for (const key of walletKeys) {
-                    if (window[key] && typeof window[key] === 'object') {
-                        wallet = window[key];
-                        walletName = key;
-                        console.log(`Found wallet: ${key}`);
-                        break;
-                    }
-                }
-
-                // より詳細な検索
-                if (!wallet) {
-                    for (const key in window) {
-                        const obj = window[key];
-                        if (obj && typeof obj === 'object' && 
-                            (key.toLowerCase().includes('sui') || 
-                             key.toLowerCase().includes('wallet') ||
-                             obj.name?.toLowerCase().includes('sui'))) {
-                            wallet = obj;
-                            walletName = key;
-                            console.log(`Found generic wallet: ${key}`);
-                            break;
-                        }
-                    }
-                }
-
-                if (!wallet) {
+                const wallets = detectWallets();
+                
+                if (wallets.length === 0) {
                     // デモ用のモックウォレット（開発時のみ）
                     if (window.location.hostname === 'localhost') {
                         console.log('Using demo wallet for development');
-                        wallet = {
+                        const demoWallet = {
                             name: 'Demo Wallet',
                             connect: async () => ({ accounts: [{ address: '0x1234567890abcdef1234567890abcdef12345678' }] }),
                             signMessage: async (message) => ({ signature: '0x' + 'a'.repeat(128) })
                         };
+                        wallets.push({ name: 'Demo Wallet', wallet: demoWallet });
                     } else {
-                        throw new Error('Suiウォレットが見つかりません。Suiet Wallet等をインストールしてください。');
+                        throw new Error('Suiウォレットが見つかりません。Suiet Wallet、Martian Wallet、またはEthos Walletをインストールしてください。');
                     }
                 }
 
-                showStatus('loading', 'ウォレットに接続中...');
+                // 最初に見つかったウォレットを使用
+                const selectedWallet = wallets[0];
+                console.log(`Using wallet: ${selectedWallet.name}`);
+                
+                showStatus('loading', `${selectedWallet.name}に接続中...`);
 
                 // ウォレット接続処理
                 let accounts = [];
                 
                 try {
+                    const wallet = selectedWallet.wallet;
+                    
                     if (wallet.connect) {
                         const result = await wallet.connect();
                         accounts = result.accounts || result;
@@ -403,11 +422,16 @@
                     } else if (wallet.getAccount) {
                         const account = await wallet.getAccount();
                         accounts = [account];
+                    } else if (wallet.accounts && wallet.accounts.length > 0) {
+                        accounts = wallet.accounts;
+                    } else if (wallet.account) {
+                        accounts = [wallet.account];
                     }
                 } catch (connectError) {
                     console.log('Standard connect failed, trying alternative methods');
                     
                     // 代替接続方法
+                    const wallet = selectedWallet.wallet;
                     if (wallet.accounts && wallet.accounts.length > 0) {
                         accounts = wallet.accounts;
                     } else if (wallet.account) {
@@ -417,7 +441,7 @@
 
                 if (accounts && accounts.length > 0) {
                     walletAddress = accounts[0].address || accounts[0];
-                    connectedWallet = wallet;
+                    connectedWallet = selectedWallet.wallet;
                     
                     showStatus('success', `接続成功: ${walletAddress.slice(0, 8)}...`);
                     document.getElementById('verify-btn').classList.add('show');
@@ -447,7 +471,7 @@
                 setProgress(25);
                 showStatus('loading', 'ナンス生成中...');
                 
-                const nonceRes = await fetch('http://localhost:8787/nonce', {
+                const nonceRes = await fetch(`${API_BASE_URL}/nonce`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ wallet_address: walletAddress })
@@ -494,7 +518,7 @@
                 setProgress(75);
                 showStatus('loading', 'NFT確認中...');
                 
-                const verifyRes = await fetch('http://localhost:8787/verify', {
+                const verifyRes = await fetch(`${API_BASE_URL}/verify`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({

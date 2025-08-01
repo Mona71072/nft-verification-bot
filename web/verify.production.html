@@ -145,6 +145,51 @@
         let currentWallet = null;
         let currentAddress = null;
 
+        // ウォレット検出関数
+        function detectWallets() {
+            console.log('🔍 Detecting wallets...');
+            
+            const wallets = [];
+            
+            // Suiet Wallet
+            if (window.suiet) {
+                wallets.push({ name: 'Suiet Wallet', wallet: window.suiet });
+            }
+            
+            // Martian Wallet
+            if (window.martian) {
+                wallets.push({ name: 'Martian Wallet', wallet: window.martian });
+            }
+            
+            // Ethos Wallet
+            if (window.ethos) {
+                wallets.push({ name: 'Ethos Wallet', wallet: window.ethos });
+            }
+            
+            // OneKey Wallet
+            if (window.onekey) {
+                wallets.push({ name: 'OneKey Wallet', wallet: window.onekey });
+            }
+            
+            // 一般的なSuiウォレット
+            if (window.suiWallet) {
+                wallets.push({ name: 'Sui Wallet', wallet: window.suiWallet });
+            }
+            
+            // その他のウォレット
+            for (const key in window) {
+                const obj = window[key];
+                if (obj && typeof obj === 'object' && 
+                    (key.toLowerCase().includes('sui') || 
+                     key.toLowerCase().includes('wallet'))) {
+                    wallets.push({ name: key, wallet: obj });
+                }
+            }
+            
+            console.log(`Found ${wallets.length} wallets:`, wallets.map(w => w.name));
+            return wallets;
+        }
+
         // デモウォレット（開発用）
         const demoWallet = {
             name: 'Demo Wallet',
@@ -159,27 +204,6 @@
             }
         };
 
-        // ウォレット検出
-        function detectWallet() {
-            const walletPatterns = [
-                'suiWallet', 'sui', 'wallet', 'suiet', 'martian', 'ethos', 'onekey'
-            ];
-            
-            for (const pattern of walletPatterns) {
-                if (window[pattern]) {
-                    return window[pattern];
-                }
-            }
-            
-            // 開発環境ではデモウォレットを使用
-            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-                console.log('Using demo wallet for development');
-                return demoWallet;
-            }
-            
-            return null;
-        }
-
         // 認証開始
         async function startVerification() {
             if (!discordId) {
@@ -192,20 +216,64 @@
             const progress = document.getElementById('progress');
 
             try {
-                // ステップ1: ウォレット接続
+                // ステップ1: ウォレット検出
                 updateStatus('ウォレットを検出中...', 'connecting');
                 updateProgress(20);
                 
-                currentWallet = detectWallet();
-                if (!currentWallet) {
-                    showError('Suiウォレットが見つかりません。Suiet、Martian、Ethosなどのウォレットをインストールしてください。');
-                    return;
+                const wallets = detectWallets();
+                
+                if (wallets.length === 0) {
+                    // 開発環境ではデモウォレットを使用
+                    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                        console.log('Using demo wallet for development');
+                        currentWallet = demoWallet;
+                    } else {
+                        showError('Suiウォレットが見つかりません。Suiet Wallet、Martian Wallet、またはEthos Walletをインストールしてください。');
+                        return;
+                    }
+                } else {
+                    currentWallet = wallets[0].wallet;
+                    console.log(`Using wallet: ${wallets[0].name}`);
                 }
 
                 updateStatus('ウォレットに接続中...', 'connecting');
                 updateProgress(40);
 
-                const connection = await currentWallet.connect();
+                // ウォレット接続処理
+                let connection = null;
+                
+                try {
+                    if (currentWallet.connect) {
+                        connection = await currentWallet.connect();
+                    } else if (currentWallet.request) {
+                        const result = await currentWallet.request({ method: 'eth_requestAccounts' });
+                        connection = { address: result[0] };
+                    } else if (currentWallet.getAccounts) {
+                        const accounts = await currentWallet.getAccounts();
+                        connection = { address: accounts[0].address || accounts[0] };
+                    } else if (currentWallet.getAccount) {
+                        const account = await currentWallet.getAccount();
+                        connection = { address: account.address || account };
+                    } else if (currentWallet.accounts && currentWallet.accounts.length > 0) {
+                        connection = { address: currentWallet.accounts[0].address || currentWallet.accounts[0] };
+                    } else if (currentWallet.account) {
+                        connection = { address: currentWallet.account.address || currentWallet.account };
+                    }
+                } catch (connectError) {
+                    console.log('Standard connect failed, trying alternative methods');
+                    
+                    // 代替接続方法
+                    if (currentWallet.accounts && currentWallet.accounts.length > 0) {
+                        connection = { address: currentWallet.accounts[0].address || currentWallet.accounts[0] };
+                    } else if (currentWallet.account) {
+                        connection = { address: currentWallet.account.address || currentWallet.account };
+                    }
+                }
+
+                if (!connection || !connection.address) {
+                    throw new Error('ウォレット接続に失敗しました');
+                }
+
                 currentAddress = connection.address;
                 
                 document.getElementById('walletInfo').innerHTML = `接続済み: ${currentAddress}`;
@@ -218,7 +286,7 @@
                 const nonceResponse = await fetch(`${API_BASE_URL}/nonce`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ discord_id: discordId })
+                    body: JSON.stringify({ wallet_address: currentAddress })
                 });
 
                 if (!nonceResponse.ok) {
@@ -231,8 +299,33 @@
                 updateProgress(80);
 
                 // ステップ3: メッセージ署名
-                const message = `NFT Verification\n\nDiscord ID: ${discordId}\nNonce: ${nonce}\nTimestamp: ${Date.now()}`;
-                const signature = await currentWallet.signMessage(message);
+                const message = `Verify NFT for Discord.\nNonce: ${nonce}\nAddress: ${currentAddress}`;
+                const messageBytes = new TextEncoder().encode(message);
+                
+                let signature = '';
+                
+                try {
+                    if (currentWallet.signMessage) {
+                        const signResult = await currentWallet.signMessage(messageBytes);
+                        signature = signResult.signature || signResult;
+                    } else if (currentWallet.request) {
+                        signature = await currentWallet.request({
+                            method: 'personal_sign',
+                            params: [message, currentAddress]
+                        });
+                    } else if (currentWallet.sign) {
+                        const signResult = await currentWallet.sign(messageBytes);
+                        signature = signResult.signature || signResult;
+                    } else if (currentWallet.signTransaction) {
+                        const signResult = await currentWallet.signTransaction(messageBytes);
+                        signature = signResult.signature || signResult;
+                    } else {
+                        throw new Error('署名機能が見つかりません');
+                    }
+                } catch (signError) {
+                    console.error('Sign error:', signError);
+                    throw new Error('署名に失敗しました: ' + signError.message);
+                }
 
                 updateStatus('認証を完了中...', 'connecting');
                 updateProgress(90);
@@ -242,8 +335,8 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        discord_id: discordId,
                         wallet_address: currentAddress,
+                        discord_id: discordId,
                         signature: signature,
                         nonce: nonce
                     })
@@ -261,7 +354,7 @@
                     connectBtn.disabled = true;
                     connectBtn.textContent = '✅ 認証完了';
                 } else {
-                    showError('認証に失敗しました: ' + (result.error || '不明なエラー'));
+                    showError('認証に失敗しました: ' + (result.message || '不明なエラー'));
                 }
 
             } catch (error) {
