@@ -514,6 +514,22 @@
             try {
                 console.log(`🔍 Connecting to ${getWalletName(walletType)}...`);
                 
+                // ウォレット検出のデバッグ情報を出力
+                console.log('🔍 Available wallet objects:', {
+                    suiWallet: typeof window.suiWallet,
+                    sui: typeof window.sui,
+                    wallet: typeof window.wallet,
+                    suiWallets: typeof window.suiWallets,
+                    suietWallet: typeof window.suietWallet,
+                    suiet: typeof window.suiet,
+                    martian: typeof window.martian,
+                    slushWallet: typeof window.slushWallet,
+                    slush: typeof window.slush,
+                    ethereum: typeof window.ethereum,
+                    keplr: typeof window.keplr,
+                    phantom: typeof window.phantom
+                });
+                
                 let wallet = null;
                 
                 switch(walletType) {
@@ -561,12 +577,39 @@
 
         // Sui Wallet接続
         async function connectSuiWallet() {
-            if (!window.suiWallet) {
-                throw new Error('Sui Walletがインストールされていません。Chrome Web Storeからインストールしてください。');
+            // 複数の検出パターンを試行
+            const detectionPatterns = [
+                () => window.suiWallet,
+                () => window.sui?.wallet,
+                () => window.wallet?.sui,
+                () => window.suiWallets?.[0],
+                () => window.ethereum?.sui,
+                () => window.keplr?.sui,
+                () => window.phantom?.sui
+            ];
+            
+            let wallet = null;
+            let walletFound = false;
+            
+            for (const detect of detectionPatterns) {
+                try {
+                    wallet = detect();
+                    if (wallet && typeof wallet === 'object') {
+                        walletFound = true;
+                        console.log('Found Sui wallet via pattern:', wallet);
+                        break;
+                    }
+                } catch (e) {
+                    continue;
+                }
+            }
+            
+            if (!walletFound || !wallet) {
+                throw new Error('Sui Walletが見つかりません。\n\n対処法:\n1. Sui Wallet拡張機能がインストールされているか確認\n2. ブラウザでSui Walletが有効になっているか確認\n3. ページを再読み込み');
             }
             
             try {
-                const accounts = await window.suiWallet.request({ method: 'eth_accounts' });
+                const accounts = await wallet.request({ method: 'eth_accounts' });
                 if (!accounts || accounts.length === 0) {
                     throw new Error('アカウントが見つかりません');
                 }
@@ -574,7 +617,7 @@
                 return {
                     address: accounts[0],
                     signMessage: async (message) => {
-                        const signature = await window.suiWallet.request({
+                        const signature = await wallet.request({
                             method: 'personal_sign',
                             params: [message, accounts[0]]
                         });
@@ -588,12 +631,35 @@
 
         // Suiet Wallet接続
         async function connectSuietWallet() {
-            if (!window.suiet) {
-                throw new Error('Suiet Walletがインストールされていません。Chrome Web Storeからインストールしてください。');
+            // 複数の検出パターンを試行
+            const detectionPatterns = [
+                () => window.suietWallet,
+                () => window.suiet,
+                () => window.wallet?.suiet
+            ];
+            
+            let wallet = null;
+            let walletFound = false;
+            
+            for (const detect of detectionPatterns) {
+                try {
+                    wallet = detect();
+                    if (wallet && typeof wallet === 'object') {
+                        walletFound = true;
+                        console.log('Found Suiet wallet via pattern:', wallet);
+                        break;
+                    }
+                } catch (e) {
+                    continue;
+                }
+            }
+            
+            if (!walletFound || !wallet) {
+                throw new Error('Suiet Walletが見つかりません。https://suiet.app/ からインストールしてください。');
             }
             
             try {
-                const accounts = await window.suiet.request({ method: 'eth_accounts' });
+                const accounts = await wallet.request({ method: 'eth_accounts' });
                 if (!accounts || accounts.length === 0) {
                     throw new Error('アカウントが見つかりません');
                 }
@@ -601,7 +667,7 @@
                 return {
                     address: accounts[0],
                     signMessage: async (message) => {
-                        const signature = await window.suiet.request({
+                        const signature = await wallet.request({
                             method: 'personal_sign',
                             params: [message, accounts[0]]
                         });
@@ -615,12 +681,34 @@
 
         // Martian Wallet接続
         async function connectMartianWallet() {
-            if (!window.martian) {
-                throw new Error('Martian Walletがインストールされていません。Chrome Web Storeからインストールしてください。');
+            // 複数の検出パターンを試行
+            const detectionPatterns = [
+                () => window.martian,
+                () => window.wallet?.martian
+            ];
+            
+            let wallet = null;
+            let walletFound = false;
+            
+            for (const detect of detectionPatterns) {
+                try {
+                    wallet = detect();
+                    if (wallet && typeof wallet === 'object') {
+                        walletFound = true;
+                        console.log('Found Martian wallet via pattern:', wallet);
+                        break;
+                    }
+                } catch (e) {
+                    continue;
+                }
+            }
+            
+            if (!walletFound || !wallet) {
+                throw new Error('Martian Walletが見つかりません。Chrome Web Storeからインストールしてください。');
             }
             
             try {
-                const accounts = await window.martian.request({ method: 'eth_accounts' });
+                const accounts = await wallet.request({ method: 'eth_accounts' });
                 if (!accounts || accounts.length === 0) {
                     throw new Error('アカウントが見つかりません');
                 }
@@ -628,7 +716,7 @@
                 return {
                     address: accounts[0],
                     signMessage: async (message) => {
-                        const signature = await window.martian.request({
+                        const signature = await wallet.request({
                             method: 'personal_sign',
                             params: [message, accounts[0]]
                         });
@@ -642,18 +730,43 @@
 
         // SlushWallet接続
         async function connectSlushWallet() {
-            if (!window.slushWallet) {
-                throw new Error('SlushWalletがインストールされていません。');
+            // 複数の検出パターンを試行
+            const detectionPatterns = [
+                () => window.slushWallet,
+                () => window.slush?.wallet,
+                () => window.wallet?.slush
+            ];
+            
+            let wallet = null;
+            let walletFound = false;
+            
+            for (const detect of detectionPatterns) {
+                try {
+                    wallet = detect();
+                    if (wallet && typeof wallet === 'object') {
+                        walletFound = true;
+                        console.log('Found SlushWallet via pattern:', wallet);
+                        break;
+                    }
+                } catch (e) {
+                    continue;
+                }
             }
+            
+            if (!walletFound || !wallet) {
+                throw new Error('SlushWalletが見つかりません。SlushWalletをインストールしてください。');
+            }
+            
             try {
-                const accounts = await window.slushWallet.request({ method: 'eth_accounts' });
+                const accounts = await wallet.request({ method: 'eth_accounts' });
                 if (!accounts || accounts.length === 0) {
                     throw new Error('アカウントが見つかりません');
                 }
+                
                 return {
                     address: accounts[0],
                     signMessage: async (message) => {
-                        const signature = await window.slushWallet.request({
+                        const signature = await wallet.request({
                             method: 'personal_sign',
                             params: [message, accounts[0]]
                         });
