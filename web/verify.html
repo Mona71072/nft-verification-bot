@@ -539,7 +539,23 @@
                     patterns: [
                         () => window.slushWallet, 
                         () => window.slush?.wallet,
-                        () => window.wallet?.slush
+                        () => window.wallet?.slush,
+                        // SlushWalletの追加検出パターン
+                        () => window.slush,
+                        () => window.sui?.slush,
+                        () => window.wallet?.slushWallet,
+                        // 汎用的な検出
+                        () => {
+                            for (const prop in window) {
+                                const obj = window[prop];
+                                if (obj && typeof obj === 'object' && 
+                                    (prop.toLowerCase().includes('slush') || 
+                                     (obj.name && obj.name.toLowerCase().includes('slush')))) {
+                                    return obj;
+                                }
+                            }
+                            return null;
+                        }
                     ] 
                 },
                 // MetaMask経由でSuiにアクセス
@@ -912,9 +928,25 @@
         async function connectSlushWallet() {
             // 複数の検出パターンを試行
             const detectionPatterns = [
-                () => window.slushWallet,
+                () => window.slushWallet, 
                 () => window.slush?.wallet,
-                () => window.wallet?.slush
+                () => window.wallet?.slush,
+                // SlushWalletの追加検出パターン
+                () => window.slush,
+                () => window.sui?.slush,
+                () => window.wallet?.slushWallet,
+                // 汎用的な検出
+                () => {
+                    for (const prop in window) {
+                        const obj = window[prop];
+                        if (obj && typeof obj === 'object' && 
+                            (prop.toLowerCase().includes('slush') || 
+                             (obj.name && obj.name.toLowerCase().includes('slush')))) {
+                            return obj;
+                        }
+                    }
+                    return null;
+                }
             ];
             
             let wallet = null;
@@ -929,6 +961,7 @@
                         break;
                     }
                 } catch (e) {
+                    console.log(`❌ Pattern failed for SlushWallet:`, e);
                     continue;
                 }
             }
@@ -938,19 +971,56 @@
             }
             
             try {
-                const accounts = await wallet.request({ method: 'eth_accounts' });
+                console.log('Attempting to connect with SlushWallet:', wallet);
+                
+                // 複数の接続方法を試行
+                let accounts = null;
+                
+                // 方法1: eth_accounts
+                try {
+                    accounts = await wallet.request({ method: 'eth_accounts' });
+                    console.log('SlushWallet connected via eth_accounts:', accounts);
+                } catch (e1) {
+                    console.log('eth_accounts failed, trying connect method:', e1);
+                    
+                    // 方法2: connect
+                    try {
+                        const result = await wallet.connect();
+                        accounts = result.accounts || result;
+                        console.log('SlushWallet connected via connect method:', result);
+                    } catch (e2) {
+                        console.log('connect method failed, trying getAccounts:', e2);
+                        
+                        // 方法3: getAccounts
+                        try {
+                            accounts = await wallet.getAccounts();
+                            console.log('SlushWallet connected via getAccounts:', accounts);
+                        } catch (e3) {
+                            throw new Error('SlushWalletの接続に失敗しました');
+                        }
+                    }
+                }
+                
                 if (!accounts || accounts.length === 0) {
                     throw new Error('アカウントが見つかりません');
                 }
                 
+                const address = accounts[0]?.address || accounts[0];
+                
                 return {
-                    address: accounts[0],
+                    address: address,
                     signMessage: async (message) => {
-                        const signature = await wallet.request({
-                            method: 'personal_sign',
-                            params: [message, accounts[0]]
-                        });
-                        return { signature };
+                        try {
+                            const signature = await wallet.request({
+                                method: 'personal_sign',
+                                params: [message, address]
+                            });
+                            return { signature };
+                        } catch (error) {
+                            // フォールバック: 直接署名
+                            const signature = await wallet.signMessage(message);
+                            return { signature };
+                        }
                     }
                 };
             } catch (error) {
