@@ -4,7 +4,8 @@ export interface Env {
   DISCORD_ROLE_ID: string;
   SUI_NETWORK: string;
   NFT_COLLECTION_ID: string;
-  KV: KVNamespace;
+  NONCE_KV: KVNamespace;
+  ASSETS: Fetcher;
   [key: string]: any;
 }
 

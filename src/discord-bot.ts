@@ -1,5 +1,4 @@
-// 設定（本番環境では環境変数から取得）
-// Cloudflare Workers環境では、環境変数はコンストラクタで渡されます
+import type { Env } from './types';
 
 // Discord Bot API機能
 export class DiscordBotAPI {
@@ -8,23 +7,23 @@ export class DiscordBotAPI {
   private roleId: string;
 
   constructor(env?: any) {
-    // Cloudflare Workers環境では環境変数をenvオブジェクトから取得
+    // Cloudflare Workers環境では、環境変数をenvオブジェクトから取得
     if (env) {
-      this.token = env.DISCORD_TOKEN || '';
-      this.guildId = env.DISCORD_GUILD_ID || '';
-      this.roleId = env.DISCORD_ROLE_ID || '';
+      this.token = env.DISCORD_TOKEN;
+      this.guildId = env.DISCORD_GUILD_ID;
+      this.roleId = env.DISCORD_ROLE_ID;
     } else {
-      // ローカル環境ではデフォルト値を使用
-      this.token = '';
-      this.guildId = '';
-      this.roleId = '';
+      // 開発環境用
+      this.token = process.env.DISCORD_TOKEN || '';
+      this.guildId = process.env.DISCORD_GUILD_ID || '';
+      this.roleId = process.env.DISCORD_ROLE_ID || '';
     }
   }
 
   // ロール付与
   async grantRole(discordId: string): Promise<boolean> {
     try {
-      console.log(`🔄 Granting role to Discord ID: ${discordId}`);
+      console.log(`🔄 Granting role to user ${discordId}`);
       
       const url = `https://discord.com/api/v10/guilds/${this.guildId}/members/${discordId}/roles/${this.roleId}`;
       
@@ -40,7 +39,7 @@ export class DiscordBotAPI {
         console.log(`✅ Role granted to user ${discordId}`);
         
         // DM送信
-        await this.sendDM(discordId, '🎉 認証完了！\n\nNFTの保有が確認されました！\n特別ロール "NFT holder" が付与されました。');
+        await this.sendDM(discordId, '🎉 認証が完了しました！\n\n**NFTの保有が確認されました！**\n\n特別ロール "NFT holder" が付与されました。');
         
         return true;
       } else {
@@ -53,10 +52,10 @@ export class DiscordBotAPI {
     }
   }
 
-  // ロール剥奪
+  // ロール削除
   async revokeRole(discordId: string): Promise<boolean> {
     try {
-      console.log(`🔄 Revoking role from Discord ID: ${discordId}`);
+      console.log(`🔄 Revoking role from user ${discordId}`);
       
       const url = `https://discord.com/api/v10/guilds/${this.guildId}/members/${discordId}/roles/${this.roleId}`;
       
@@ -102,7 +101,7 @@ export class DiscordBotAPI {
         return false;
       }
 
-      const dmChannel = await createDMResponse.json();
+      const dmChannel = await createDMResponse.json() as { id: string };
       
       // DMを送信
       const sendDMUrl = `https://discord.com/api/v10/channels/${dmChannel.id}/messages`;
@@ -148,7 +147,7 @@ export class DiscordBotAPI {
       });
 
       if (response.ok) {
-        const member = await response.json();
+        const member = await response.json() as { roles: string[] };
         return member.roles.includes(this.roleId);
       }
       

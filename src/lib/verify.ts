@@ -1,9 +1,5 @@
-// Sui SDK v1.37.1での署名検証APIを確認済み
-// import { verifyPersonalMessage } from '@mysten/sui/verify';
-// import { fromB64 } from '@mysten/sui/utils';
-
 /**
- * Sui walletからの署名を検証する
+ * Sui walletからの署名を検証する（開発用実装）
  * @param address ウォレットアドレス
  * @param nonce 署名対象のナンス
  * @param signature Base64エンコードされた署名
@@ -25,7 +21,7 @@ export async function verifySignedMessage(
 
     // 開発用: 署名が存在し、適切な形式であれば有効とする
     if (signature.startsWith('0x') || signature.length >= 64) {
-      console.log('Signature verification passed');
+      console.log('Development mode: Signature verification passed');
       return true;
     }
 

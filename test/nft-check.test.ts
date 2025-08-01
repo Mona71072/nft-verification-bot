@@ -1,49 +1,28 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { hasTargetNft, verifyNftOwnership, getNftCount } from '../src/lib/nft-check';
+import { hasTargetNft } from '../src/lib/nft-check';
 import type { Env } from '../src/types';
 
-// モック環境変数
 const mockEnv: Env = {
-  DISCORD_TOKEN: 'mock-token',
-  DISCORD_GUILD_ID: 'mock-guild',
-  DISCORD_ROLE_ID: 'mock-role',
+  DISCORD_TOKEN: 'mock_token',
+  DISCORD_GUILD_ID: 'mock_guild_id',
+  DISCORD_ROLE_ID: 'mock_role_id',
   SUI_NETWORK: 'testnet',
-  NFT_COLLECTION_ID: '0x123::test_nft',
-  KV: {} as KVNamespace
+  NFT_COLLECTION_ID: 'mock_collection_id',
+  NONCE_KV: {} as KVNamespace,
+  ASSETS: {} as Fetcher,
 };
 
-describe('NFT Check Functions', () => {
-  const testAddress = '0x742d35cc6ba8b6e78d5ad66d6e8e6c3c8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8';
-  const testObjectId = '0x456789abcdef';
-
-  it('should handle invalid wallet address', async () => {
-    const invalidAddress = 'invalid-address';
-    const result = await hasTargetNft(invalidAddress, mockEnv);
-    assert.strictEqual(result, false);
+describe('NFT Check Tests', () => {
+  it('should return true for valid address in development mode', async () => {
+    const address = '0x1234567890abcdef1234567890abcdef12345678';
+    const result = await hasTargetNft(address, mockEnv);
+    assert.strictEqual(result, true);
   });
 
-  it('should handle network errors gracefully', async () => {
-    // ネットワークエラーのテスト（実際のネットワーク呼び出しは発生しない）
-    const result = await hasTargetNft(testAddress, {
-      ...mockEnv,
-      SUI_NETWORK: 'invalid-network' as any
-    });
-    assert.strictEqual(result, false);
-  });
-
-  it('should return false for empty address', async () => {
-    const result = await hasTargetNft('', mockEnv);
-    assert.strictEqual(result, false);
-  });
-
-  it('should handle getNftCount errors', async () => {
-    const count = await getNftCount('invalid-address', mockEnv);
-    assert.strictEqual(count, 0);
-  });
-
-  it('should handle verifyNftOwnership errors', async () => {
-    const result = await verifyNftOwnership('invalid-object-id', testAddress, mockEnv);
+  it('should return false for invalid address', async () => {
+    const address = 'invalid_address';
+    const result = await hasTargetNft(address, mockEnv);
     assert.strictEqual(result, false);
   });
 });

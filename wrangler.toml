@@ -11,11 +11,7 @@ SUI_NETWORK = "mainnet"
 NFT_COLLECTION_ID = "0x2::coin::Coin<0x2::sui::SUI>"
 
 [[env.production.kv_namespaces]]
-binding = "KV"
-id = "b406f15ba00b4a18abe98bf9bbe968ef"
-
-[[kv_namespaces]]
-binding = "KV"
+binding = "NONCE_KV"
 id = "b406f15ba00b4a18abe98bf9bbe968ef"
 
 [env.development.vars]
@@ -26,5 +22,5 @@ SUI_NETWORK = "testnet"
 NFT_COLLECTION_ID = "DEV_COLLECTION_ID"
 
 [[env.development.kv_namespaces]]
-binding = "KV"
-preview_id = "50a1cd67e9db4ccfa15669a0ba3aa9a4" 
+binding = "NONCE_KV"
+id = "50a1cd67e9db4ccfa15669a0ba3aa9a4" 
