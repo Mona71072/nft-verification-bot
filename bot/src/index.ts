@@ -340,16 +340,27 @@ async function handleVerifyNFT(interaction: ButtonInteraction) {
 
       console.log(`✅ Verification message sent to user ${interaction.user.username}`);
 
-      // 5分後に自動削除
-      setTimeout(async () => {
+      // 5分後に自動削除（より確実な実装）
+      const autoDeleteTimeout = setTimeout(async () => {
         try {
           console.log(`🔄 Auto-deleting verification message for user ${interaction.user.id}...`);
+          
+          // インタラクションがまだ有効かチェック
+          if (!interaction.replied) {
+            console.log('⚠️ Interaction not replied, cannot delete');
+            return;
+          }
+          
           await interaction.deleteReply();
           console.log(`✅ Auto-deleted verification message for user ${interaction.user.id}`);
         } catch (error) {
-          console.log('Message already deleted or expired');
+          console.log('❌ Failed to auto-delete message:', error);
+          console.log('Message may have been deleted manually or expired');
         }
-      }, 5 * 60 * 1000);
+      }, 5 * 60 * 1000); // 5分 = 300秒
+
+      // タイムアウトIDを保存（必要に応じてキャンセル可能）
+      console.log(`⏰ Auto-delete scheduled for user ${interaction.user.id} in 5 minutes`);
     } else {
       console.log('⚠️ Interaction already replied, skipping verification message');
     }
