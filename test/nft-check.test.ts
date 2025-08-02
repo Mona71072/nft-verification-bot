@@ -5,10 +5,15 @@ import type { Env } from '../src/types';
 
 const mockEnv: Env = {
   DISCORD_TOKEN: 'mock_token',
+  DISCORD_CLIENT_ID: 'mock_client_id',
   DISCORD_GUILD_ID: 'mock_guild_id',
   DISCORD_ROLE_ID: 'mock_role_id',
   SUI_NETWORK: 'testnet',
   NFT_COLLECTION_ID: 'mock_collection_id',
+  API_BASE_URL: 'https://mock-api.com',
+  VERIFICATION_URL: 'https://mock-verification.com',
+  ADMIN_USER_ID: 'mock_admin_id',
+  BES_ROLES: {} as KVNamespace,
   NONCE_KV: {} as KVNamespace,
   ASSETS: {} as Fetcher,
 };

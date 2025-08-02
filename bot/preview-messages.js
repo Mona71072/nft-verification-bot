@@ -1,0 +1,63 @@
+// Discordメッセージのプレビュー用スクリプト
+console.log('🎯 Sui NFT Verification Portal Preview');
+console.log('=====================================');
+console.log();
+
+console.log('📋 User Verification Message:');
+console.log('Title: 🎯 Sui NFT Verification Portal');
+console.log('Description: Welcome to the Exclusive NFT Verification System!');
+console.log();
+console.log('🌟 What you\'ll receive:');
+console.log('• Exclusive Discord Role - Special recognition as an NFT holder');
+console.log('• Premium Access - Unlock special channels and features');
+console.log('• Community Status - Verified member of our NFT community');
+console.log('• Future Benefits - Early access to upcoming features');
+console.log();
+console.log('🚀 Simple 3-Step Process:');
+console.log('1️⃣ Connect - Link your Sui wallet securely');
+console.log('2️⃣ Verify - Confirm your NFT ownership');
+console.log('3️⃣ Receive - Get your exclusive role instantly');
+console.log();
+console.log('💎 Security First:');
+console.log('• No private keys required');
+console.log('• Blockchain-verified ownership');
+console.log('• Instant verification process');
+console.log('• Secure and private');
+console.log();
+
+console.log('📋 Admin Dashboard Message:');
+console.log('Title: ⚙️ System Administration Dashboard');
+console.log('Description: Professional NFT Verification System Management');
+console.log();
+console.log('📊 System Overview:');
+console.log('• Bot Status: 🟢 Online & Operational');
+console.log('• Network: mainnet');
+console.log('• API Connection: 🟢 Connected & Stable');
+console.log('• Verification Service: 🟢 Active & Secure');
+console.log('• Database: 🟢 Healthy & Responsive');
+console.log();
+console.log('🔧 Administrative Tools:');
+console.log('Use the management buttons below to monitor system performance, view statistics, and manage the verification process.');
+console.log();
+console.log('📈 Real-time Monitoring:');
+console.log('• System performance metrics');
+console.log('• Verification success rates');
+console.log('• User activity statistics');
+console.log('• Error tracking and alerts');
+console.log();
+
+console.log('🎮 Interactive Buttons:');
+console.log('User Buttons:');
+console.log('• 🚀 Start Verification (Primary)');
+console.log('• ❓ How it Works (Secondary)');
+console.log('• 🆘 Get Support (Secondary)');
+console.log();
+console.log('Admin Buttons:');
+console.log('• 📊 System Statistics (Secondary)');
+console.log('• 🔄 Refresh System (Secondary)');
+console.log('• 🟢 System Status (Secondary)');
+console.log('• 📋 View Logs (Secondary)');
+console.log();
+
+console.log('✅ Preview completed!');
+console.log('These messages will be posted to Discord when the bot is properly configured.'); 

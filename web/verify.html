@@ -3,1373 +3,291 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NFT認証</title>
+    <title>Sui NFT Verifier</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
-        
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
         body {
-            font-family: 'Inter', sans-serif;
-            background: #0a0a0a;
-            color: #ffffff;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-        }
-
-        .container {
-            width: 100%;
-            max-width: 400px;
-            padding: 0 24px;
-            animation: fadeIn 0.6s ease-out;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .header {
-            text-align: center;
-            margin-bottom: 32px;
-        }
-
-        .logo {
-            width: 64px;
-            height: 64px;
-            background: linear-gradient(135deg, #6366f1, #8b5cf6);
-            border-radius: 20px;
-            margin: 0 auto 16px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-            box-shadow: 0 8px 32px rgba(99, 102, 241, 0.3);
-        }
-
-        h1 {
-            font-size: 24px;
-            font-weight: 600;
-            margin-bottom: 8px;
-            background: linear-gradient(135deg, #ffffff, #a1a1aa);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-
-        .subtitle {
-            color: #71717a;
-            font-size: 14px;
-            font-weight: 400;
-        }
-
-        .discord-tag {
-            background: #1e1e1e;
-            border: 1px solid #2a2a2a;
-            border-radius: 12px;
-            padding: 16px;
-            margin: 24px 0;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .discord-tag .icon {
-            width: 32px;
-            height: 32px;
-            background: #5865f2;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 16px;
-        }
-
-        .discord-tag .text {
-            flex: 1;
-            font-size: 14px;
-            color: #a1a1aa;
-        }
-
-        .discord-tag .value {
-            font-family: 'SF Mono', monospace;
-            color: #ffffff;
-            font-size: 13px;
-        }
-
-        .server-info {
-            background: #1e1e1e;
-            border: 1px solid #2a2a2a;
-            border-radius: 12px;
-            padding: 16px;
-            margin: 16px 0;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .server-info .icon {
-            width: 32px;
-            height: 32px;
-            background: #10b981;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 16px;
-        }
-
-        .server-info .text {
-            flex: 1;
-            font-size: 14px;
-            color: #a1a1aa;
-        }
-
-        .server-info .value {
-            font-family: 'SF Mono', monospace;
-            color: #ffffff;
-            font-size: 13px;
-        }
-
-        .action-area {
-            margin: 32px 0;
-        }
-
-        .wallet-button {
-            width: 100%;
-            background: linear-gradient(135deg, #6366f1, #8b5cf6);
-            border: none;
-            border-radius: 16px;
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
             padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 30px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; }
+        input, textarea { 
+            width: 100%; 
+            padding: 12px; 
+            border: 1px solid rgba(255, 255, 255, 0.3); 
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1);
             color: white;
             font-size: 16px;
-            font-weight: 500;
-            cursor: pointer;
+        }
+        input::placeholder { color: rgba(255, 255, 255, 0.7); }
+        button { 
+            background: linear-gradient(45deg, #667eea, #764ba2); 
+            color: white; 
+            padding: 15px 30px; 
+            border: none; 
+            border-radius: 8px;
+            cursor: pointer; 
+            font-size: 16px;
+            font-weight: bold;
             transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-            margin-bottom: 16px;
         }
-
-        .wallet-button::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(135deg, rgba(255,255,255,0.1), transparent);
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-
-        .wallet-button:hover::before {
-            opacity: 1;
-        }
-
-        .wallet-button:hover {
+        button:hover { 
             transform: translateY(-2px);
-            box-shadow: 0 12px 40px rgba(99, 102, 241, 0.4);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
         }
-
-        .wallet-button:disabled {
-            opacity: 0.5;
+        button:disabled {
+            opacity: 0.6;
             cursor: not-allowed;
             transform: none;
         }
-
-        .wallet-button .content {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
+        .error { 
+            color: #ff6b6b; 
+            margin-top: 15px; 
+            padding: 10px;
+            background: rgba(255, 107, 107, 0.1);
+            border-radius: 5px;
         }
-
-        .verify-button {
-            width: 100%;
-            background: linear-gradient(135deg, #10b981, #059669);
-            border: none;
-            border-radius: 16px;
-            padding: 20px;
-            color: white;
-            font-size: 16px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            opacity: 0;
-            transform: translateY(20px);
-            pointer-events: none;
+        .success { 
+            color: #51cf66; 
+            margin-top: 15px; 
+            padding: 10px;
+            background: rgba(81, 207, 102, 0.1);
+            border-radius: 5px;
         }
-
-        .verify-button.show {
-            opacity: 1;
-            transform: translateY(0);
-            pointer-events: all;
-        }
-
-        .verify-button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 12px 40px rgba(16, 185, 129, 0.4);
-        }
-
         .wallet-info {
-            background: #1e1e1e;
-            border: 1px solid #2a2a2a;
-            border-radius: 12px;
-            padding: 16px;
-            margin: 16px 0;
-            display: none;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .wallet-info.show {
-            display: flex;
-        }
-
-        .wallet-info .icon {
-            width: 32px;
-            height: 32px;
-            background: #6366f1;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
             border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 16px;
+            margin-bottom: 20px;
         }
-
-        .wallet-info .text {
-            flex: 1;
-            font-size: 14px;
-            color: #a1a1aa;
-        }
-
-        .wallet-info .value {
-            font-family: 'SF Mono', monospace;
-            color: #ffffff;
-            font-size: 13px;
-        }
-
-        .status {
-            padding: 16px;
-            border-radius: 12px;
-            margin: 16px 0;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            font-size: 14px;
-            opacity: 0;
-            transform: translateY(10px);
-            transition: all 0.3s ease;
-        }
-
-        .status.show {
-            opacity: 1;
-            transform: translateY(0);
-        }
-
-        .status.success {
-            background: rgba(16, 185, 129, 0.1);
-            border: 1px solid rgba(16, 185, 129, 0.3);
-            color: #10b981;
-        }
-
-        .status.error {
-            background: rgba(239, 68, 68, 0.1);
-            border: 1px solid rgba(239, 68, 68, 0.3);
-            color: #ef4444;
-        }
-
-        .status.loading {
-            background: rgba(99, 102, 241, 0.1);
-            border: 1px solid rgba(99, 102, 241, 0.3);
-            color: #6366f1;
-        }
-
-        .spinner {
-            width: 16px;
-            height: 16px;
-            border: 2px solid transparent;
-            border-top: 2px solid currentColor;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            display: none;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        .progress {
-            width: 100%;
-            height: 4px;
-            background: #2a2a2a;
-            border-radius: 2px;
-            margin: 16px 0;
-            overflow: hidden;
-            display: none;
-        }
-
-        .progress.show {
-            display: block;
-        }
-
-        .progress-bar {
-            height: 100%;
-            background: linear-gradient(135deg, #6366f1, #8b5cf6);
-            border-radius: 2px;
-            transition: width 0.3s ease;
-            width: 0%;
-        }
-
-        .wallet-selection {
-            margin: 16px 0;
-            display: none;
-        }
-
-        .wallet-selection.show {
-            display: block;
-        }
-
-        .wallet-option {
-            background: #1e1e1e;
-            border: 1px solid #2a2a2a;
-            border-radius: 12px;
-            padding: 16px;
-            margin: 8px 0;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .wallet-option:hover {
-            border-color: #6366f1;
-            background: #2a2a2a;
-        }
-
-        .wallet-option.selected {
-            border-color: #6366f1;
-            background: rgba(99, 102, 241, 0.1);
-        }
-
-        .wallet-option .icon {
-            width: 32px;
-            height: 32px;
+        .step {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px;
             border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 16px;
-        }
-
-        .wallet-option .text {
-            flex: 1;
-            font-size: 14px;
-            color: #ffffff;
-        }
-
-        .wallet-option .description {
-            font-size: 12px;
-            color: #a1a1aa;
+            margin-bottom: 15px;
+            border-left: 4px solid #667eea;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <div class="logo">✨</div>
-            <h1>NFT認証</h1>
-            <p class="subtitle">Discordロールを取得するためにNFTを認証してください</p>
+        <h1>🪙 Sui NFT Verifier</h1>
+        <p>Discordロールを取得するために、Suiウォレットで署名してください。</p>
+        
+        <div class="wallet-info" id="walletInfo" style="display: none;">
+            <h3>🪙 接続されたウォレット</h3>
+            <p><strong>アドレス:</strong> <span id="walletAddress"></span></p>
+            <button onclick="disconnectWallet()" style="background: #ff6b6b;">切断</button>
         </div>
 
-        <div class="discord-tag">
-            <div class="icon">🎮</div>
-            <div class="text">Discord ID:</div>
-            <div class="value" id="discord-id">Loading...</div>
+        <div class="step">
+            <h3>ステップ 1: ウォレット接続</h3>
+            <button onclick="connectWallet()" id="connectBtn">🔗 ウォレットを接続</button>
         </div>
 
-        <div class="server-info">
-            <div class="icon">🏠</div>
-            <div class="text">サーバー:</div>
-            <div class="value" id="server-name">Mona Syndicate Tokyo</div>
+        <div class="step">
+            <h3>ステップ 2: Discord ID 入力</h3>
+            <div class="form-group">
+                <label for="discordId">Discord ID:</label>
+                <input type="text" id="discordId" required placeholder="123456789012345678">
+            </div>
+            </div>
+
+        <div class="step">
+            <h3>ステップ 3: 署名と検証</h3>
+            <button onclick="verifyAndAssignRole()" id="verifyBtn" disabled>🔐 署名して検証</button>
         </div>
-
-        <div class="action-area">
-            <button class="wallet-button" id="connect-btn" onclick="showWalletSelection()">
-                <div class="content">
-                    <span>🔗</span>
-                    <span>ウォレットを選択</span>
-                </div>
-            </button>
-
-            <div class="wallet-selection" id="wallet-selection">
-                <!-- ウォレット選択肢はJavaScriptで動的に追加 -->
-            </div>
-
-            <div class="wallet-info" id="wallet-info">
-                <div class="icon">💎</div>
-                <div class="text">ウォレット:</div>
-                <div class="value" id="wallet-address"></div>
-            </div>
-
-            <div class="progress" id="progress">
-                <div class="progress-bar" id="progress-bar"></div>
-            </div>
-
-            <div class="status" id="status">
-                <div class="spinner" id="spinner"></div>
-                <span id="status-text"></span>
-            </div>
-
-            <button class="verify-button" id="verify-btn" onclick="startVerification()">
-                <div class="content">
-                    <span>✨</span>
-                    <span>認証開始</span>
-                </div>
-            </button>
-        </div>
+        
+        <div id="result"></div>
     </div>
 
     <script>
-        let connectedWallet = null;
-        let walletAddress = null;
-        let discordId = null;
-        let selectedWalletType = null;
+        let wallet = null;
+        let walletAddress = '';
         
-        // APIベースURLを環境に応じて設定
-        const API_BASE_URL = window.location.hostname === 'localhost' 
-            ? 'http://localhost:3000' 
-            : window.location.origin;
-
-        // URLパラメータからDiscord IDを取得
-        const urlParams = new URLSearchParams(window.location.search);
-        discordId = urlParams.get('discord_id');
-        
-        if (discordId) {
-            document.getElementById('discord-id').textContent = discordId.slice(0, 8) + '...';
-        } else {
-            showStatus('error', 'Discord IDが見つかりません');
-        }
-
-        // サーバー情報を取得
-        async function loadServerInfo() {
-            try {
-                const response = await fetch(`${API_BASE_URL}/server-info`);
-                if (response.ok) {
-                    const serverInfo = await response.json();
-                    document.getElementById('server-name').textContent = serverInfo.name;
-                }
-            } catch (error) {
-                console.error('Failed to load server info:', error);
-            }
-        }
-
-        // ページ読み込み時にサーバー情報を取得
-        loadServerInfo();
-
-        // ウォレット選択を表示
-        window.showWalletSelection = async function() {
-            // 利用可能なウォレットを検出
-            const availableWallets = await detectAvailableWallets();
-            
-            // ウォレット選択肢を動的に更新
-            updateWalletOptions(availableWallets);
-            
-            document.getElementById('wallet-selection').classList.add('show');
-            document.getElementById('connect-btn').style.display = 'none';
-        };
-
-        // 利用可能なウォレットを検出
-        async function detectAvailableWallets() {
-            const availableWallets = [];
-            
-            console.log('🔍 Starting wallet detection...');
-            
-            // Wallet Standard準拠のウォレットを検出
-            try {
-                console.log('🔍 Checking Wallet Standard wallets...');
-                const standardWallets = await getStandardWallets();
-                console.log('✅ Standard wallets found:', standardWallets.length);
-                availableWallets.push(...standardWallets.map(w => ({
-                    type: 'standard',
-                    name: w.name,
-                    wallet: w
-                })));
-            } catch (error) {
-                console.log('❌ Standard wallet detection failed:', error);
-            }
-            
-            // レガシーウォレットを検出
-            console.log('🔍 Checking legacy wallets...');
-            const legacyWallets = [
-                { 
-                    name: 'Sui Wallet', 
-                    patterns: [
-                        () => window.suiWallet, 
-                        () => window.sui?.wallet,
-                        () => window.wallet?.sui
-                    ] 
-                },
-                { 
-                    name: 'Suiet Wallet', 
-                    patterns: [
-                        () => window.suietWallet, 
-                        () => window.suiet,
-                        () => window.wallet?.suiet
-                    ] 
-                },
-                { 
-                    name: 'Martian Wallet', 
-                    patterns: [
-                        () => window.martian,
-                        () => window.wallet?.martian
-                    ] 
-                },
-                { 
-                    name: 'SlushWallet', 
-                    patterns: [
-                        () => window.slushWallet, 
-                        () => window.slush?.wallet,
-                        () => window.wallet?.slush,
-                        // SlushWalletの追加検出パターン
-                        () => window.slush,
-                        () => window.sui?.slush,
-                        () => window.wallet?.slushWallet,
-                        // 汎用的な検出
-                        () => {
-                            for (const prop in window) {
-                                const obj = window[prop];
-                                if (obj && typeof obj === 'object' && 
-                                    (prop.toLowerCase().includes('slush') || 
-                                     (obj.name && obj.name.toLowerCase().includes('slush')))) {
-                                    return obj;
-                                }
-                            }
-                            return null;
-                        },
-                        // Mysten Labs公式パターン
-                        () => {
-                            // SlushWalletはSui Walletの後継なので、Sui Walletのパターンも試行
-                            const suiPatterns = [
-                                window.suiWallet,
-                                window.sui?.wallet,
-                                window.wallet?.sui
-                            ];
-                            for (const pattern of suiPatterns) {
-                                if (pattern && typeof pattern === 'object') {
-                                    // 名前やプロパティでSlushWalletかどうかを判定
-                                    if (pattern.name && pattern.name.toLowerCase().includes('slush')) {
-                                        return pattern;
-                                    }
-                                    // または、SlushWallet特有のプロパティがあるかチェック
-                                    if (pattern.version && pattern.version.includes('slush')) {
-                                        return pattern;
-                                    }
-                                }
-                            }
-                            return null;
-                        },
-                        // より詳細な検出
-                        () => {
-                            // windowの全プロパティを詳細にチェック
-                            for (const prop in window) {
-                                const obj = window[prop];
-                                if (obj && typeof obj === 'object') {
-                                    // プロパティ名で判定
-                                    if (prop.toLowerCase().includes('slush')) {
-                                        return obj;
-                                    }
-                                    // オブジェクトのプロパティで判定
-                                    if (obj.name && obj.name.toLowerCase().includes('slush')) {
-                                        return obj;
-                                    }
-                                    if (obj.version && obj.version.toLowerCase().includes('slush')) {
-                                        return obj;
-                                    }
-                                    // 接続可能なウォレットオブジェクトかチェック
-                                    if (obj.connect && obj.request && obj.signMessage) {
-                                        // SlushWallet特有の機能があるかチェック
-                                        if (obj.features && obj.features.includes('sui')) {
-                                            return obj;
-                                        }
-                                    }
-                                }
-                            }
-                            return null;
-                        }
-                    ] 
-                },
-                // MetaMask経由でSuiにアクセス
-                { 
-                    name: 'MetaMask (Sui)', 
-                    patterns: [
-                        () => window.ethereum?.sui,
-                        () => window.ethereum
-                    ] 
-                }
-            ];
-            
-            for (const legacyWallet of legacyWallets) {
-                console.log(`🔍 Checking ${legacyWallet.name}...`);
-                let found = false;
-                
-                for (const pattern of legacyWallet.patterns) {
-                    try {
-                        const wallet = pattern();
-                        if (wallet && typeof wallet === 'object') {
-                            console.log(`✅ Found ${legacyWallet.name}:`, wallet);
-                            availableWallets.push({
-                                type: 'legacy',
-                                name: legacyWallet.name,
-                                wallet: wallet
-                            });
-                            found = true;
-                            break;
-                        }
-                    } catch (e) {
-                        console.log(`❌ Pattern failed for ${legacyWallet.name}:`, e);
-                        continue;
-                    }
-                }
-                
-                if (!found) {
-                    console.log(`❌ ${legacyWallet.name} not found`);
-                }
-            }
-            
-            // デモウォレットを追加
-            console.log('🔍 Adding demo wallet...');
-            availableWallets.push({
-                type: 'demo',
-                name: 'Demo Wallet',
-                wallet: null
-            });
-            
-            console.log('📋 Final available wallets:', availableWallets.map(w => `${w.name} (${w.type})`));
-            return availableWallets;
-        }
-
-        // ウォレット選択肢を動的に更新
-        function updateWalletOptions(availableWallets) {
-            const walletSelection = document.getElementById('wallet-selection');
-            
-            // 既存の選択肢をクリア
-            walletSelection.innerHTML = '';
-            
-            // 利用可能なウォレットの選択肢を追加
-            availableWallets.forEach(wallet => {
-                const walletOption = document.createElement('div');
-                walletOption.className = 'wallet-option';
-                walletOption.onclick = () => connectWallet(wallet.name.toLowerCase().replace(/\s+/g, ''));
-                
-                const icon = getWalletIcon(wallet.name);
-                const color = getWalletColor(wallet.name);
-                
-                walletOption.innerHTML = `
-                    <div class="icon" style="background: ${color};">${icon}</div>
-                    <div class="text">${wallet.name}</div>
-                    <div class="description">${getWalletDescription(wallet.name)}</div>
-                `;
-                
-                walletSelection.appendChild(walletOption);
-            });
-        }
-
-        // ウォレットアイコンを取得
-        function getWalletIcon(walletName) {
-            const icons = {
-                'Sui Wallet': '💧',
-                'Suiet Wallet': '🔮',
-                'Martian Wallet': '🚀',
-                'SlushWallet': '❄️',
-                'MetaMask (Sui)': '🦊',
-                'Demo Wallet': '🧪'
-            };
-            return icons[walletName] || '💎';
-        }
-
-        // ウォレットカラーを取得
-        function getWalletColor(walletName) {
-            const colors = {
-                'Sui Wallet': '#6366f1',
-                'Suiet Wallet': '#8b5cf6',
-                'Martian Wallet': '#f59e0b',
-                'SlushWallet': '#0ea5e9',
-                'MetaMask (Sui)': '#f6851b',
-                'Demo Wallet': '#10b981'
-            };
-            return colors[walletName] || '#6366f1';
-        }
-
-        // ウォレット説明を取得
-        function getWalletDescription(walletName) {
-            const descriptions = {
-                'Sui Wallet': '公式Suiウォレット',
-                'Suiet Wallet': '人気のSuiウォレット',
-                'Martian Wallet': 'マルチチェーンウォレット',
-                'SlushWallet': 'Sui系Slushウォレット',
-                'MetaMask (Sui)': 'MetaMask経由でSui接続',
-                'Demo Wallet': 'テスト用デモウォレット'
-            };
-            return descriptions[walletName] || 'ウォレット';
-        }
-
         // ウォレット接続
-        window.connectWallet = async function(walletType) {
-            selectedWalletType = walletType;
-            showStatus('loading', `${getWalletName(walletType)}に接続中...`);
-            
+        async function connectWallet() {
             try {
-                console.log(`🔍 Connecting to ${getWalletName(walletType)}...`);
+                const connectBtn = document.getElementById('connectBtn');
+                connectBtn.disabled = true;
+                connectBtn.textContent = '接続中...';
                 
-                // ウォレット検出のデバッグ情報を出力
-                console.log('🔍 Available wallet objects:', {
-                    suiWallet: typeof window.suiWallet,
-                    sui: typeof window.sui,
-                    wallet: typeof window.wallet,
-                    suiWallets: typeof window.suiWallets,
-                    suietWallet: typeof window.suietWallet,
-                    suiet: typeof window.suiet,
-                    martian: typeof window.martian,
-                    slushWallet: typeof window.slushWallet,
-                    slush: typeof window.slush,
-                    ethereum: typeof window.ethereum,
-                    keplr: typeof window.keplr,
-                    phantom: typeof window.phantom,
-                    // Wallet Standard準拠のウォレット
-                    getWallets: typeof window.getWallets,
-                    navigatorWallets: typeof window.navigator?.wallets,
-                    suiWalletsGet: typeof window.suiWallets?.get
-                });
+                // 利用可能なウォレットを取得
+                const wallets = window.suiWallet.getWallets().get();
+                console.log('Available wallets:', wallets);
                 
-                let wallet = null;
-                
-                // まずWallet Standard準拠のウォレットを試行
-                try {
-                    console.log('🔍 Trying Wallet Standard connection...');
-                    const standardWallets = await getStandardWallets();
-                    const targetWallet = standardWallets.find(w => 
-                        w.name.toLowerCase().includes(walletType.toLowerCase())
-                    );
-                    
-                    if (targetWallet) {
-                        console.log(`✅ Found standard wallet: ${targetWallet.name}`);
-                        wallet = await connectStandardWallet(targetWallet);
-                    } else {
-                        console.log('❌ No matching standard wallet found');
-                    }
-                } catch (error) {
-                    console.log('❌ Standard wallet detection failed, trying legacy patterns:', error);
+                if (wallets.length === 0) {
+                    throw new Error('ウォレットが見つかりません。Suiウォレット拡張機能をインストールしてください。');
                 }
                 
-                // 標準ウォレットが見つからない場合は、レガシーパターンを試行
-                if (!wallet) {
-                    console.log('🔍 Trying legacy wallet patterns...');
-                    switch(walletType) {
-                        case 'sui':
-                            wallet = await connectSuiWallet();
-                            break;
-                        case 'suiet':
-                            wallet = await connectSuietWallet();
-                            break;
-                        case 'martian':
-                            wallet = await connectMartianWallet();
-                            break;
-                        case 'slush':
-                            wallet = await connectSlushWallet();
-                            break;
-                        case 'metamask':
-                            wallet = await connectMetaMaskSui();
-                            break;
-                        case 'demo':
-                            wallet = await connectDemoWallet();
-                            break;
-                        default:
-                            throw new Error('サポートされていないウォレットタイプです');
-                    }
-                }
+                // 最初のウォレットを選択（またはユーザーに選択させる）
+                const selectedWallet = wallets[0];
+                console.log('Selected wallet:', selectedWallet);
                 
-                if (wallet && wallet.address) {
-                    walletAddress = wallet.address;
-                    connectedWallet = wallet;
-                    
-                    console.log(`✅ Connected to wallet: ${walletAddress}`);
-                    showStatus('success', `${getWalletName(walletType)}に接続しました`);
-                    
-                    // UI更新
-                    document.getElementById('wallet-selection').classList.remove('show');
-                    document.getElementById('verify-btn').classList.add('show');
-                    document.getElementById('wallet-info').classList.add('show');
-                    document.getElementById('wallet-address').textContent = walletAddress.slice(0, 8) + '...' + walletAddress.slice(-6);
-                } else {
-                    throw new Error('ウォレットの接続に失敗しました');
+                // ウォレットの機能を確認
+                if (!selectedWallet.features['standard:connect']) {
+                    throw new Error('このウォレットは接続機能をサポートしていません。');
                 }
-            } catch (error) {
-                console.error('❌ Wallet connection error:', error);
-                showStatus('error', error.message || 'ウォレット接続に失敗しました');
-                document.getElementById('wallet-selection').classList.remove('show');
-                document.getElementById('connect-btn').style.display = 'block';
-            }
-        };
-
-        // Sui Wallet接続
-        async function connectSuiWallet() {
-            // 複数の検出パターンを試行
-            const detectionPatterns = [
-                () => window.suiWallet,
-                () => window.sui?.wallet,
-                () => window.wallet?.sui,
-                () => window.suiWallets?.[0],
-                () => window.ethereum?.sui,
-                () => window.keplr?.sui,
-                () => window.phantom?.sui
-            ];
-            
-            let wallet = null;
-            let walletFound = false;
-            
-            for (const detect of detectionPatterns) {
-                try {
-                    wallet = detect();
-                    if (wallet && typeof wallet === 'object') {
-                        walletFound = true;
-                        console.log('Found Sui wallet via pattern:', wallet);
-                        break;
-                    }
-                } catch (e) {
-                    continue;
-                }
-            }
-            
-            if (!walletFound || !wallet) {
-                throw new Error('Sui Walletが見つかりません。\n\n対処法:\n1. Sui Wallet拡張機能がインストールされているか確認\n2. ブラウザでSui Walletが有効になっているか確認\n3. ページを再読み込み');
-            }
-            
-            try {
-                const accounts = await wallet.request({ method: 'eth_accounts' });
-                if (!accounts || accounts.length === 0) {
-                    throw new Error('アカウントが見つかりません');
-                }
-                
-                return {
-                    address: accounts[0],
-                    signMessage: async (message) => {
-                        const signature = await wallet.request({
-                            method: 'personal_sign',
-                            params: [message, accounts[0]]
-                        });
-                        return { signature };
-                    }
-                };
-            } catch (error) {
-                throw new Error('Sui Walletの接続に失敗しました: ' + error.message);
-            }
-        }
-
-        // Suiet Wallet接続
-        async function connectSuietWallet() {
-            // 複数の検出パターンを試行
-            const detectionPatterns = [
-                () => window.suietWallet,
-                () => window.suiet,
-                () => window.wallet?.suiet
-            ];
-            
-            let wallet = null;
-            let walletFound = false;
-            
-            for (const detect of detectionPatterns) {
-                try {
-                    wallet = detect();
-                    if (wallet && typeof wallet === 'object') {
-                        walletFound = true;
-                        console.log('Found Suiet wallet via pattern:', wallet);
-                        break;
-                    }
-                } catch (e) {
-                    continue;
-                }
-            }
-            
-            if (!walletFound || !wallet) {
-                throw new Error('Suiet Walletが見つかりません。https://suiet.app/ からインストールしてください。');
-            }
-            
-            try {
-                const accounts = await wallet.request({ method: 'eth_accounts' });
-                if (!accounts || accounts.length === 0) {
-                    throw new Error('アカウントが見つかりません');
-                }
-                
-                return {
-                    address: accounts[0],
-                    signMessage: async (message) => {
-                        const signature = await wallet.request({
-                            method: 'personal_sign',
-                            params: [message, accounts[0]]
-                        });
-                        return { signature };
-                    }
-                };
-            } catch (error) {
-                throw new Error('Suiet Walletの接続に失敗しました: ' + error.message);
-            }
-        }
-
-        // Martian Wallet接続
-        async function connectMartianWallet() {
-            // 複数の検出パターンを試行
-            const detectionPatterns = [
-                () => window.martian,
-                () => window.wallet?.martian
-            ];
-            
-            let wallet = null;
-            let walletFound = false;
-            
-            for (const detect of detectionPatterns) {
-                try {
-                    wallet = detect();
-                    if (wallet && typeof wallet === 'object') {
-                        walletFound = true;
-                        console.log('Found Martian wallet via pattern:', wallet);
-                        break;
-                    }
-                } catch (e) {
-                    continue;
-                }
-            }
-            
-            if (!walletFound || !wallet) {
-                throw new Error('Martian Walletが見つかりません。Chrome Web Storeからインストールしてください。');
-            }
-            
-            try {
-                const accounts = await wallet.request({ method: 'eth_accounts' });
-                if (!accounts || accounts.length === 0) {
-                    throw new Error('アカウントが見つかりません');
-                }
-                
-                return {
-                    address: accounts[0],
-                    signMessage: async (message) => {
-                        const signature = await wallet.request({
-                            method: 'personal_sign',
-                            params: [message, accounts[0]]
-                        });
-                        return { signature };
-                    }
-                };
-            } catch (error) {
-                throw new Error('Martian Walletの接続に失敗しました: ' + error.message);
-            }
-        }
-
-        // SlushWallet接続
-        async function connectSlushWallet() {
-            // 複数の検出パターンを試行
-            const detectionPatterns = [
-                () => window.slushWallet, 
-                () => window.slush?.wallet,
-                () => window.wallet?.slush,
-                // SlushWalletの追加検出パターン
-                () => window.slush,
-                () => window.sui?.slush,
-                () => window.wallet?.slushWallet,
-                // 汎用的な検出
-                () => {
-                    for (const prop in window) {
-                        const obj = window[prop];
-                        if (obj && typeof obj === 'object' && 
-                            (prop.toLowerCase().includes('slush') || 
-                             (obj.name && obj.name.toLowerCase().includes('slush')))) {
-                            return obj;
-                        }
-                    }
-                    return null;
-                },
-                // Mysten Labs公式パターン
-                () => {
-                    // SlushWalletはSui Walletの後継なので、Sui Walletのパターンも試行
-                    const suiPatterns = [
-                        window.suiWallet,
-                        window.sui?.wallet,
-                        window.wallet?.sui
-                    ];
-                    for (const pattern of suiPatterns) {
-                        if (pattern && typeof pattern === 'object') {
-                            // 名前やプロパティでSlushWalletかどうかを判定
-                            if (pattern.name && pattern.name.toLowerCase().includes('slush')) {
-                                return pattern;
-                            }
-                            // または、SlushWallet特有のプロパティがあるかチェック
-                            if (pattern.version && pattern.version.includes('slush')) {
-                                return pattern;
-                            }
-                        }
-                    }
-                    return null;
-                },
-                // より詳細な検出
-                () => {
-                    // windowの全プロパティを詳細にチェック
-                    for (const prop in window) {
-                        const obj = window[prop];
-                        if (obj && typeof obj === 'object') {
-                            // プロパティ名で判定
-                            if (prop.toLowerCase().includes('slush')) {
-                                return obj;
-                            }
-                            // オブジェクトのプロパティで判定
-                            if (obj.name && obj.name.toLowerCase().includes('slush')) {
-                                return obj;
-                            }
-                            if (obj.version && obj.version.toLowerCase().includes('slush')) {
-                                return obj;
-                            }
-                            // 接続可能なウォレットオブジェクトかチェック
-                            if (obj.connect && obj.request && obj.signMessage) {
-                                // SlushWallet特有の機能があるかチェック
-                                if (obj.features && obj.features.includes('sui')) {
-                                    return obj;
-                                }
-                            }
-                        }
-                    }
-                    return null;
-                }
-            ];
-            
-            let wallet = null;
-            let walletFound = false;
-            
-            for (const detect of detectionPatterns) {
-                try {
-                    wallet = detect();
-                    if (wallet && typeof wallet === 'object') {
-                        walletFound = true;
-                        console.log('Found SlushWallet via pattern:', wallet);
-                        break;
-                    }
-                } catch (e) {
-                    console.log(`❌ Pattern failed for SlushWallet:`, e);
-                    continue;
-                }
-            }
-            
-            if (!walletFound || !wallet) {
-                throw new Error('SlushWalletが見つかりません。SlushWalletをインストールしてください。');
-            }
-            
-            try {
-                console.log('Attempting to connect with SlushWallet:', wallet);
-                
-                // 複数の接続方法を試行
-                let accounts = null;
-                
-                // 方法1: eth_accounts
-                try {
-                    accounts = await wallet.request({ method: 'eth_accounts' });
-                    console.log('SlushWallet connected via eth_accounts:', accounts);
-                } catch (e1) {
-                    console.log('eth_accounts failed, trying connect method:', e1);
-                    
-                    // 方法2: connect
-                    try {
-                        const result = await wallet.connect();
-                        accounts = result.accounts || result;
-                        console.log('SlushWallet connected via connect method:', result);
-                    } catch (e2) {
-                        console.log('connect method failed, trying getAccounts:', e2);
-                        
-                        // 方法3: getAccounts
-                        try {
-                            accounts = await wallet.getAccounts();
-                            console.log('SlushWallet connected via getAccounts:', accounts);
-                        } catch (e3) {
-                            console.log('getAccounts failed, trying sui_accounts:', e3);
-                            
-                            // 方法4: sui_accounts (Sui特有)
-                            try {
-                                accounts = await wallet.request({ method: 'sui_accounts' });
-                                console.log('SlushWallet connected via sui_accounts:', accounts);
-                            } catch (e4) {
-                                console.log('sui_accounts failed, trying sui_getAccounts:', e4);
-                                
-                                // 方法5: sui_getAccounts
-                                try {
-                                    accounts = await wallet.request({ method: 'sui_getAccounts' });
-                                    console.log('SlushWallet connected via sui_getAccounts:', accounts);
-                                } catch (e5) {
-                                    throw new Error('SlushWalletの接続に失敗しました');
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                if (!accounts || accounts.length === 0) {
-                    throw new Error('アカウントが見つかりません');
-                }
-                
-                const address = accounts[0]?.address || accounts[0];
-                
-                return {
-                    address: address,
-                    signMessage: async (message) => {
-                        try {
-                            const signature = await wallet.request({
-                                method: 'personal_sign',
-                                params: [message, address]
-                            });
-                            return { signature };
-                        } catch (error) {
-                            // フォールバック: 直接署名
-                            try {
-                                const signature = await wallet.signMessage(message);
-                                return { signature };
-                            } catch (signError) {
-                                // フォールバック: sui_signMessage
-                                const signature = await wallet.request({
-                                    method: 'sui_signMessage',
-                                    params: [message, address]
-                                });
-                                return { signature };
-                            }
-                        }
-                    }
-                };
-            } catch (error) {
-                throw new Error('SlushWalletの接続に失敗しました: ' + error.message);
-            }
-        }
-
-        // MetaMask経由でSuiにアクセス
-        async function connectMetaMaskSui() {
-            if (typeof window.ethereum === 'undefined') {
-                throw new Error('MetaMaskがインストールされていません。');
-            }
-
-            try {
-                const accounts = await window.ethereum.request({
-                    method: 'eth_requestAccounts'
-                });
-
-                if (!accounts || accounts.length === 0) {
-                    throw new Error('アカウントが見つかりません');
-                }
-
-                return {
-                    address: accounts[0],
-                    signMessage: async (message) => {
-                        const signature = await window.ethereum.request({
-                            method: 'personal_sign',
-                            params: [message, accounts[0]]
-                        });
-                        return { signature };
-                    }
-                };
-            } catch (error) {
-                throw new Error('MetaMask経由でのSui接続に失敗しました: ' + error.message);
-            }
-        }
-
-        // Demo Wallet接続
-        async function connectDemoWallet() {
-            // デモ用のウォレットアドレスを生成
-            const demoAddress = '0x' + Math.random().toString(16).substr(2, 40);
-            
-            return {
-                address: demoAddress,
-                signMessage: async (message) => {
-                    // デモ用の署名を生成
-                    // messageがUint8Arrayの場合は文字列に変換
-                    let messageStr = message;
-                    if (message instanceof Uint8Array) {
-                        messageStr = new TextDecoder().decode(message);
-                    }
-                    console.log('Demo wallet signing message:', messageStr);
-                    const signature = '0x' + Math.random().toString(16).substr(2, 128);
-                    return { signature };
-                }
-            };
-        }
-
-        // Wallet Standard準拠のウォレットを取得
-        async function getStandardWallets() {
-            try {
-                // 複数のパターンでgetWalletsを試行
-                let getWalletsFunction = null;
-                
-                if (typeof window !== 'undefined') {
-                    getWalletsFunction = window.getWallets || 
-                                       (window.navigator?.wallets?.get) ||
-                                       (window.suiWallets?.get) ||
-                                       (window.wallets?.get);
-                }
-                
-                if (getWalletsFunction) {
-                    console.log('✅ Wallet Standard API found');
-                    
-                    const standardWallets = typeof getWalletsFunction === 'function' 
-                        ? getWalletsFunction() 
-                        : getWalletsFunction.get?.();
-                        
-                    if (Array.isArray(standardWallets)) {
-                        console.log(`Found ${standardWallets.length} standard wallets:`, standardWallets.map(w => w.name));
-                        return standardWallets;
-                    }
-                }
-                
-                console.log('⚠️ Wallet Standard API not available');
-                return [];
-            } catch (error) {
-                console.error('Error getting standard wallets:', error);
-                return [];
-            }
-        }
-
-        // Wallet Standard準拠のウォレットに接続
-        async function connectStandardWallet(wallet) {
-            try {
-                console.log(`Connecting to standard wallet: ${wallet.name}`);
                 
                 // ウォレットに接続
-                const connection = await wallet.connect();
-                const accounts = connection.accounts;
+                await selectedWallet.features['standard:connect'].connect();
                 
-                if (!accounts || accounts.length === 0) {
-                    throw new Error('アカウントが見つかりません');
+                // アカウント情報を取得
+                if (selectedWallet.accounts.length === 0) {
+                    throw new Error('ウォレットにアカウントが見つかりません。');
                 }
                 
-                const account = accounts[0];
+                wallet = selectedWallet;
+                walletAddress = selectedWallet.accounts[0].address;
+                    
+                    // UI更新
+                document.getElementById('walletAddress').textContent = walletAddress;
+                document.getElementById('walletInfo').style.display = 'block';
+                document.getElementById('verifyBtn').disabled = false;
                 
-                return {
-                    address: account.address,
-                    signMessage: async (message) => {
-                        // Wallet Standardの署名機能を使用
-                        const signature = await wallet.signMessage({
-                            message: message,
-                            account: account
-                        });
-                        return { signature: signature.signature };
-                    }
-                };
+                connectBtn.textContent = '✅ 接続済み';
+                connectBtn.style.background = '#51cf66';
+                
+                showResult('✅ ウォレットが正常に接続されました！', 'success');
+                
             } catch (error) {
-                throw new Error(`Standard wallet connection failed: ${error.message}`);
+                console.error('Wallet connection error:', error);
+                showResult('❌ ウォレット接続エラー: ' + error.message, 'error');
+                
+                const connectBtn = document.getElementById('connectBtn');
+                connectBtn.disabled = false;
+                connectBtn.textContent = '🔗 ウォレットを接続';
             }
         }
-
-        // ウォレット名を取得
-        function getWalletName(walletType) {
-            switch(walletType) {
-                case 'sui': return 'Sui Wallet';
-                case 'suiet': return 'Suiet Wallet';
-                case 'martian': return 'Martian Wallet';
-                case 'slush': return 'SlushWallet';
-                case 'metamask': return 'MetaMask (Sui)';
-                case 'demo': return 'Demo Wallet';
-                default: return 'Unknown Wallet';
-            }
-        }
-
-        // 認証開始
-        window.startVerification = async function() {
-            if (!walletAddress || !discordId) {
-                showStatus('error', '接続情報が不完全です');
-                return;
-            }
-
-            document.getElementById('progress').classList.add('show');
-            setProgress(0);
-
-            try {
-                // ナンス取得
-                setProgress(25);
-                showStatus('loading', 'ナンス生成中...');
-                
-                const nonceRes = await fetch(`${API_BASE_URL}/nonce`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ wallet_address: walletAddress })
-                });
-
-                if (!nonceRes.ok) throw new Error('ナンス取得失敗');
-                const { nonce } = await nonceRes.json();
-
-                // 署名
-                setProgress(50);
-                showStatus('loading', 'ウォレットで署名...');
-                
-                const message = `Verify NFT ownership for Discord role.\nNonce: ${nonce}\nAddress: ${walletAddress}`;
-                const messageBytes = new TextEncoder().encode(message);
-
-                let signature = '';
-                
-                // 署名処理
+        
+        // ウォレット切断
+        async function disconnectWallet() {
+            if (wallet && wallet.features['standard:disconnect']) {
                 try {
-                        const signResult = await connectedWallet.signMessage(messageBytes);
-                        signature = signResult.signature || signResult;
-                } catch (signError) {
-                    console.error('Sign error:', signError);
-                    throw new Error('署名に失敗しました: ' + signError.message);
+                    await wallet.features['standard:disconnect'].disconnect();
+                } catch (error) {
+                    console.error('Disconnect error:', error);
                 }
-
-                // 認証
-                setProgress(75);
-                showStatus('loading', 'NFT確認中...');
+            }
+            
+            wallet = null;
+            walletAddress = '';
+            
+            document.getElementById('walletInfo').style.display = 'none';
+            document.getElementById('verifyBtn').disabled = true;
+            
+            const connectBtn = document.getElementById('connectBtn');
+            connectBtn.textContent = '🔗 ウォレットを接続';
+            connectBtn.style.background = 'linear-gradient(45deg, #667eea, #764ba2)';
+            
+            showResult('ウォレットが切断されました。', 'success');
+        }
+        
+        // 署名と検証
+        async function verifyAndAssignRole() {
+            try {
+                const discordId = document.getElementById('discordId').value.trim();
+                if (!discordId) {
+                    showResult('❌ Discord IDを入力してください。', 'error');
+                    return;
+                }
                 
-                const verifyRes = await fetch(`${API_BASE_URL}/verify`, {
+                if (!wallet || !walletAddress) {
+                    showResult('❌ ウォレットが接続されていません。', 'error');
+                    return;
+                }
+                
+                const verifyBtn = document.getElementById('verifyBtn');
+                verifyBtn.disabled = true;
+                verifyBtn.textContent = '検証中...';
+                
+                // 署名メッセージの生成
+                const nonce = Date.now().toString();
+                const message = `Verify your Discord ID: ${discordId} for NFT role assignment. Nonce: ${nonce}`;
+                
+                console.log('Signing message:', message);
+                
+                // 署名機能の確認
+                if (!wallet.features['sui:signMessage']) {
+                    throw new Error('このウォレットはメッセージ署名機能をサポートしていません。');
+                }
+                
+                // メッセージを署名
+                const signature = await wallet.features['sui:signMessage'].signMessage({
+                    message: new TextEncoder().encode(message)
+                });
+                
+                console.log('Signature received:', signature);
+                
+                // バックエンドに送信
+                const response = await fetch('/verify', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        wallet_address: walletAddress,
-                        discord_id: discordId,
                         signature: signature,
-                        nonce: nonce
+                        address: walletAddress,
+                        discordId: discordId,
+                        nonce: nonce,
+                        message: message
                     })
                 });
 
-                const result = await verifyRes.json();
-
-                setProgress(100);
-                if (result.success) {
-                    showStatus('success', '認証完了！Discordを確認してください');
-                    setTimeout(() => window.close(), 3000);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult('✅ ロールが正常に付与されました！', 'success');
                 } else {
-                    showStatus('error', result.message);
+                    showResult('❌ ' + (data.error || '検証に失敗しました。'), 'error');
                 }
 
             } catch (error) {
                 console.error('Verification error:', error);
-                showStatus('error', error.message || '認証に失敗しました');
-                document.getElementById('progress').classList.remove('show');
+                showResult('❌ エラーが発生しました: ' + error.message, 'error');
+            } finally {
+                const verifyBtn = document.getElementById('verifyBtn');
+                verifyBtn.disabled = false;
+                verifyBtn.textContent = '🔐 署名して検証';
             }
-        };
-
-        function showStatus(type, message) {
-            const status = document.getElementById('status');
-            const text = document.getElementById('status-text');
-            const spinner = document.getElementById('spinner');
-            
-            status.className = `status ${type}`;
-            text.textContent = message;
-            spinner.style.display = type === 'loading' ? 'block' : 'none';
-            status.classList.add('show');
         }
-
-        function setProgress(percent) {
-            document.getElementById('progress-bar').style.width = `${percent}%`;
+        
+        function showResult(message, type) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = `<div class="${type}">${message}</div>`;
         }
+        
+        // ページ読み込み時の初期化
+        window.addEventListener('load', () => {
+            console.log('NFT Verifier loaded');
+            // 既存のウォレット接続を確認
+            const wallets = window.suiWallet?.getWallets()?.get();
+            if (wallets && wallets.length > 0) {
+                const connectedWallet = wallets.find(w => w.accounts.length > 0);
+                if (connectedWallet) {
+                    wallet = connectedWallet;
+                    walletAddress = connectedWallet.accounts[0].address;
+                    
+                    document.getElementById('walletAddress').textContent = walletAddress;
+                    document.getElementById('walletInfo').style.display = 'block';
+                    document.getElementById('verifyBtn').disabled = false;
+                    
+                    const connectBtn = document.getElementById('connectBtn');
+                    connectBtn.textContent = '✅ 接続済み';
+                    connectBtn.style.background = '#51cf66';
+                }
+            }
+        });
     </script>
 </body>
 </html>

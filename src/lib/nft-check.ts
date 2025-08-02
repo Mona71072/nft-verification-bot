@@ -1,5 +1,5 @@
 import { SuiClient, getFullnodeUrl } from '@mysten/sui/client';
-import type { Env, SuiNftObject } from '../types';
+import type { Env } from '../types';
 
 /**
  * 指定されたアドレスがターゲットNFTを保有しているかチェック
@@ -9,6 +9,10 @@ import type { Env, SuiNftObject } from '../types';
  */
 export async function hasTargetNft(address: string, env: Env): Promise<boolean> {
   try {
+    console.log('Checking NFT ownership for address:', address);
+    console.log('Using RPC URL:', env.SUI_NETWORK);
+    console.log('Target collection ID:', env.NFT_COLLECTION_ID);
+    
     // 開発用: アドレスが有効な形式であればtrueを返す
     if (address && address.startsWith('0x') && address.length >= 40) {
       console.log(`Development mode: NFT check passed for address: ${address}`);
@@ -36,10 +40,10 @@ export async function hasTargetNft(address: string, env: Env): Promise<boolean> 
 
     // 有効なオブジェクトが見つかったかチェック
     const validObjects = ownedObjects.data.filter(obj => {
-      const nft = obj.data as SuiNftObject;
+      const nft = obj.data;
       return nft && 
              nft.type && 
-             nft.owner?.AddressOwner === address;
+             nft.owner === address;
     });
 
     console.log(`Found ${validObjects.length} valid objects for address: ${address}`);
@@ -82,8 +86,8 @@ export async function verifyNftOwnership(
       return false;
     }
 
-    const nft = object.data as SuiNftObject;
-    const actualOwner = nft.owner?.AddressOwner;
+    const nft = object.data;
+    const actualOwner = nft.owner;
 
     return actualOwner === expectedOwner;
 

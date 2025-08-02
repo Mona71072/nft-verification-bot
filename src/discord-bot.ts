@@ -39,7 +39,7 @@ export class DiscordBotAPI {
         console.log(`✅ Role granted to user ${discordId}`);
         
         // DM送信
-        await this.sendDM(discordId, '🎉 認証が完了しました！\n\n**NFTの保有が確認されました！**\n\n特別ロール "NFT holder" が付与されました。');
+        await this.sendDM(discordId, '🎉 認証が完了しました！**NFTの保有が確認されました！**特別ロール "NFT holder" が付与されました。');
         
         return true;
       } else {
@@ -114,9 +114,48 @@ export class DiscordBotAPI {
         body: JSON.stringify({
           content: message,
           embeds: [{
-            title: '🎉 認証完了！',
-            description: '**NFTの保有が確認されました！**\n\n特別ロール "NFT holder" が付与されました。',
+            title: '🎉 NFT Verification Successful!',
+            description: '**Congratulations! Your NFT verification has been completed successfully!**🌟 **What you\'ve received:**\n• **Exclusive Discord Role:** NFT Holder\n• **Premium Access:** Special channels and features\n• **Community Status:** Verified NFT holder\n• **Future Benefits:** Early access to upcoming features🎯 **Your Benefits:**\n• Access to exclusive channels\n• Special community recognition\n• Priority support and assistance\n• Early access to new features💎 **Security Confirmation:**\n• Your NFT ownership has been verified on the blockchain\n• All verification was done securely without accessing private keys\n• Your wallet data remains completely private　*Welcome to the exclusive NFT community! Enjoy your new privileges!*',
             color: 0x57F287,
+            thumbnail: {
+              url: 'https://i.imgur.com/8tBXd6L.png'
+            },
+            fields: [
+              {
+                name: '🎁 Role Granted',
+                value: 'NFT Holder',
+                inline: true
+              },
+              {
+                name: '🆔 Discord ID',
+                value: discordId,
+                inline: true
+              },
+              {
+                name: '⏰ Verified At',
+                value: new Date().toLocaleString(),
+                inline: true
+              },
+              {
+                name: '🔒 Security Level',
+                value: 'Maximum Protection',
+                inline: true
+              },
+              {
+                name: '⚡ Process Speed',
+                value: 'Instant Verification',
+                inline: true
+              },
+              {
+                name: '🎯 Status',
+                value: 'Active & Verified',
+                inline: true
+              }
+            ],
+            footer: {
+              text: 'Sui NFT Verification • Professional & Secure',
+              icon_url: 'https://i.imgur.com/8tBXd6L.png'
+            },
             timestamp: new Date().toISOString()
           }]
         })
