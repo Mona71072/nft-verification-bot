@@ -150,10 +150,27 @@ async function setupVerificationChannel() {
 
     // シンプルでカッコいいユーザー認証メッセージ
     const userVerificationEmbed = new EmbedBuilder()
-      .setTitle('🎯 NFT Verification')
-      .setDescription(`**Connect your wallet and verify your NFT ownership**
+      .setTitle('🎯 SXT NFT Verification Portal')
+      .setDescription(`**Join the exclusive NFT community by verifying your Sui wallet ownership!**
 
-Get exclusive access to our community.`)
+🌟 **What you'll get:**
+• **Exclusive Discord Role:** NFT Holder
+• **Premium Access:** Special channels and features
+• **Community Status:** Verified NFT holder
+• **Future Benefits:** Early access to upcoming features
+
+🎯 **How to verify:**
+1. **Click the verification button below**
+2. **Get your personalized verification URL**
+3. **Connect your Sui wallet** (Sui Wallet, Slush Wallet, etc.)
+4. **Complete the verification process**
+5. **Get your exclusive role automatically!**
+
+💎 **Security Features:**
+• Blockchain-verified NFT ownership
+• Secure message signing (no private key access)
+• Instant role assignment
+• Professional verification process`)
       .setColor(0x6366f1)
       .setFooter({ 
         text: 'Sui NFT Verification'
