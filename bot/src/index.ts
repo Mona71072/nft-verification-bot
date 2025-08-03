@@ -622,6 +622,59 @@ export async function grantRoleToUser(discordId: string): Promise<boolean> {
   }
 }
 
+// 認証失敗時のDiscordチャンネル通知
+export async function sendVerificationFailureMessage(discordId: string, verificationData: any): Promise<boolean> {
+  try {
+    console.log(`🔄 Sending verification failure message for Discord ID: ${discordId}`);
+    console.log('📋 Verification data:', verificationData);
+    
+    const guild = await client.guilds.fetch(config.DISCORD_GUILD_ID);
+    if (!guild) {
+      console.error('❌ Guild not found');
+      return false;
+    }
+    console.log(`✅ Found guild: ${guild.name}`);
+
+    const channel = await guild.channels.fetch(config.VERIFICATION_CHANNEL_ID) as TextChannel;
+    if (!channel) {
+      console.error('❌ Verification channel not found');
+      return false;
+    }
+    console.log(`✅ Found channel: ${channel.name}`);
+
+    const failureEmbed = new EmbedBuilder()
+      .setTitle('❌ NFT Verification Failed')
+      .setDescription(`**NFT verification failed for user <@${discordId}>**
+
+**Wallet Address:** \`${verificationData?.address || 'Unknown'}\`
+**Reason:** ${verificationData?.reason || 'NFT not found in wallet'}
+**Timestamp:** ${new Date().toLocaleString()}
+
+**Next Steps:**
+• Ensure you own the required NFTs
+• Check your wallet connection
+• Try the verification process again`)
+      .setColor(0xED4245)
+      .setFooter({ 
+        text: 'Sui NFT Verification • Professional System'
+      })
+      .setTimestamp();
+
+    console.log('📤 Sending failure embed to Discord channel...');
+    await channel.send({
+      embeds: [failureEmbed]
+    });
+
+    console.log(`✅ Verification failure message sent for Discord ID: ${discordId}`);
+    return true;
+  } catch (error) {
+    console.error('❌ Error sending verification failure message:', error);
+    console.error('❌ Error details:', (error as Error).message);
+    console.error('❌ Error stack:', (error as Error).stack);
+    return false;
+  }
+}
+
 // 管理者統計表示（シンプル版）
 async function handleAdminStats(interaction: ButtonInteraction, isAdmin: boolean) {
   try {

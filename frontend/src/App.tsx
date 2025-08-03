@@ -1,12 +1,12 @@
-import { WalletProvider, ConnectButton, useWallet } from '@suiet/wallet-kit';
+import { ConnectButton, useWallet } from '@suiet/wallet-kit';
 import '@suiet/wallet-kit/style.css';
 import { useState, useEffect } from 'react';
 
 // APIベースURLの設定（本番環境用）
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://main.nft-verification-frontend.pages.dev';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
 
 function NFTVerification() {
-  const { account, connected, signMessage } = useWallet();
+  const { account, connected, signPersonalMessage } = useWallet();
   const [discordId, setDiscordId] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationResult, setVerificationResult] = useState<{
@@ -34,10 +34,22 @@ function NFTVerification() {
     if (!connected || !account) {
       setVerificationResult({
         success: false,
-        message: 'ウォレットが接続されていません。'
+        message: 'ウォレットが接続されていません。ウォレットを接続してください。'
       });
       return;
     }
+
+    // 署名機能をチェック
+    if (!signPersonalMessage) {
+      setVerificationResult({
+        success: false,
+        message: 'ウォレットが署名機能をサポートしていません。対応ウォレットを使用してください。'
+      });
+      return;
+    }
+
+    console.log('Wallet connected:', account.address);
+    console.log('SignPersonalMessage available:', !!signPersonalMessage);
 
     if (!discordId.trim()) {
       setVerificationResult({
@@ -52,6 +64,7 @@ function NFTVerification() {
 
     try {
       // 1. ナンス生成
+      console.log('Requesting nonce...');
       const nonceResponse = await fetch(`${API_BASE_URL}/api/nonce`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -67,31 +80,31 @@ function NFTVerification() {
       }
 
       const nonce = nonceData.data.nonce;
+      console.log('Nonce received:', nonce);
 
       // 2. 署名メッセージの生成
-      const message = `Verify NFT ownership for Discord role assignment.
-
-Discord ID: ${discordId}
-Wallet Address: ${account.address}
-Nonce: ${nonce}
-Timestamp: ${new Date().toISOString()}
-
-By signing this message, you confirm that you own the specified NFT and authorize the role assignment.`;
+      const authMessage = `Sign in to SXT NFT Verification at ${new Date().toISOString()}`;
+      console.log('Auth message:', authMessage);
 
       // 3. メッセージを署名
-      const signature = await signMessage({
-        message: new TextEncoder().encode(message)
+      console.log('Requesting signature...');
+      const signatureResult = await signPersonalMessage({
+        message: new TextEncoder().encode(authMessage)
       });
+
+      console.log('Signature result:', signatureResult);
 
       // 4. バックエンドに送信
       const requestBody = {
-        signature: signature,
+        signature: signatureResult.signature,
         address: account.address,
         discordId: discordId.trim(),
         nonce: nonce,
-        message: message,
-        walletType: 'Suiet Wallet'
+        authMessage: authMessage,
+        walletType: 'Generic'
       };
+
+      console.log('Sending verification request:', requestBody);
 
       const response = await fetch(`${API_BASE_URL}/api/verify`, {
         method: 'POST',
@@ -100,11 +113,12 @@ By signing this message, you confirm that you own the specified NFT and authoriz
       });
 
       const data = await response.json();
+      console.log('Verification response:', data);
 
       if (data.success) {
         setVerificationResult({
           success: true,
-          message: `認証が完了しました！ロール "${data.data.roleName}" がアカウントに割り当てられました。`
+          message: `認証が完了しました！ロール "${data.data?.roleName || 'NFT Holder'}" がアカウントに割り当てられました。`
         });
       } else {
         setVerificationResult({
@@ -112,6 +126,7 @@ By signing this message, you confirm that you own the specified NFT and authoriz
           message: data.error || '認証に失敗しました。'
         });
       }
+
     } catch (error) {
       console.error('Verification error:', error);
       setVerificationResult({
@@ -319,6 +334,9 @@ By signing this message, you confirm that you own the specified NFT and authoriz
             color: verificationResult.success ? '#166534' : '#dc2626'
           }}>
             <p style={{ fontSize: '0.875rem' }}>{verificationResult.message}</p>
+            <p style={{ fontSize: '0.75rem', marginTop: '0.5rem', opacity: 0.7 }}>
+              認証結果はDiscordチャンネルに通知されました
+            </p>
           </div>
         )}
 
@@ -334,11 +352,7 @@ By signing this message, you confirm that you own the specified NFT and authoriz
 }
 
 function App() {
-  return (
-    <WalletProvider>
-      <NFTVerification />
-    </WalletProvider>
-  );
+  return <NFTVerification />;
 }
 
 export default App;
