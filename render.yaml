@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: nft-verification
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: DISCORD_GUILD_ID
+        value: "1214855750917160960"
+      - key: DISCORD_ROLE_ID
+        value: "1400485848008491059"
+      - key: SUI_NETWORK
+        value: "mainnet"
+      - key: NFT_COLLECTION_ID
+        value: "0x2::coin::Coin<0x2::sui::SUI>" 

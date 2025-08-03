@@ -1,0 +1,45 @@
+name = "nft-verification"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# 本番環境設定
+[env.production.vars]
+# Discord設定
+DISCORD_TOKEN = "YOUR_DISCORD_TOKEN_HERE"
+DISCORD_CLIENT_ID = "YOUR_DISCORD_CLIENT_ID_HERE"
+DISCORD_CLIENT_SECRET = "YOUR_DISCORD_CLIENT_SECRET_HERE"
+DISCORD_GUILD_ID = "YOUR_DISCORD_GUILD_ID_HERE"
+DISCORD_ROLE_ID = "YOUR_DISCORD_ROLE_ID_HERE"
+VERIFICATION_CHANNEL_ID = "YOUR_VERIFICATION_CHANNEL_ID_HERE"
+ADMIN_USER_ID = "YOUR_ADMIN_USER_ID_HERE"
+
+# Sui設定
+SUI_NETWORK = "mainnet"
+NFT_COLLECTION_ID = "0x2::coin::Coin<0x2::sui::SUI>"
+
+# API設定
+API_BASE_URL = "YOUR_API_BASE_URL_HERE"
+VERIFICATION_URL = "YOUR_VERIFICATION_URL_HERE"
+
+# KVストレージ設定
+[[env.production.kv_namespaces]]
+binding = "BES_ROLES"
+id = "YOUR_KV_NAMESPACE_ID_HERE"
+
+# 開発環境設定
+[env.development.vars]
+DISCORD_TOKEN = "DEV_TOKEN"
+DISCORD_CLIENT_ID = "DEV_CLIENT_ID"
+DISCORD_GUILD_ID = "DEV_GUILD_ID"
+DISCORD_ROLE_ID = "DEV_ROLE_ID"
+VERIFICATION_CHANNEL_ID = "DEV_CHANNEL_ID"
+ADMIN_USER_ID = "DEV_ADMIN_USER_ID"
+SUI_NETWORK = "testnet"
+NFT_COLLECTION_ID = ""
+API_BASE_URL = "http://localhost:8787"
+VERIFICATION_URL = "http://localhost:8787"
+
+[[env.development.kv_namespaces]]
+binding = "BES_ROLES"
+id = "YOUR_DEV_KV_NAMESPACE_ID_HERE" 

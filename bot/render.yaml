@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: nft-verification-bot
+    env: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: DISCORD_TOKEN
+        value: ""
+      - key: DISCORD_CLIENT_ID
+        value: 1400483007009394740
+      - key: DISCORD_GUILD_ID
+        value: 1214855750917160960
+      - key: DISCORD_ROLE_ID
+        value: 1400485848008491059
+      - key: SUI_NETWORK
+        value: mainnet
+      - key: NFT_COLLECTION_ID
+        value: 0x2::coin::Coin<0x2::sui::SUI>
+      - key: API_BASE_URL
+        value: https://nft-verification-production.mona-syndicatextokyo.workers.dev
+      - key: VERIFICATION_URL
+        value: https://nft-verification-production.mona-syndicatextokyo.workers.dev/verify.html
+      - key: ADMIN_USER_ID
+        value: 1060224603663896577 
