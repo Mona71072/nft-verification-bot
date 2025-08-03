@@ -117,25 +117,39 @@ async function setupVerificationChannel() {
       }
     }
 
-    // 既存のBotメッセージをチェック
+    // 既存のBotメッセージをチェック（すべてのBotメッセージを削除）
     console.log('🔍 Checking existing bot messages...');
     const messages = await verificationChannel.messages.fetch({ limit: 50 });
     const botMessages = messages.filter(msg => 
-      msg.author.id === client.user!.id && 
-      msg.embeds.length > 0 &&
-      (msg.embeds[0].title?.includes('NFT認証') || msg.embeds[0].title?.includes('管理者') || 
-       msg.embeds[0].title?.includes('Verification') || msg.embeds[0].title?.includes('Administration'))
+      msg.author.id === client.user!.id
     );
 
     console.log(`📊 Found ${botMessages.size} existing bot messages`);
+    console.log('📋 Bot message titles:', botMessages.map(msg => 
+      msg.embeds.length > 0 ? msg.embeds[0].title : 'No embed'
+    ));
 
     // 古いメッセージを削除（権限があれば）
     if (botMessages.size > 0) {
       try {
         const permissions = verificationChannel.permissionsFor(client.user!);
         if (permissions?.has('ManageMessages')) {
-          await verificationChannel.bulkDelete(botMessages);
-          console.log(`🧹 Deleted ${botMessages.size} old bot messages`);
+          // 一括削除を試行
+          try {
+            await verificationChannel.bulkDelete(botMessages);
+            console.log(`🧹 Bulk deleted ${botMessages.size} old bot messages`);
+          } catch (bulkError) {
+            console.log('⚠️ Bulk delete failed, trying individual deletion:', bulkError);
+            // 個別削除を試行
+            for (const message of botMessages.values()) {
+              try {
+                await message.delete();
+                console.log(`🧹 Deleted individual message: ${message.embeds[0]?.title || 'No title'}`);
+              } catch (individualError) {
+                console.log(`⚠️ Could not delete message: ${individualError}`);
+              }
+            }
+          }
         } else {
           console.log('⚠️ No permission to delete messages, keeping existing ones');
           // 権限がない場合は既存メッセージを削除せずに新しいメッセージを送信
@@ -237,23 +251,11 @@ Manage verification system and monitor performance.`)
 
     // 管理者向けメッセージ送信
     console.log('📤 Sending admin verification message...');
-    const adminMessage = await verificationChannel.send({
+    await verificationChannel.send({
       embeds: [adminEmbed],
       components: [adminActionRow]
     });
     console.log('✅ Admin verification message sent');
-
-    // Admin Panelメッセージも5分後に自動削除
-    setTimeout(async () => {
-      try {
-        console.log('🔄 Auto-deleting admin panel message...');
-        await adminMessage.delete();
-        console.log('✅ Auto-deleted admin panel message');
-      } catch (error) {
-        console.log('❌ Failed to auto-delete admin panel message:', error);
-        console.log('Message may have been deleted manually or expired');
-      }
-    }, 5 * 60 * 1000); // 5分 = 300秒
 
     console.log('✅ User and Admin verification messages posted successfully');
 
