@@ -6,26 +6,26 @@ compatibility_flags = ["nodejs_compat"]
 # 本番環境設定
 [env.production.vars]
 # Discord設定
-DISCORD_TOKEN = "YOUR_DISCORD_TOKEN_HERE"
-DISCORD_CLIENT_ID = "YOUR_DISCORD_CLIENT_ID_HERE"
-DISCORD_CLIENT_SECRET = "YOUR_DISCORD_CLIENT_SECRET_HERE"
-DISCORD_GUILD_ID = "YOUR_DISCORD_GUILD_ID_HERE"
-DISCORD_ROLE_ID = "YOUR_DISCORD_ROLE_ID_HERE"
-VERIFICATION_CHANNEL_ID = "YOUR_VERIFICATION_CHANNEL_ID_HERE"
-ADMIN_USER_ID = "YOUR_ADMIN_USER_ID_HERE"
+DISCORD_TOKEN = "MTQwMDQ4MzAwNzAwOTM5NDc0MA.GRpGF-.3Uk_t9hRlo8LT9PKRZOWAed4fjWRbFLHSJtrls"
+DISCORD_CLIENT_ID = "1400483007009394740"
+DISCORD_CLIENT_SECRET = "aZMmluLbnv7cFmGx3T0ziL2owrUlUXQ0"
+DISCORD_GUILD_ID = "1214855750917160960"
+DISCORD_ROLE_ID = "1400485848008491059"
+VERIFICATION_CHANNEL_ID = "1400491600634708090"
+ADMIN_USER_ID = "1060224603663896577"
 
 # Sui設定
 SUI_NETWORK = "mainnet"
 NFT_COLLECTION_ID = "0x2::coin::Coin<0x2::sui::SUI>"
 
 # API設定
-API_BASE_URL = "YOUR_API_BASE_URL_HERE"
-VERIFICATION_URL = "YOUR_VERIFICATION_URL_HERE"
+API_BASE_URL = "https://nft-verification.mona-syndicatextokyo.workers.dev"
+VERIFICATION_URL = "https://nft-verification.mona-syndicatextokyo.workers.dev"
 
 # KVストレージ設定
 [[env.production.kv_namespaces]]
-binding = "BES_ROLES"
-id = "YOUR_KV_NAMESPACE_ID_HERE"
+binding = "SXT_ROLES"
+id = "4be4a49e2bc84d569a91f1fd616cc2ab"
 
 # 開発環境設定
 [env.development.vars]
@@ -41,5 +41,5 @@ API_BASE_URL = "http://localhost:8787"
 VERIFICATION_URL = "http://localhost:8787"
 
 [[env.development.kv_namespaces]]
-binding = "BES_ROLES"
-id = "YOUR_DEV_KV_NAMESPACE_ID_HERE" 
+binding = "SXT_ROLES"
+preview_id = "eba2933b83034551b14bcf7c03f771d9" 

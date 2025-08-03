@@ -13,7 +13,7 @@ const mockEnv: Env = {
   API_BASE_URL: 'https://mock-api.com',
   VERIFICATION_URL: 'https://mock-verification.com',
   ADMIN_USER_ID: 'mock_admin_id',
-  BES_ROLES: {} as KVNamespace,
+  SXT_ROLES: {} as KVNamespace,
   NONCE_KV: {} as KVNamespace,
   ASSETS: {} as Fetcher,
 };

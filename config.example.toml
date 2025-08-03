@@ -30,7 +30,7 @@ ADMIN_USER_ID = "your_admin_user_id_here"
 
 # KVストレージ設定
 [[env.production.kv_namespaces]]
-binding = "BES_ROLES"
+binding = "SXT_ROLES"
 id = "your_kv_namespace_id_here"
 
 # 開発環境設定
@@ -45,5 +45,5 @@ VERIFICATION_URL = "http://localhost:8787"
 ADMIN_USER_ID = "DEV_ADMIN_USER_ID"
 
 [[env.development.kv_namespaces]]
-binding = "BES_ROLES"
+binding = "SXT_ROLES"
 id = "your_dev_kv_namespace_id_here" 

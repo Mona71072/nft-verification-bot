@@ -11,7 +11,7 @@ export interface Env {
   API_BASE_URL: string;
   VERIFICATION_URL: string;
   ADMIN_USER_ID: string;
-  BES_ROLES: KVNamespace;
+  SXT_ROLES: KVNamespace;
   [key: string]: any; // インデックスシグネチャを追加
 }
 

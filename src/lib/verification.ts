@@ -201,7 +201,7 @@ export class VerificationFlowManager {
   constructor(env: Env) {
     this.signatureVerifier = new SignatureVerifier(env.SUI_NETWORK);
     this.nftVerifier = new NFTVerifier(env.SUI_NETWORK);
-    this.nonceManager = new NonceManager(env.BES_ROLES);
+    this.nonceManager = new NonceManager(env.SXT_ROLES);
     this.env = env;
   }
 
