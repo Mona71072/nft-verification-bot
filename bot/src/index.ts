@@ -237,11 +237,23 @@ Manage verification system and monitor performance.`)
 
     // 管理者向けメッセージ送信
     console.log('📤 Sending admin verification message...');
-    await verificationChannel.send({
+    const adminMessage = await verificationChannel.send({
       embeds: [adminEmbed],
       components: [adminActionRow]
     });
     console.log('✅ Admin verification message sent');
+
+    // Admin Panelメッセージも5分後に自動削除
+    setTimeout(async () => {
+      try {
+        console.log('🔄 Auto-deleting admin panel message...');
+        await adminMessage.delete();
+        console.log('✅ Auto-deleted admin panel message');
+      } catch (error) {
+        console.log('❌ Failed to auto-delete admin panel message:', error);
+        console.log('Message may have been deleted manually or expired');
+      }
+    }, 5 * 60 * 1000); // 5分 = 300秒
 
     console.log('✅ User and Admin verification messages posted successfully');
 
