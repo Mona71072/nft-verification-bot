@@ -7,6 +7,24 @@ import crypto from 'node:crypto';
 
 const app = new Hono<{ Bindings: Env }>();
 
+// Node.js環境での環境変数取得
+const getEnv = (): Env => {
+  return {
+    DISCORD_TOKEN: process.env.DISCORD_TOKEN || '',
+    DISCORD_CLIENT_ID: process.env.DISCORD_CLIENT_ID || '',
+    DISCORD_CLIENT_SECRET: process.env.DISCORD_CLIENT_SECRET || '',
+    DISCORD_GUILD_ID: process.env.DISCORD_GUILD_ID || '',
+    DISCORD_ROLE_ID: process.env.DISCORD_ROLE_ID || '',
+    VERIFICATION_CHANNEL_ID: process.env.VERIFICATION_CHANNEL_ID || '',
+    ADMIN_USER_ID: process.env.ADMIN_USER_ID || '',
+    SUI_NETWORK: process.env.SUI_NETWORK || 'mainnet',
+    NFT_COLLECTION_ID: process.env.NFT_COLLECTION_ID || '',
+    API_BASE_URL: process.env.API_BASE_URL || '',
+    VERIFICATION_URL: process.env.VERIFICATION_URL || '',
+    SXT_ROLES: {} as any, // Node.js環境ではKVストレージは使用しない
+  };
+};
+
 // CORS設定
 app.use('*', cors({
   origin: ['https://discord.com', 'https://discordapp.com'],
@@ -42,11 +60,8 @@ app.get('/health', (c) => {
     
     console.log('🔑 Generating nonce for:', { discordId, address });
 
-    if (!c.env) {
-      throw new Error('Environment not available');
-    }
-
-    const verificationManager = new VerificationFlowManager(c.env);
+    const env = c.env || getEnv();
+    const verificationManager = new VerificationFlowManager(env);
     const nonce = await verificationManager.generateNonce(discordId, address);
 
     const response: APIResponse<{ nonce: string }> = {
@@ -89,11 +104,8 @@ app.get('/health', (c) => {
       discordId: request.discordId,
     });
 
-    if (!c.env) {
-      throw new Error('Environment not available');
-    }
-
-    const verificationManager = new VerificationFlowManager(c.env);
+    const env = c.env || getEnv();
+    const verificationManager = new VerificationFlowManager(env);
     const result = await verificationManager.verifyNFTOwnership(request);
 
     if (result.success) {
@@ -164,12 +176,9 @@ app.get('/', (c) => {
 // Discordチャンネル投稿エンドポイント
 app.post('/api/discord/post', async (c) => {
   try {
-    if (!c.env) {
-      throw new Error('Environment not available');
-    }
-
-    const channelId = c.env.VERIFICATION_CHANNEL_ID;
-    const botToken = c.env.DISCORD_TOKEN;
+    const env = c.env || getEnv();
+    const channelId = env.VERIFICATION_CHANNEL_ID;
+    const botToken = env.DISCORD_TOKEN;
 
     const embedMessage = {
       embeds: [{
@@ -266,9 +275,7 @@ app.post('/api/discord/post', async (c) => {
 // 認証ボタン用エンドポイント
 app.post('/api/discord/button', async (c) => {
   try {
-    if (!c.env) {
-      throw new Error('Environment not available');
-    }
+    const env = c.env || getEnv();
 
     const body = await c.req.json();
     const { discordId } = body;
@@ -329,9 +336,7 @@ function verifyDiscordSignature(body: string, signature: string, timestamp: stri
 // Discord Interaction Endpoint
 app.post('/api/discord/interactions', async (c) => {
   try {
-    if (!c.env) {
-      throw new Error('Environment not available');
-    }
+    const env = c.env || getEnv();
 
     // Discord Signature 検証
     const signature = c.req.header('x-signature-ed25519');
