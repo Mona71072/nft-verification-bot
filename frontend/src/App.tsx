@@ -3,7 +3,7 @@ import '@suiet/wallet-kit/style.css';
 import { useState, useEffect } from 'react';
 
 // APIベースURLの設定（本番環境用）
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://main.nft-verification-frontend.pages.dev';
 
 function NFTVerification() {
   const { account, connected, signMessage } = useWallet();

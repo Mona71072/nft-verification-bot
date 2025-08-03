@@ -16,7 +16,7 @@ const config = {
   DISCORD_GUILD_ID: process.env.DISCORD_GUILD_ID || 'test_guild_id',
   VERIFICATION_CHANNEL_ID: process.env.VERIFICATION_CHANNEL_ID || 'test_channel_id',
   SUI_NETWORK: process.env.SUI_NETWORK || 'mainnet',
-  VERIFICATION_URL: process.env.VERIFICATION_URL || 'https://nft-verification.mona-syndicatextokyo.workers.dev'
+  VERIFICATION_URL: process.env.VERIFICATION_URL || 'https://main.nft-verification-frontend.pages.dev'
 };
 
 async function postVerificationMessages() {

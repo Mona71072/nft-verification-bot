@@ -38,8 +38,8 @@ DISCORD_GUILD_ID=1214855750917160960
 DISCORD_ROLE_ID=1400485848008491059
 SUI_NETWORK=mainnet
 NFT_COLLECTION_ID=0x2::coin::Coin<0x2::sui::SUI>
-API_BASE_URL=https://nft-verification-production.mona-syndicatextokyo.workers.dev
-VERIFICATION_URL=https://nft-verification-production.mona-syndicatextokyo.workers.dev/verify.html
+API_BASE_URL=https://main.nft-verification-frontend.pages.dev
+VERIFICATION_URL=https://main.nft-verification-frontend.pages.dev
 ADMIN_USER_ID=1060224603663896577
 ```
 
