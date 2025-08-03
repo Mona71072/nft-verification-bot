@@ -201,7 +201,13 @@ export class VerificationFlowManager {
   constructor(env: Env) {
     this.signatureVerifier = new SignatureVerifier(env.SUI_NETWORK);
     this.nftVerifier = new NFTVerifier(env.SUI_NETWORK);
-    this.nonceManager = new NonceManager(env.SXT_ROLES);
+    // ローカル開発環境ではKVストレージをスキップ
+    if (env.SXT_ROLES && typeof env.SXT_ROLES.put === 'function') {
+      this.nonceManager = new NonceManager(env.SXT_ROLES);
+    } else {
+      console.log('⚠️ KV storage not available, using in-memory storage for development');
+      this.nonceManager = new NonceManager({} as any);
+    }
     this.env = env;
   }
 
