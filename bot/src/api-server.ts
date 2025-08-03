@@ -103,22 +103,6 @@ app.post('/notify', async (req, res) => {
   }
 });
 
-// 認証失敗時のDiscordチャンネル通知
-async function sendVerificationFailureMessage(discordId: string, verificationData: any) {
-  try {
-    console.log(`🔄 Sending verification failure message for Discord ID: ${discordId}`);
-    
-    // Discord.jsクライアントを使用してチャンネルにメッセージを送信
-    const result = await sendVerificationFailureMessage(discordId, verificationData);
-    console.log('📋 Failure data:', verificationData);
-    
-    return result;
-  } catch (error) {
-    console.error('❌ Error sending failure message:', error);
-    return false;
-  }
-}
-
 // Discord アクション処理エンドポイント（既存）
 app.post('/api/discord-action', async (req, res) => {
   try {
