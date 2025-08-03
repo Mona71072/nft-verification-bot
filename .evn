@@ -1,7 +1,0 @@
-DISCORD_TOKEN=your_actual_token \
-DISCORD_CLIENT_ID=your_client_id \
-DISCORD_GUILD_ID=your_guild_id \
-DISCORD_ROLE_ID=your_role_id \
-VERIFICATION_CHANNEL_ID=your_channel_id \
-ADMIN_USER_ID=your_admin_id \
-npm start
