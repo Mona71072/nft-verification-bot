@@ -9,7 +9,8 @@ import {
   ChannelType,
   TextChannel,
   ButtonInteraction,
-  GuildMember
+  GuildMember,
+  MessageFlags
 } from 'discord.js';
 import { config, validateConfig } from './config';
 import { startApiServer } from './api-server';
@@ -585,60 +586,9 @@ export async function grantRoleToUser(discordId: string): Promise<boolean> {
       console.log(`ℹ️ User ${discordId} (${member.user.username}) already has the role`);
     }
 
-    // チャンネルに成功通知を送信
+    // ユーザーにDM送信（成功通知）
     try {
-      const channel = await guild.channels.fetch(config.VERIFICATION_CHANNEL_ID) as TextChannel;
-      if (channel) {
-        const successEmbed = new EmbedBuilder()
-          .setTitle('🎉 NFT Verification Successful!')
-          .setDescription(`**NFT verification completed successfully for user <@${discordId}>**
-
-**Role Granted:** ${role.name}
-**Wallet Address:** \`${member.user.username}\`
-**Timestamp:** ${new Date().toLocaleString()}
-
-**Benefits:**
-• Access to exclusive channels
-• Special community recognition
-• Priority support and assistance
-• Early access to new features`)
-          .setColor(0x57F287)
-          .setFooter({ 
-            text: 'Sui NFT Verification • Professional System'
-          })
-          .setTimestamp();
-
-        console.log('📤 Sending success embed to Discord channel...');
-        
-        // メッセージを送信（自分以外には見られない）
-        const message = await channel.send({
-          content: `<@${discordId}>`, // ユーザーにメンション
-          embeds: [successEmbed]
-        });
-
-        console.log(`✅ Success message sent for Discord ID: ${discordId}`);
-
-        // 5分後にメッセージを自動削除
-        setTimeout(async () => {
-          try {
-            console.log(`🔄 Auto-deleting success message for Discord ID: ${discordId}...`);
-            await message.delete();
-            console.log(`✅ Auto-deleted success message for Discord ID: ${discordId}`);
-          } catch (error) {
-            console.log('❌ Failed to auto-delete message:', error);
-            console.log('Message may have been deleted manually or expired');
-          }
-        }, 5 * 60 * 1000); // 5分 = 300秒
-
-        console.log(`⏰ Auto-delete scheduled for Discord ID: ${discordId} in 5 minutes`);
-      }
-    } catch (channelError) {
-      console.log('Could not send channel message:', channelError);
-    }
-
-    // ユーザーにDM送信（ロール付与の有無に関係なく）
-    try {
-      const dmEmbed = new EmbedBuilder()
+      const successEmbed = new EmbedBuilder()
         .setTitle('🎉 NFT Verification Successful!')
         .setDescription(`**Congratulations! Your NFT verification has been completed successfully!**\\n\\n🌟 **What you've received:**\\n• **Exclusive Discord Role:** "${role.name}"\\n• **Premium Access:** Special channels and features\\n• **Community Status:** Verified NFT holder\\n• **Future Benefits:** Early access to upcoming features\\n\\n🎯 **Your Benefits:**\\n• Access to exclusive channels\\n• Special community recognition\\n• Priority support and assistance\\n• Early access to new features\\n\\n💎 **Security Confirmation:**\\n• Your NFT ownership has been verified on the blockchain\\n• All verification was done securely without accessing private keys\\n• Your wallet data remains completely private\\n\\n*Welcome to the exclusive NFT community! Enjoy your new privileges!*`)
         .setColor(0x57F287)
@@ -657,9 +607,28 @@ export async function grantRoleToUser(discordId: string): Promise<boolean> {
         })
         .setTimestamp();
 
-      await member.send({
-        embeds: [dmEmbed]
+      console.log('📤 Sending success embed to user DM...');
+      
+      // ユーザーにDMを送信（自分以外には見られない）
+      const message = await member.send({
+        embeds: [successEmbed]
       });
+
+      console.log(`✅ Success message sent for Discord ID: ${discordId}`);
+
+      // 5分後にメッセージを自動削除
+      setTimeout(async () => {
+        try {
+          console.log(`🔄 Auto-deleting success message for Discord ID: ${discordId}...`);
+          await message.delete();
+          console.log(`✅ Auto-deleted success message for Discord ID: ${discordId}`);
+        } catch (error) {
+          console.log('❌ Failed to auto-delete message:', error);
+          console.log('Message may have been deleted manually or expired');
+        }
+      }, 5 * 60 * 1000); // 5分 = 300秒
+
+      console.log(`⏰ Auto-delete scheduled for Discord ID: ${discordId} in 5 minutes`);
       console.log(`✅ DM sent to user ${member.user.username}`);
     } catch (dmError) {
       console.log('Could not send DM to user:', dmError);
@@ -686,13 +655,6 @@ export async function sendVerificationFailureMessage(discordId: string, verifica
     }
     console.log(`✅ Found guild: ${guild.name}`);
 
-    const channel = await guild.channels.fetch(config.VERIFICATION_CHANNEL_ID) as TextChannel;
-    if (!channel) {
-      console.error('❌ Verification channel not found');
-      return false;
-    }
-    console.log(`✅ Found channel: ${channel.name}`);
-
     // ユーザーを取得
     const user = await client.users.fetch(discordId);
     if (!user) {
@@ -718,11 +680,10 @@ export async function sendVerificationFailureMessage(discordId: string, verifica
       })
       .setTimestamp();
 
-    console.log('📤 Sending failure embed to Discord channel...');
+    console.log('📤 Sending failure embed to user DM...');
     
-    // メッセージを送信（自分以外には見られない）
-    const message = await channel.send({
-      content: `<@${discordId}>`, // ユーザーにメンション
+    // ユーザーにDMを送信（自分以外には見られない）
+    const message = await user.send({
       embeds: [failureEmbed]
     });
 
