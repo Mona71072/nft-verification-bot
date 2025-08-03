@@ -110,7 +110,7 @@ app.get('/health', (c) => {
 
     if (result.success) {
       // Discordロール付与
-      const discordAPI = createDiscordBotAPI(c.env.DISCORD_TOKEN, c.env.API_BASE_URL);
+      const discordAPI = createDiscordBotAPI(env.DISCORD_TOKEN, env.API_BASE_URL, env.DISCORD_GUILD_ID);
       const roleResult = await discordAPI.processRoleAssignment(
         request.discordId,
         request.address,
@@ -183,7 +183,7 @@ app.post('/api/discord/post', async (c) => {
     const embedMessage = {
       embeds: [{
         title: '🎯 SXT NFT Verification Portal',
-        description: '**Join the exclusive NFT community by verifying your Sui wallet ownership!**\n\n🌟 **What you\'ll get:**\n• **Exclusive Discord Role:** NFT Holder\n• **Premium Access:** Special channels and features\n• **Community Status:** Verified NFT holder\n• **Future Benefits:** Early access to upcoming features\n\n🎯 **How to verify:**\n1. **Click the verification button below**\n2. **Get your personalized verification URL**\n3. **Connect your Sui wallet** (Sui Wallet, Slush Wallet, etc.)\n4. **Enter your Discord ID**\n5. **Sign a verification message**\n6. **Get your exclusive role automatically!**\n\n💎 **Security Features:**\n• Blockchain-verified NFT ownership\n• Secure message signing (no private key access)\n• Instant role assignment\n• Professional verification process\n\n🔗 **Start Verification:**\nClick the button below to get your personalized verification link!',
+        description: '**Join the exclusive NFT community by verifying your Sui wallet ownership!**\n\n🌟 **What you\'ll get:**\n• **Exclusive Discord Role:** NFT Holder\n• **Premium Access:** Special channels and features\n• **Community Status:** Verified NFT holder\n• **Future Benefits:** Early access to upcoming features\n\n🎯 **How to verify:**\n1. **Click the verification button below**\n2. **Get your personalized verification URL**\n3. **Connect your Sui wallet** (Sui Wallet, Slush Wallet, etc.)\n4. **Complete the verification process**\n5. **Get your exclusive role automatically!**\n\n💎 **Security Features:**\n• Blockchain-verified NFT ownership\n• Secure message signing (no private key access)\n• Instant role assignment\n• Professional verification process\n\n🔗 **Start Verification:**\nClick the button below to get your personalized verification link!',
         color: 0x57F287,
         thumbnail: {
           url: 'https://i.imgur.com/8tBXd6L.png'
@@ -404,7 +404,7 @@ app.post('/api/discord/interactions', async (c) => {
         const response = {
           type: 4,
           data: {
-            content: `🎯 **Your personalized verification link has been generated!**\n\n🔗 **Verification URL:**\n${verificationUrl}\n\n📋 **Next Steps:**\n1. Click the link above\n2. Connect your Sui wallet\n3. Complete the verification process\n4. Get your exclusive role!\n\n💎 **Security:** Your Discord ID (${discordId}) is automatically linked to this verification.`,
+            content: `🎯 **Your personalized verification link has been generated!**\n\n🔗 **Verification URL:**\n${verificationUrl}\n\n📋 **Next Steps:**\n1. Click the link above\n2. Connect your Sui wallet (Sui Wallet, Slush Wallet, etc.)\n3. Complete the verification process\n4. Get your exclusive role automatically!\n\n💎 **Security:** Your Discord ID (${discordId}) is automatically linked to this verification.\n\n🌟 **Features:**\n• Blockchain-verified NFT ownership\n• Secure message signing\n• Instant role assignment`,
             flags: 64
           }
         };
