@@ -10,13 +10,13 @@ export const config = {
   NFT_COLLECTION_ID: process.env.NFT_COLLECTION_ID || 'test_collection_id',
   
   // API設定
-  API_BASE_URL: process.env.API_BASE_URL || 'https://nft-verification.mona-syndicatextokyo.workers.dev',
+  API_BASE_URL: process.env.API_BASE_URL || 'https://c840eaf3.nft-verification-frontend.pages.dev',
   PORT: process.env.PORT || 3000,
   
   // 認証チャンネル設定
   VERIFICATION_CHANNEL_ID: process.env.VERIFICATION_CHANNEL_ID || 'test_channel_id',
   VERIFICATION_CHANNEL_NAME: 'nft-verification',
-  VERIFICATION_URL: process.env.VERIFICATION_URL || 'https://nft-verification.mona-syndicatextokyo.workers.dev',
+  VERIFICATION_URL: process.env.VERIFICATION_URL || 'https://c840eaf3.nft-verification-frontend.pages.dev',
   
   // 管理者ユーザーID（ボット作成者）
   ADMIN_USER_ID: process.env.ADMIN_USER_ID || 'test_admin_id'
