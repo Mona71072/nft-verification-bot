@@ -126,10 +126,12 @@ export class NFTVerifier {
  * ナンス管理クラス
  */
 export class NonceManager {
-  private kv: KVNamespace;
+  private kv: KVNamespace | null;
+  private inMemoryStorage: Map<string, NonceData>;
 
-  constructor(kv: KVNamespace) {
-    this.kv = kv;
+  constructor(kv: KVNamespace | any) {
+    this.kv = kv && typeof kv.put === 'function' ? kv : null;
+    this.inMemoryStorage = new Map();
   }
 
   /**
@@ -151,9 +153,14 @@ export class NonceManager {
       expiresAt: Date.now() + 5 * 60 * 1000, // 5分で期限切れ
     };
 
-    await this.kv.put(`nonce:${nonce}`, JSON.stringify(nonceData), {
-      expirationTtl: 300, // 5分
-    });
+    if (this.kv) {
+      await this.kv.put(`nonce:${nonce}`, JSON.stringify(nonceData), {
+        expirationTtl: 300, // 5分
+      });
+    } else {
+      // ローカル開発用のインメモリストレージ
+      this.inMemoryStorage.set(`nonce:${nonce}`, nonceData);
+    }
 
     console.log('💾 Stored nonce:', { nonce, discordId, address });
   }
@@ -163,18 +170,32 @@ export class NonceManager {
    */
   async getNonceData(nonce: string): Promise<NonceData | null> {
     try {
-      const data = await this.kv.get(`nonce:${nonce}`);
-      if (!data) return null;
+      if (this.kv) {
+        const data = await this.kv.get(`nonce:${nonce}`);
+        if (!data) return null;
 
-      const nonceData: NonceData = JSON.parse(data);
-      
-      // 期限切れチェック
-      if (Date.now() > nonceData.expiresAt) {
-        await this.kv.delete(`nonce:${nonce}`);
-        return null;
+        const nonceData: NonceData = JSON.parse(data);
+        
+        // 期限切れチェック
+        if (Date.now() > nonceData.expiresAt) {
+          await this.kv.delete(`nonce:${nonce}`);
+          return null;
+        }
+
+        return nonceData;
+      } else {
+        // ローカル開発用のインメモリストレージ
+        const nonceData = this.inMemoryStorage.get(`nonce:${nonce}`);
+        if (!nonceData) return null;
+
+        // 期限切れチェック
+        if (Date.now() > nonceData.expiresAt) {
+          this.inMemoryStorage.delete(`nonce:${nonce}`);
+          return null;
+        }
+
+        return nonceData;
       }
-
-      return nonceData;
     } catch (error) {
       console.error('❌ Error getting nonce data:', error);
       return null;
@@ -185,7 +206,11 @@ export class NonceManager {
    * ナンスを削除する
    */
   async deleteNonce(nonce: string): Promise<void> {
-    await this.kv.delete(`nonce:${nonce}`);
+    if (this.kv) {
+      await this.kv.delete(`nonce:${nonce}`);
+    } else {
+      this.inMemoryStorage.delete(`nonce:${nonce}`);
+    }
     console.log('🗑️ Deleted nonce:', nonce);
   }
 }
