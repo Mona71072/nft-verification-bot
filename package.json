@@ -8,7 +8,8 @@
     "deploy": "wrangler deploy --env production",
     "gateway": "tsx src/gateway-bot.ts",
     "build": "tsc",
-    "test": "jest"
+    "test": "jest",
+    "start": "node dist/index.js"
   },
   "dependencies": {
     "@cloudflare/workers-types": "^4.20231218.0",
