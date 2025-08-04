@@ -60,7 +60,13 @@ app.post('/notify', async (req, res) => {
     switch (action) {
       case 'grant_role':
         console.log('🎯 Attempting to grant role...');
-        result = await grantRoleToUser(discordId);
+        // 複数コレクション対応: collectionIdとroleNameを取得
+        const collectionId = verificationData?.collectionId;
+        const roleName = verificationData?.roleName;
+        console.log(`📋 Collection ID: ${collectionId || 'default'}`);
+        console.log(`📋 Role Name: ${roleName || 'NFT Holder'}`);
+        
+        result = await grantRoleToUser(discordId, collectionId, roleName);
         message = result ? 'Role granted successfully' : 'Failed to grant role';
         console.log(`✅ Role grant result: ${result}`);
         break;

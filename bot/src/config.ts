@@ -19,7 +19,10 @@ export const config = {
   VERIFICATION_URL: process.env.VERIFICATION_URL || 'https://main.nft-verification-frontend.pages.dev',
   
   // 管理者ユーザーID（ボット作成者）
-  ADMIN_USER_ID: process.env.ADMIN_USER_ID || 'test_admin_id'
+  ADMIN_USER_ID: process.env.ADMIN_USER_ID || 'test_admin_id',
+  
+  // 複数コレクション対応設定
+  CLOUDFLARE_WORKERS_API_URL: process.env.CLOUDFLARE_WORKERS_API_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev'
 };
 
 // 設定のバリデーション

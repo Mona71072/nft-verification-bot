@@ -247,8 +247,14 @@ Manage verification system and monitor performance.`)
       .setStyle(ButtonStyle.Secondary)
       .setEmoji('🟢');
 
+    const collectionsButton = new ButtonBuilder()
+      .setCustomId('admin_collections')
+      .setLabel('Collections')
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji('🎨');
+
     const adminActionRow = new ActionRowBuilder<ButtonBuilder>()
-      .addComponents(statsButton, refreshButton, statusButton);
+      .addComponents(statsButton, refreshButton, statusButton, collectionsButton);
 
     // 管理者向けメッセージ送信
     console.log('📤 Sending admin verification message...');
@@ -323,6 +329,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
     } else if (customId === 'admin_logs') {
       console.log(`✅ Processing admin_logs for user ${user.username} (isAdmin: ${isAdmin})`);
       await handleAdminLogs(interaction, isAdmin);
+    } else if (customId === 'admin_collections') {
+      console.log(`✅ Processing admin_collections for user ${user.username} (isAdmin: ${isAdmin})`);
+      await handleAdminCollections(interaction, isAdmin);
     } else {
       console.log(`❌ Unknown button interaction: ${customId}`);
       if (!interaction.replied && !interaction.deferred) {
@@ -549,9 +558,11 @@ async function handleSupportVerification(interaction: ButtonInteraction) {
 
 
 // ロール付与関数（APIから呼び出される）
-export async function grantRoleToUser(discordId: string): Promise<boolean> {
+export async function grantRoleToUser(discordId: string, collectionId?: string, roleName?: string): Promise<boolean> {
   try {
     console.log(`🔄 Attempting to grant role to Discord ID: ${discordId}`);
+    console.log(`📋 Collection ID: ${collectionId || 'default'}`);
+    console.log(`📋 Role Name: ${roleName || 'NFT Holder'}`);
     console.log(`📋 Config: Guild ID: ${config.DISCORD_GUILD_ID}, Role ID: ${config.DISCORD_ROLE_ID}`);
     
     const guild = await client.guilds.fetch(config.DISCORD_GUILD_ID);
@@ -568,7 +579,26 @@ export async function grantRoleToUser(discordId: string): Promise<boolean> {
     }
     console.log(`✅ Found member: ${member.user.username} (${member.id})`);
 
-    const role = await guild.roles.fetch(config.DISCORD_ROLE_ID);
+    // コレクションIDが指定されている場合、そのコレクションのロールIDを取得
+    let roleId = config.DISCORD_ROLE_ID; // デフォルトロール
+    
+    if (collectionId) {
+      try {
+        console.log(`🔄 Fetching role ID for collection: ${collectionId}`);
+        const collectionRoleId = await getRoleIdForCollection(collectionId);
+        if (collectionRoleId) {
+          roleId = collectionRoleId;
+          console.log(`✅ Found role ID for collection: ${roleId}`);
+        } else {
+          console.log(`⚠️ No role ID found for collection ${collectionId}, using default`);
+        }
+      } catch (error) {
+        console.error('❌ Error fetching collection role ID:', error);
+        console.log('⚠️ Using default role ID');
+      }
+    }
+
+    const role = await guild.roles.fetch(roleId);
     if (!role) {
       console.error('❌ Role not found');
       return false;
@@ -576,14 +606,14 @@ export async function grantRoleToUser(discordId: string): Promise<boolean> {
     console.log(`✅ Found role: ${role.name} (${role.id})`);
 
     // 既にロールを持っているかチェック
-    const hasRole = member.roles.cache.has(config.DISCORD_ROLE_ID);
+    const hasRole = member.roles.cache.has(roleId);
     
     if (!hasRole) {
       console.log(`🔄 Adding role ${role.name} to user ${member.user.username}...`);
       await member.roles.add(role);
       console.log(`✅ Role granted to user ${discordId} (${member.user.username})`);
     } else {
-      console.log(`ℹ️ User ${discordId} (${member.user.username}) already has the role`);
+      console.log(`ℹ️ User ${discordId} (${member.user.username}) already has the role ${role.name}`);
     }
 
     // ユーザーにDM送信（成功通知）
@@ -640,6 +670,32 @@ export async function grantRoleToUser(discordId: string): Promise<boolean> {
     console.error('❌ Error details:', (error as Error).message);
     return false;
   }
+}
+
+// コレクション別ロールID取得関数
+async function getRoleIdForCollection(collectionId: string): Promise<string | null> {
+  try {
+    console.log(`🔄 Fetching collection config for ID: ${collectionId}`);
+    
+    // Cloudflare Workers APIからコレクション設定を取得
+    const response = await fetch(`${config.CLOUDFLARE_WORKERS_API_URL}/api/collections`);
+    const data = await response.json() as any;
+    
+    if (data.success && data.data) {
+      const collection = data.data.find((c: any) => c.id === collectionId);
+      if (collection && collection.isActive) {
+        console.log(`✅ Found active collection: ${collection.name} with role ID: ${collection.roleId}`);
+        return collection.roleId;
+      } else {
+        console.log(`⚠️ Collection ${collectionId} not found or inactive`);
+      }
+    } else {
+      console.log('❌ Failed to fetch collections from API');
+    }
+  } catch (error) {
+    console.error('❌ Error fetching collection config:', error);
+  }
+  return null;
 }
 
 // 認証失敗時のDiscordチャンネル通知
@@ -863,6 +919,70 @@ async function handleAdminLogs(interaction: ButtonInteraction, isAdmin: boolean)
     }
   } catch (error) {
     console.error('Error in handleAdminLogs:', error);
+    throw error;
+  }
+}
+
+// コレクション管理ボタン処理
+async function handleAdminCollections(interaction: ButtonInteraction, isAdmin: boolean) {
+  try {
+    if (!isAdmin) {
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({
+          content: '❌ Administrator privileges required.',
+          ephemeral: true
+        });
+      }
+      return;
+    }
+
+    const collectionsEmbed = new EmbedBuilder()
+      .setTitle('🎨 Collections Management')
+      .setDescription(`**Manage your NFT collections and their associated roles.**
+
+\`\`\`
+Collection ID: ${config.NFT_COLLECTION_ID || 'Not set'}
+Role ID: ${config.DISCORD_ROLE_ID || 'Not set'}
+\`\`\`
+
+**Current Collections:**
+${config.NFT_COLLECTION_ID ? `• \`${config.NFT_COLLECTION_ID}\` (Active)` : '• No collections configured.'}
+
+**Add New Collection:**
+1. Create a new channel in Discord.
+2. Set its ID in \`VERIFICATION_CHANNEL_ID\` in \`config.ts\`.
+3. Set its \`collectionId\` in \`NFT_COLLECTION_ID\` in \`config.ts\`.
+4. Set its \`roleId\` in \`DISCORD_ROLE_ID\` in \`config.ts\`.
+
+**Note:**
+• \`VERIFICATION_CHANNEL_ID\` must be a text channel.
+• \`NFT_COLLECTION_ID\` must be a valid Sui Network collection ID.
+• \`DISCORD_ROLE_ID\` must be a role that exists in your Discord server.
+• The \`roleId\` in \`config.ts\` must match the role ID in your Discord server.`)
+      .setColor(0x57F287)
+      .setFooter({ 
+        text: 'Collections Management'
+      })
+      .setTimestamp();
+
+    const backButton = new ButtonBuilder()
+      .setCustomId('admin_back_to_status')
+      .setLabel('Back to Status')
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji('⬅️');
+
+    const actionRow = new ActionRowBuilder<ButtonBuilder>()
+      .addComponents(backButton);
+
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({
+        embeds: [collectionsEmbed],
+        components: [actionRow],
+        ephemeral: true
+      });
+    }
+  } catch (error) {
+    console.error('Error in handleAdminCollections:', error);
     throw error;
   }
 }

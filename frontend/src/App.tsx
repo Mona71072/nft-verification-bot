@@ -2,6 +2,18 @@ import { ConnectButton, useWallet } from '@suiet/wallet-kit';
 import '@suiet/wallet-kit/style.css';
 import { useState, useEffect } from 'react';
 
+// NFTコレクション型定義
+interface NFTCollection {
+  id: string;
+  name: string;
+  packageId: string;
+  roleId: string;
+  roleName: string;
+  description: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
 // APIベースURLの設定（本番環境用）
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
 
@@ -13,6 +25,10 @@ function NFTVerification() {
     success: boolean;
     message: string;
   } | null>(null);
+  
+  // コレクション選択機能を追加
+  const [collections, setCollections] = useState<NFTCollection[]>([]);
+  const [selectedCollection, setSelectedCollection] = useState<string>('');
 
   // URLパラメータからDiscord IDを自動取得
   useEffect(() => {
@@ -22,6 +38,32 @@ function NFTVerification() {
       setDiscordId(discordIdFromUrl);
       console.log('Discord ID from URL:', discordIdFromUrl);
     }
+  }, []);
+
+  // コレクション取得
+  useEffect(() => {
+    const fetchCollections = async () => {
+      try {
+        console.log('🔄 Fetching collections from API...');
+        const response = await fetch(`${API_BASE_URL}/api/collections`);
+        const data = await response.json();
+        if (data.success) {
+          setCollections(data.data);
+          // デフォルトコレクションを設定
+          if (data.data.length > 0) {
+            setSelectedCollection(data.data[0].id);
+          }
+          console.log(`✅ Loaded ${data.data.length} collections`);
+        } else {
+          console.log('⚠️ No collections found, using default');
+        }
+      } catch (error) {
+        console.error('❌ Failed to fetch collections:', error);
+        console.log('⚠️ Using default collection configuration');
+      }
+    };
+    
+    fetchCollections();
   }, []);
 
   // URLパラメータからDiscord IDが取得されたかどうかを判定
@@ -101,7 +143,8 @@ function NFTVerification() {
         discordId: discordId.trim(),
         nonce: nonce,
         authMessage: authMessage,
-        walletType: 'Generic'
+        walletType: 'Generic',
+        collectionId: selectedCollection // 選択されたコレクションIDを追加
       };
 
       console.log('Sending verification request:', requestBody);
@@ -263,6 +306,72 @@ function NFTVerification() {
             readOnly={isDiscordIdFromUrl()}
           />
         </div>
+
+        {/* Step 2.5: Collection Selection */}
+        {collections.length > 0 && (
+          <div style={{ marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem' }}>
+              <div style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
+                background: '#e5e7eb',
+                color: '#6b7280',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '0.875rem',
+                fontWeight: '600',
+                marginRight: '0.75rem'
+              }}>
+                2.5
+              </div>
+              <div>
+                <h3 style={{ fontWeight: '600', color: '#1a1a1a' }}>NFTコレクション選択</h3>
+                <p style={{ fontSize: '0.875rem', color: '#666' }}>
+                  認証したいNFTコレクションを選択してください
+                </p>
+              </div>
+            </div>
+            <select
+              value={selectedCollection}
+              onChange={(e) => setSelectedCollection(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '0.75rem',
+                border: '2px solid #e5e7eb',
+                borderRadius: '8px',
+                fontSize: '1rem',
+                outline: 'none',
+                opacity: connected ? 1 : 0.5,
+                pointerEvents: connected ? 'auto' : 'none',
+                backgroundColor: 'white',
+                color: '#1a1a1a',
+                cursor: connected ? 'pointer' : 'not-allowed'
+              }}
+              disabled={!connected}
+            >
+              {collections.map(collection => (
+                <option key={collection.id} value={collection.id}>
+                  {collection.name} - {collection.roleName}
+                </option>
+              ))}
+            </select>
+            {selectedCollection && (
+              <div style={{
+                marginTop: '0.5rem',
+                padding: '0.5rem',
+                background: '#f9fafb',
+                borderRadius: '4px',
+                fontSize: '0.75rem',
+                color: '#666'
+              }}>
+                選択中: {collections.find(c => c.id === selectedCollection)?.name} 
+                ({collections.find(c => c.id === selectedCollection)?.roleName})
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Step 3: Verification */}
         <div style={{ marginBottom: '1.5rem' }}>

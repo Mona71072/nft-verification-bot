@@ -1,8 +1,21 @@
 import { Hono } from 'hono';
 
+// NFTコレクション型定義
+interface NFTCollection {
+  id: string;
+  name: string;
+  packageId: string;
+  roleId: string;
+  roleName: string;
+  description: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
 // Cloudflare KV型定義
 interface Env {
-  NONCE_STORE: KVNamespace;
+  NONCE_STORE: any; // KVNamespace
+  COLLECTION_STORE: any; // KVNamespace
   NFT_COLLECTION_ID: string;
   DISCORD_BOT_API_URL: string;
 }
@@ -273,11 +286,173 @@ async function notifyDiscordBot(c: any, discordId: string, action: string, verif
   }
 }
 
+// コレクション取得API
+app.get('/api/collections', async (c) => {
+  try {
+    console.log('=== COLLECTIONS API CALLED ===');
+    
+    const collectionsData = await c.env.COLLECTION_STORE.get('collections');
+    const collections = collectionsData ? JSON.parse(collectionsData) : [];
+    
+    console.log(`Found ${collections.length} collections`);
+    
+    return c.json({
+      success: true,
+      data: collections
+    });
+  } catch (error) {
+    console.error('Collections fetch error:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to fetch collections'
+    }, 500);
+  }
+});
+
+// コレクション追加API（管理者用）
+app.post('/api/collections', async (c) => {
+  try {
+    console.log('=== ADD COLLECTION API CALLED ===');
+    
+    const body = await c.req.json();
+    const { name, packageId, roleId, roleName, description } = body;
+    
+    console.log('Request body:', body);
+    
+    // バリデーション
+    if (!name || !packageId || !roleId || !roleName) {
+      console.log('Missing required fields:', { name, packageId, roleId, roleName });
+      return c.json({
+        success: false,
+        error: 'Missing required fields: name, packageId, roleId, roleName'
+      }, 400);
+    }
+    
+    const newCollection: NFTCollection = {
+      id: Date.now().toString(),
+      name,
+      packageId,
+      roleId,
+      roleName,
+      description: description || '',
+      isActive: true,
+      createdAt: new Date().toISOString()
+    };
+    
+    // 既存コレクションを取得
+    const existingData = await c.env.COLLECTION_STORE.get('collections');
+    const collections = existingData ? JSON.parse(existingData) : [];
+    
+    // 新しいコレクションを追加
+    collections.push(newCollection);
+    
+    // KVに保存
+    await c.env.COLLECTION_STORE.put('collections', JSON.stringify(collections));
+    
+    console.log(`✅ Added new collection: ${name} (ID: ${newCollection.id})`);
+    
+    return c.json({
+      success: true,
+      data: newCollection
+    });
+  } catch (error) {
+    console.error('Add collection error:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to add collection'
+    }, 500);
+  }
+});
+
+// コレクション更新API
+app.put('/api/collections/:id', async (c) => {
+  try {
+    const collectionId = c.req.param('id');
+    const body = await c.req.json();
+    
+    console.log(`=== UPDATE COLLECTION API CALLED ===`);
+    console.log(`Collection ID: ${collectionId}`);
+    console.log('Request body:', body);
+    
+    const existingData = await c.env.COLLECTION_STORE.get('collections');
+    const collections = existingData ? JSON.parse(existingData) : [];
+    
+    const collectionIndex = collections.findIndex((c: NFTCollection) => c.id === collectionId);
+    if (collectionIndex === -1) {
+      return c.json({
+        success: false,
+        error: 'Collection not found'
+      }, 404);
+    }
+    
+    // コレクションを更新
+    collections[collectionIndex] = {
+      ...collections[collectionIndex],
+      ...body,
+      updatedAt: new Date().toISOString()
+    };
+    
+    await c.env.COLLECTION_STORE.put('collections', JSON.stringify(collections));
+    
+    console.log(`✅ Updated collection: ${collections[collectionIndex].name}`);
+    
+    return c.json({
+      success: true,
+      data: collections[collectionIndex]
+    });
+  } catch (error) {
+    console.error('Update collection error:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to update collection'
+    }, 500);
+  }
+});
+
+// コレクション削除API
+app.delete('/api/collections/:id', async (c) => {
+  try {
+    const collectionId = c.req.param('id');
+    
+    console.log(`=== DELETE COLLECTION API CALLED ===`);
+    console.log(`Collection ID: ${collectionId}`);
+    
+    const existingData = await c.env.COLLECTION_STORE.get('collections');
+    const collections = existingData ? JSON.parse(existingData) : [];
+    
+    const collectionIndex = collections.findIndex((c: NFTCollection) => c.id === collectionId);
+    if (collectionIndex === -1) {
+      return c.json({
+        success: false,
+        error: 'Collection not found'
+      }, 404);
+    }
+    
+    const deletedCollection = collections[collectionIndex];
+    collections.splice(collectionIndex, 1);
+    
+    await c.env.COLLECTION_STORE.put('collections', JSON.stringify(collections));
+    
+    console.log(`✅ Deleted collection: ${deletedCollection.name}`);
+    
+    return c.json({
+      success: true,
+      data: deletedCollection
+    });
+  } catch (error) {
+    console.error('Delete collection error:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to delete collection'
+    }, 500);
+  }
+});
+
 // 認証エンドポイント
 app.post('/api/verify', async (c) => {
   try {
     const body = await c.req.json();
-    const { signature, address, discordId, nonce, message } = body;
+    const { signature, address, discordId, nonce, message, collectionId } = body;
 
     // 必須パラメータチェック
     if (!signature || !address || !discordId || !nonce) {
@@ -288,6 +463,7 @@ app.post('/api/verify', async (c) => {
     }
 
     console.log(`Verification request for ${address} (Discord: ${discordId})`);
+    console.log(`Collection ID: ${collectionId || 'default'}`);
 
     // ナンス検証
     const storedNonceDataStr = await c.env.NONCE_STORE.get(nonce);
@@ -325,13 +501,38 @@ app.post('/api/verify', async (c) => {
       }, 400);
     }
 
+    // コレクションIDが指定されている場合、そのコレクションの設定を取得
+    let targetPackageId = c.env.NFT_COLLECTION_ID; // デフォルト
+    let roleName = 'NFT Holder'; // デフォルト
+    
+    if (collectionId) {
+      try {
+        const collectionsData = await c.env.COLLECTION_STORE.get('collections');
+        const collections = collectionsData ? JSON.parse(collectionsData) : [];
+        const targetCollection = collections.find((c: NFTCollection) => c.id === collectionId);
+        
+        if (targetCollection && targetCollection.isActive) {
+          targetPackageId = targetCollection.packageId;
+          roleName = targetCollection.roleName;
+          console.log(`✅ Using collection: ${targetCollection.name} (${targetCollection.packageId})`);
+        } else {
+          console.log(`⚠️ Collection ${collectionId} not found or inactive, using default`);
+        }
+      } catch (error) {
+        console.error('Error fetching collection config:', error);
+        console.log('⚠️ Using default collection configuration');
+      }
+    }
+
     // NFT保有確認
-    const hasNft = await hasTargetNft(address, c.env.NFT_COLLECTION_ID);
+    const hasNft = await hasTargetNft(address, targetPackageId);
     
     // 認証結果の通知データ
     const notificationData = {
       address: address,
       discordId: discordId,
+      collectionId: collectionId,
+      roleName: roleName,
       timestamp: new Date().toISOString()
     };
     
@@ -357,12 +558,12 @@ app.post('/api/verify', async (c) => {
     // 使用済みナンスを削除
     await c.env.NONCE_STORE.delete(nonce);
 
-    console.log(`✅ Verification successful for ${address} (Discord: ${discordId})`);
+    console.log(`✅ Verification successful for ${address} (Discord: ${discordId}) with role: ${roleName}`);
 
     return c.json({
       success: true,
       data: {
-        roleName: 'NFT Holder',
+        roleName: roleName,
         message: 'Verification completed successfully'
       }
     });
