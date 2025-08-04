@@ -20,6 +20,29 @@ const useWalletWithErrorHandling = () => {
   }
 };
 
+// ウォレット初期化エラーの抑制
+useEffect(() => {
+  const suppressWalletErrors = () => {
+    // inpage-script.jsのエラーを抑制
+    const originalError = window.onerror;
+    window.onerror = function(message, source, lineno, colno, error) {
+      if (source?.includes('inpage-script.js') || 
+          message?.toString().includes('register') ||
+          message?.toString().includes('wallet') ||
+          message?.toString().includes('Cannot destructure')) {
+        console.log('Wallet error suppressed:', message);
+        return true; // エラーを抑制
+      }
+      if (originalError) {
+        return originalError(message, source, lineno, colno, error);
+      }
+      return false;
+    };
+  };
+
+  suppressWalletErrors();
+}, []);
+
 // NFTコレクション型定義
 interface NFTCollection {
   id: string;
@@ -284,6 +307,21 @@ function NFTVerification() {
           </div>
           {(() => {
             try {
+              // ウォレット初期化エラーを抑制
+              const originalConsoleError = console.error;
+              console.error = (...args) => {
+                const message = args.join(' ');
+                if (message.includes('inpage-script.js') || 
+                    message.includes('register') || 
+                    message.includes('wallet') ||
+                    message.includes('@suiet') ||
+                    message.includes('Cannot destructure')) {
+                  console.log('ConnectButton error suppressed:', message);
+                  return;
+                }
+                originalConsoleError.apply(console, args);
+              };
+
               return <ConnectButton />;
             } catch (error) {
               console.error('ConnectButton error:', error);
@@ -792,6 +830,21 @@ function AdminPage() {
         <p style={{ color: 'white', marginBottom: '2rem' }}>ウォレットを接続してください</p>
         {(() => {
           try {
+            // ウォレット初期化エラーを抑制
+            const originalConsoleError = console.error;
+            console.error = (...args) => {
+              const message = args.join(' ');
+              if (message.includes('inpage-script.js') || 
+                  message.includes('register') || 
+                  message.includes('wallet') ||
+                  message.includes('@suiet') ||
+                  message.includes('Cannot destructure')) {
+                console.log('Admin ConnectButton error suppressed:', message);
+                return;
+              }
+              originalConsoleError.apply(console, args);
+            };
+
             return <ConnectButton />;
           } catch (error) {
             console.error('ConnectButton error:', error);
