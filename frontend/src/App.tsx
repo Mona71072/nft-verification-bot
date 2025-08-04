@@ -29,7 +29,8 @@ function NFTVerification() {
   
   // コレクション選択機能を追加
   const [collections, setCollections] = useState<NFTCollection[]>([]);
-  const [selectedCollection, setSelectedCollection] = useState<string>('');
+  const [selectedCollections, setSelectedCollections] = useState<string[]>([]);
+  const [checkAllCollections, setCheckAllCollections] = useState<boolean>(true);
 
   // URLパラメータからDiscord IDを自動取得
   useEffect(() => {
@@ -50,10 +51,8 @@ function NFTVerification() {
         const data = await response.json();
         if (data.success) {
           setCollections(data.data);
-          // デフォルトコレクションを設定
-          if (data.data.length > 0) {
-            setSelectedCollection(data.data[0].id);
-          }
+          // デフォルトですべてのコレクションを選択
+          setSelectedCollections(data.data.map((col: NFTCollection) => col.id));
           console.log(`✅ Loaded ${data.data.length} collections`);
         } else {
           console.log('⚠️ No collections found, using default');
@@ -66,6 +65,31 @@ function NFTVerification() {
     
     fetchCollections();
   }, []);
+
+  // すべてのコレクション選択/解除
+  const handleCheckAllCollections = (checked: boolean) => {
+    setCheckAllCollections(checked);
+    if (checked) {
+      setSelectedCollections(collections.map(col => col.id));
+    } else {
+      setSelectedCollections([]);
+    }
+  };
+
+  // 個別コレクション選択/解除
+  const handleCollectionToggle = (collectionId: string) => {
+    setSelectedCollections(prev => {
+      if (prev.includes(collectionId)) {
+        const newSelection = prev.filter(id => id !== collectionId);
+        setCheckAllCollections(newSelection.length === collections.length);
+        return newSelection;
+      } else {
+        const newSelection = [...prev, collectionId];
+        setCheckAllCollections(newSelection.length === collections.length);
+        return newSelection;
+      }
+    });
+  };
 
   // URLパラメータからDiscord IDが取得されたかどうかを判定
   const isDiscordIdFromUrl = () => {
@@ -145,7 +169,7 @@ function NFTVerification() {
         nonce: nonce,
         authMessage: authMessage,
         walletType: 'Generic',
-        collectionId: selectedCollection // 選択されたコレクションIDを追加
+        collectionIds: selectedCollections // 選択されたコレクションIDを追加
       };
 
       console.log('Sending verification request:', requestBody);
@@ -334,31 +358,31 @@ function NFTVerification() {
                 </p>
               </div>
             </div>
-            <select
-              value={selectedCollection}
-              onChange={(e) => setSelectedCollection(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '0.75rem',
-                border: '2px solid #e5e7eb',
-                borderRadius: '8px',
-                fontSize: '1rem',
-                outline: 'none',
-                opacity: connected ? 1 : 0.5,
-                pointerEvents: connected ? 'auto' : 'none',
-                backgroundColor: 'white',
-                color: '#1a1a1a',
-                cursor: connected ? 'pointer' : 'not-allowed'
-              }}
-              disabled={!connected}
-            >
-              {collections.map(collection => (
-                <option key={collection.id} value={collection.id}>
+            <div style={{ marginBottom: '0.5rem' }}>
+              <label style={{ fontSize: '0.875rem', color: '#666', marginRight: '0.5rem' }}>
+                すべて選択
+              </label>
+              <input
+                type="checkbox"
+                checked={checkAllCollections}
+                onChange={(e) => handleCheckAllCollections(e.target.checked)}
+                style={{ marginRight: '0.5rem' }}
+              />
+            </div>
+            {collections.map(collection => (
+              <div key={collection.id} style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <input
+                  type="checkbox"
+                  checked={selectedCollections.includes(collection.id)}
+                  onChange={() => handleCollectionToggle(collection.id)}
+                  style={{ marginRight: '0.5rem' }}
+                />
+                <label style={{ fontSize: '0.875rem', color: '#1a1a1a' }}>
                   {collection.name} - {collection.roleName}
-                </option>
-              ))}
-            </select>
-            {selectedCollection && (
+                </label>
+              </div>
+            ))}
+            {selectedCollections.length > 0 && (
               <div style={{
                 marginTop: '0.5rem',
                 padding: '0.5rem',
@@ -367,8 +391,7 @@ function NFTVerification() {
                 fontSize: '0.75rem',
                 color: '#666'
               }}>
-                選択中: {collections.find(c => c.id === selectedCollection)?.name} 
-                ({collections.find(c => c.id === selectedCollection)?.roleName})
+                選択中: {selectedCollections.map(id => collections.find(c => c.id === id)?.name).join(', ')}
               </div>
             )}
           </div>

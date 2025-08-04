@@ -295,6 +295,63 @@ export async function grantRoleToUser(discordId: string): Promise<boolean> {
   }
 }
 
+// 複数ロール付与関数（APIから呼び出される）
+export async function grantMultipleRolesToUser(discordId: string, roles: Array<{roleId: string, roleName: string}>): Promise<boolean> {
+  try {
+    const guild = await client.guilds.fetch(config.DISCORD_GUILD_ID);
+    const member = await guild.members.fetch(discordId);
+    
+    const grantedRoles = [];
+    const failedRoles = [];
+
+    for (const roleData of roles) {
+      try {
+        const role = await guild.roles.fetch(roleData.roleId);
+        if (role) {
+          await member.roles.add(role);
+          grantedRoles.push(roleData.roleName);
+          console.log(`✅ Role "${roleData.roleName}" granted to user ${discordId}`);
+        } else {
+          failedRoles.push(roleData.roleName);
+          console.error(`❌ Role not found: ${roleData.roleId}`);
+        }
+      } catch (error) {
+        failedRoles.push(roleData.roleName);
+        console.error(`❌ Error granting role "${roleData.roleName}":`, error);
+      }
+    }
+
+    // ユーザーにDM送信
+    try {
+      const embed = new EmbedBuilder()
+        .setTitle('🎉 認証完了！')
+        .setColor(0x57F287)
+        .setTimestamp();
+
+      if (grantedRoles.length > 0) {
+        embed.setDescription(`**NFT認証が完了しました！**\\n\\n以下のロールが付与されました:\\n\\n${grantedRoles.map(name => `• ${name}`).join('\\n')}\\n\\nサーバーでロールが表示されるまで少し時間がかかる場合があります。`);
+      }
+
+      if (failedRoles.length > 0) {
+        embed.addFields({
+          name: '⚠️ 付与できなかったロール',
+          value: failedRoles.map(name => `• ${name}`).join('\\n'),
+          inline: false
+        });
+      }
+
+      await member.send({ embeds: [embed] });
+    } catch (dmError) {
+      console.log('Could not send DM to user:', dmError);
+    }
+
+    return grantedRoles.length > 0; // 少なくとも1つのロールが付与されていれば成功
+  } catch (error) {
+    console.error('Error granting multiple roles:', error);
+    return false;
+  }
+}
+
 // 管理者統計情報（ミニマル版）
 async function handleAdminStats(interaction: ButtonInteraction, isAdmin: boolean) {
   try {

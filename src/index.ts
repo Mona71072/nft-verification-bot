@@ -535,7 +535,7 @@ app.get('/api/discord/roles', async (c) => {
 app.post('/api/verify', async (c) => {
   try {
     const body = await c.req.json();
-    const { signature, address, discordId, nonce, message, collectionId } = body;
+    const { signature, address, discordId, nonce, message, collectionIds } = body;
 
     // 必須パラメータチェック
     if (!signature || !address || !discordId || !nonce) {
@@ -546,7 +546,7 @@ app.post('/api/verify', async (c) => {
     }
 
     console.log(`Verification request for ${address} (Discord: ${discordId})`);
-    console.log(`Collection ID: ${collectionId || 'default'}`);
+    console.log(`Collection IDs: ${collectionIds || 'default'}`);
 
     // ナンス検証
     const storedNonceDataStr = await c.env.NONCE_STORE.get(nonce);
@@ -584,56 +584,94 @@ app.post('/api/verify', async (c) => {
       }, 400);
     }
 
-    // コレクションIDが指定されている場合、そのコレクションの設定を取得
-    let targetPackageId = c.env.NFT_COLLECTION_ID; // デフォルト
-    let roleName = 'NFT Holder'; // デフォルト
+    // コレクション一覧を取得
+    const collectionsData = await c.env.COLLECTION_STORE.get('collections');
+    const collections = collectionsData ? JSON.parse(collectionsData) : [];
     
-    if (collectionId) {
-      try {
-        const collectionsData = await c.env.COLLECTION_STORE.get('collections');
-        const collections = collectionsData ? JSON.parse(collectionsData) : [];
-        const targetCollection = collections.find((c: NFTCollection) => c.id === collectionId);
-        
-        if (targetCollection && targetCollection.isActive) {
-          targetPackageId = targetCollection.packageId;
-          roleName = targetCollection.roleName;
-          console.log(`✅ Using collection: ${targetCollection.name} (${targetCollection.packageId})`);
-        } else {
-          console.log(`⚠️ Collection ${collectionId} not found or inactive, using default`);
-        }
-      } catch (error) {
-        console.error('Error fetching collection config:', error);
-        console.log('⚠️ Using default collection configuration');
+    // 検証対象のコレクションを決定
+    let targetCollections: NFTCollection[] = [];
+    
+    if (collectionIds && Array.isArray(collectionIds) && collectionIds.length > 0) {
+      // 指定されたコレクションIDに対応するコレクションを取得
+      targetCollections = collections.filter((col: NFTCollection) => 
+        collectionIds.includes(col.id) && col.isActive
+      );
+    } else {
+      // デフォルトコレクションを使用
+      const defaultCollection: NFTCollection = {
+        id: 'default',
+        name: 'Popkins NFT',
+        packageId: c.env.NFT_COLLECTION_ID,
+        roleId: '1400485848008491059',
+        roleName: 'NFT Holder',
+        description: 'Default NFT collection for verification',
+        isActive: true,
+        createdAt: new Date().toISOString()
+      };
+      targetCollections = [defaultCollection];
+    }
+
+    console.log(`✅ Target collections: ${targetCollections.length}`);
+
+    // 各コレクションのNFT保有をチェック
+    const verificationResults = [];
+    const grantedRoles = [];
+
+    for (const collection of targetCollections) {
+      console.log(`🔍 Checking NFT ownership for collection: ${collection.name} (${collection.packageId})`);
+      
+      const hasNft = await hasTargetNft(address, collection.packageId);
+      
+      if (hasNft) {
+        console.log(`✅ NFT found for collection: ${collection.name}`);
+        verificationResults.push({
+          collectionId: collection.id,
+          collectionName: collection.name,
+          roleId: collection.roleId,
+          roleName: collection.roleName,
+          hasNft: true
+        });
+        grantedRoles.push({
+          roleId: collection.roleId,
+          roleName: collection.roleName
+        });
+      } else {
+        console.log(`❌ No NFT found for collection: ${collection.name}`);
+        verificationResults.push({
+          collectionId: collection.id,
+          collectionName: collection.name,
+          roleId: collection.roleId,
+          roleName: collection.roleName,
+          hasNft: false
+        });
       }
     }
 
-    // NFT保有確認
-    const hasNft = await hasTargetNft(address, targetPackageId);
-    
     // 認証結果の通知データ
     const notificationData = {
       address: address,
       discordId: discordId,
-      collectionId: collectionId,
-      roleName: roleName,
+      collectionIds: collectionIds,
+      verificationResults: verificationResults,
+      grantedRoles: grantedRoles,
       timestamp: new Date().toISOString()
     };
-    
-    if (!hasNft) {
-      // NFT保有失敗時の通知
+
+    // NFTが見つからない場合
+    if (grantedRoles.length === 0) {
       await notifyDiscordBot(c, discordId, 'verification_failed', {
         ...notificationData,
-        reason: 'NFT not found in wallet'
+        reason: 'No NFTs found in any selected collections'
       });
       
       return c.json({
         success: false,
-        error: 'NFT not found in wallet'
+        error: 'No NFTs found in selected collections'
       }, 400);
     }
 
     // Discordロール付与（成功時）
-    const roleGranted = await notifyDiscordBot(c, discordId, 'grant_role', notificationData);
+    const roleGranted = await notifyDiscordBot(c, discordId, 'grant_roles', notificationData);
     if (!roleGranted) {
       console.log('⚠️ Discord notification failed, but verification succeeded');
     }
@@ -641,13 +679,15 @@ app.post('/api/verify', async (c) => {
     // 使用済みナンスを削除
     await c.env.NONCE_STORE.delete(nonce);
 
-    console.log(`✅ Verification successful for ${address} (Discord: ${discordId}) with role: ${roleName}`);
+    console.log(`✅ Verification successful for ${address} (Discord: ${discordId})`);
+    console.log(`✅ Granted roles: ${grantedRoles.map(r => r.roleName).join(', ')}`);
 
     return c.json({
       success: true,
       data: {
-        roleName: roleName,
-        message: 'Verification completed successfully'
+        grantedRoles: grantedRoles,
+        verificationResults: verificationResults,
+        message: `Verification completed successfully. ${grantedRoles.length} role(s) granted.`
       }
     });
 

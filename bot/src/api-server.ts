@@ -1,6 +1,6 @@
 import express from 'express';
 import { config } from './config';
-import { grantRoleToUser, revokeRoleFromUser } from './index';
+import { grantRoleToUser, revokeRoleFromUser, grantMultipleRolesToUser } from './index';
 import { Role } from 'discord.js';
 
 // Expressアプリケーションの型を拡張
@@ -42,7 +42,7 @@ app.use((req, res, next) => {
 // Discord アクション処理エンドポイント
 app.post('/api/discord-action', async (req, res) => {
   try {
-    const { discord_id, action } = req.body;
+    const { discord_id, action, verification_data } = req.body;
 
     if (!discord_id || !action) {
       console.error('❌ Missing required fields:', { discord_id, action });
@@ -61,6 +61,17 @@ app.post('/api/discord-action', async (req, res) => {
         result = await grantRoleToUser(discord_id);
         console.log(`✅ Role grant result: ${result}`);
         break;
+      case 'grant_roles':
+        // 複数ロール付与
+        if (verification_data && verification_data.grantedRoles) {
+          console.log(`🔄 Granting ${verification_data.grantedRoles.length} roles to user ${discord_id}`);
+          result = await grantMultipleRolesToUser(discord_id, verification_data.grantedRoles);
+          console.log(`✅ Multiple roles grant result: ${result}`);
+        } else {
+          console.error('❌ No granted roles data provided');
+          result = false;
+        }
+        break;
       case 'revoke_role':
         result = await revokeRoleFromUser(discord_id);
         console.log(`✅ Role revoke result: ${result}`);
@@ -69,7 +80,7 @@ app.post('/api/discord-action', async (req, res) => {
         console.error('❌ Invalid action:', action);
         return res.status(400).json({
           success: false,
-          error: 'Invalid action. Must be grant_role or revoke_role'
+          error: 'Invalid action. Must be grant_role, grant_roles, or revoke_role'
         });
     }
 
