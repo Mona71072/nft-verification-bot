@@ -248,16 +248,16 @@ async function notifyDiscordBot(c: any, discordId: string, action: string, verif
     
     // リクエストボディの構築
     const requestBody = {
-      discordId,
-      action,
-      verificationData,
+      discord_id: discordId,
+      action: action,
+      verification_data: verificationData,
       timestamp: new Date().toISOString()
     };
     
     console.log('📤 Sending request to Discord Bot API:', requestBody);
     
     // レンダーのDiscord Bot APIにリクエスト送信
-    const response = await fetch(`${DISCORD_BOT_API_URL}/notify`, {
+    const response = await fetch(`${DISCORD_BOT_API_URL}/api/discord-action`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -270,7 +270,7 @@ async function notifyDiscordBot(c: any, discordId: string, action: string, verif
     if (response.ok) {
       const result = await response.json();
       console.log(`✅ Discord Bot API response:`, result);
-      return true;
+      return result.success || false;
     } else {
       const errorText = await response.text();
       console.error(`❌ Discord Bot API error: ${response.status} ${response.statusText}`);
