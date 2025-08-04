@@ -1,6 +1,7 @@
 import express from 'express';
 import { config } from './config';
 import { grantRoleToUser, revokeRoleFromUser } from './index';
+import { Role } from 'discord.js';
 
 // Expressアプリケーションの型を拡張
 interface CustomExpressApp extends express.Application {
@@ -115,7 +116,7 @@ app.get('/api/roles', async (req, res) => {
     
     // ロール一覧を取得
     const roles = await guild.roles.fetch();
-    const roleList = roles.map(role => ({
+    const roleList = roles.map((role: Role) => ({
       id: role.id,
       name: role.name,
       color: role.color,
