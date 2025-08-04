@@ -31,11 +31,6 @@ function NFTVerification() {
   const [selectedCollections, setSelectedCollections] = useState<string[]>([]);
   const [checkAllCollections, setCheckAllCollections] = useState<boolean>(true);
 
-  // 管理者機能を追加
-  const [isAdmin, setIsAdmin] = useState<boolean>(false);
-  const [adminAddresses, setAdminAddresses] = useState<string[]>([]);
-  const [showAdminPanel, setShowAdminPanel] = useState<boolean>(false);
-
   // URLパラメータからDiscord IDを自動取得
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -68,46 +63,6 @@ function NFTVerification() {
     };
     
     fetchCollections();
-  }, []);
-
-  // 管理者チェック
-  useEffect(() => {
-    const checkAdminStatus = async () => {
-      if (connected && account?.address) {
-        try {
-          console.log('🔄 Checking admin status...');
-          const response = await fetch(`${API_BASE_URL}/api/admin/check/${account.address}`);
-          const data = await response.json();
-          if (data.success) {
-            setIsAdmin(data.isAdmin);
-            console.log(`✅ Admin status: ${data.isAdmin}`);
-          }
-        } catch (error) {
-          console.error('❌ Failed to check admin status:', error);
-        }
-      }
-    };
-    
-    checkAdminStatus();
-  }, [connected, account?.address]);
-
-  // 管理者アドレス取得
-  useEffect(() => {
-    const fetchAdminAddresses = async () => {
-      try {
-        console.log('🔄 Fetching admin addresses...');
-        const response = await fetch(`${API_BASE_URL}/api/admin/addresses`);
-        const data = await response.json();
-        if (data.success) {
-          setAdminAddresses(data.data);
-          console.log(`✅ Loaded ${data.data.length} admin addresses`);
-        }
-      } catch (error) {
-        console.error('❌ Failed to fetch admin addresses:', error);
-      }
-    };
-    
-    fetchAdminAddresses();
   }, []);
 
   // すべてのコレクション選択/解除
@@ -247,111 +202,6 @@ function NFTVerification() {
       });
     } finally {
       setIsVerifying(false);
-    }
-  };
-
-  // 管理者アドレス管理
-  const handleAddAdminAddress = async (address: string) => {
-    try {
-      const newAddresses = [...adminAddresses, address];
-      const response = await fetch(`${API_BASE_URL}/api/admin/addresses`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ addresses: newAddresses })
-      });
-      const data = await response.json();
-      if (data.success) {
-        setAdminAddresses(newAddresses);
-        console.log('✅ Admin address added successfully');
-      }
-    } catch (error) {
-      console.error('❌ Failed to add admin address:', error);
-    }
-  };
-
-  const handleRemoveAdminAddress = async (address: string) => {
-    try {
-      const newAddresses = adminAddresses.filter(addr => addr !== address);
-      const response = await fetch(`${API_BASE_URL}/api/admin/addresses`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ addresses: newAddresses })
-      });
-      const data = await response.json();
-      if (data.success) {
-        setAdminAddresses(newAddresses);
-        console.log('✅ Admin address removed successfully');
-      }
-    } catch (error) {
-      console.error('❌ Failed to remove admin address:', error);
-    }
-  };
-
-  // コレクション管理関連のハンドラー
-  const handleAddCollection = async (newCollection: Omit<NFTCollection, 'id' | 'isActive' | 'createdAt'>) => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/collections`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newCollection)
-      });
-      const data = await response.json();
-      if (data.success) {
-        setCollections(prev => [...prev, data.data]);
-        console.log('✅ Collection added successfully');
-      } else {
-        console.error('❌ Failed to add collection:', data.error);
-      }
-    } catch (error) {
-      console.error('❌ Failed to add collection:', error);
-    }
-  };
-
-  const handleEditCollection = async (collection: NFTCollection) => {
-    const updatedCollection = {
-      ...collection,
-      name: prompt('コレクション名を変更:', collection.name) || collection.name,
-      packageId: prompt('Package IDを変更:', collection.packageId) || collection.packageId,
-      roleId: prompt('Discord Role IDを変更:', collection.roleId) || collection.roleId,
-      roleName: prompt('Discord Role Nameを変更:', collection.roleName) || collection.roleName,
-      description: prompt('説明を変更:', collection.description) || collection.description
-    };
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/collections/${collection.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedCollection)
-      });
-      const data = await response.json();
-      if (data.success) {
-        setCollections(prev => prev.map(col => col.id === collection.id ? data.data : col));
-        console.log('✅ Collection updated successfully');
-      } else {
-        console.error('❌ Failed to update collection:', data.error);
-      }
-    } catch (error) {
-      console.error('❌ Failed to update collection:', error);
-    }
-  };
-
-  const handleDeleteCollection = async (collectionId: string) => {
-    if (!confirm('このコレクションを削除しますか？')) {
-      return;
-    }
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/collections/${collectionId}`, {
-        method: 'DELETE'
-      });
-      const data = await response.json();
-      if (data.success) {
-        setCollections(prev => prev.filter(col => col.id !== collectionId));
-        console.log('✅ Collection deleted successfully');
-      } else {
-        console.error('❌ Failed to delete collection:', data.error);
-      }
-    } catch (error) {
-      console.error('❌ Failed to delete collection:', error);
     }
   };
 
@@ -553,287 +403,586 @@ function NFTVerification() {
             </p>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
 
-        {/* Admin Panel Toggle */}
-        {isAdmin && (
-          <div style={{ marginBottom: '1.5rem' }}>
-            <button
-              onClick={() => setShowAdminPanel(!showAdminPanel)}
+// AdminPageコンポーネント
+function AdminPage() {
+  const { account, connected } = useWallet();
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [adminAddresses, setAdminAddresses] = useState<string[]>([]);
+  const [collections, setCollections] = useState<NFTCollection[]>([]);
+
+  // 管理者チェック
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      if (connected && account?.address) {
+        try {
+          console.log('🔄 Checking admin status...');
+          const response = await fetch(`${API_BASE_URL}/api/admin/check/${account.address}`);
+          const data = await response.json();
+          if (data.success) {
+            setIsAdmin(data.isAdmin);
+            console.log(`✅ Admin status: ${data.isAdmin}`);
+          }
+        } catch (error) {
+          console.error('❌ Failed to check admin status:', error);
+        }
+      }
+    };
+    
+    checkAdminStatus();
+  }, [connected, account?.address]);
+
+  // 管理者アドレス取得
+  useEffect(() => {
+    const fetchAdminAddresses = async () => {
+      try {
+        console.log('🔄 Fetching admin addresses...');
+        const response = await fetch(`${API_BASE_URL}/api/admin/addresses`);
+        const data = await response.json();
+        if (data.success) {
+          setAdminAddresses(data.data);
+          console.log(`✅ Loaded ${data.data.length} admin addresses`);
+        }
+      } catch (error) {
+        console.error('❌ Failed to fetch admin addresses:', error);
+      }
+    };
+    
+    fetchAdminAddresses();
+  }, []);
+
+  // コレクション取得
+  useEffect(() => {
+    const fetchCollections = async () => {
+      try {
+        console.log('🔄 Fetching collections from API...');
+        const response = await fetch(`${API_BASE_URL}/api/collections`);
+        const data = await response.json();
+        if (data.success) {
+          setCollections(data.data);
+          console.log(`✅ Loaded ${data.data.length} collections`);
+        } else {
+          console.log('⚠️ No collections found, using default');
+        }
+      } catch (error) {
+        console.error('❌ Failed to fetch collections:', error);
+        console.log('⚠️ Using default collection configuration');
+      }
+    };
+    
+    fetchCollections();
+  }, []);
+
+  // 管理者アドレス管理
+  const handleAddAdminAddress = async (address: string) => {
+    try {
+      const newAddresses = [...adminAddresses, address];
+      const response = await fetch(`${API_BASE_URL}/api/admin/addresses`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ addresses: newAddresses })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setAdminAddresses(newAddresses);
+        console.log('✅ Admin address added successfully');
+      }
+    } catch (error) {
+      console.error('❌ Failed to add admin address:', error);
+    }
+  };
+
+  const handleRemoveAdminAddress = async (address: string) => {
+    try {
+      const newAddresses = adminAddresses.filter(addr => addr !== address);
+      const response = await fetch(`${API_BASE_URL}/api/admin/addresses`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ addresses: newAddresses })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setAdminAddresses(newAddresses);
+        console.log('✅ Admin address removed successfully');
+      }
+    } catch (error) {
+      console.error('❌ Failed to remove admin address:', error);
+    }
+  };
+
+  // コレクション管理関連のハンドラー
+  const handleAddCollection = async (newCollection: Omit<NFTCollection, 'id' | 'isActive' | 'createdAt'>) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/collections`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newCollection)
+      });
+      const data = await response.json();
+      if (data.success) {
+        setCollections(prev => [...prev, data.data]);
+        console.log('✅ Collection added successfully');
+      } else {
+        console.error('❌ Failed to add collection:', data.error);
+      }
+    } catch (error) {
+      console.error('❌ Failed to add collection:', error);
+    }
+  };
+
+  const handleEditCollection = async (collection: NFTCollection) => {
+    const updatedCollection = {
+      ...collection,
+      name: prompt('コレクション名を変更:', collection.name) || collection.name,
+      packageId: prompt('Package IDを変更:', collection.packageId) || collection.packageId,
+      roleId: prompt('Discord Role IDを変更:', collection.roleId) || collection.roleId,
+      roleName: prompt('Discord Role Nameを変更:', collection.roleName) || collection.roleName,
+      description: prompt('説明を変更:', collection.description) || collection.description
+    };
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/collections/${collection.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedCollection)
+      });
+      const data = await response.json();
+      if (data.success) {
+        setCollections(prev => prev.map(col => col.id === collection.id ? data.data : col));
+        console.log('✅ Collection updated successfully');
+      } else {
+        console.error('❌ Failed to update collection:', data.error);
+      }
+    } catch (error) {
+      console.error('❌ Failed to update collection:', error);
+    }
+  };
+
+  const handleDeleteCollection = async (collectionId: string) => {
+    if (!confirm('このコレクションを削除しますか？')) {
+      return;
+    }
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/collections/${collectionId}`, {
+        method: 'DELETE'
+      });
+      const data = await response.json();
+      if (data.success) {
+        setCollections(prev => prev.filter(col => col.id !== collectionId));
+        console.log('✅ Collection deleted successfully');
+      } else {
+        console.error('❌ Failed to delete collection:', data.error);
+      }
+    } catch (error) {
+      console.error('❌ Failed to delete collection:', error);
+    }
+  };
+
+  if (!connected) {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        flexDirection: 'column', 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        minHeight: '60vh',
+        textAlign: 'center'
+      }}>
+        <h2 style={{ color: 'white', marginBottom: '1rem' }}>管理者パネル</h2>
+        <p style={{ color: 'white', marginBottom: '2rem' }}>ウォレットを接続してください</p>
+        <ConnectButton />
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        flexDirection: 'column', 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        minHeight: '60vh',
+        textAlign: 'center'
+      }}>
+        <h2 style={{ color: 'white', marginBottom: '1rem' }}>アクセス拒否</h2>
+        <p style={{ color: 'white', marginBottom: '2rem' }}>
+          このアドレスには管理者権限がありません。<br />
+          管理者権限を持つアドレスでウォレットを接続してください。
+        </p>
+        <div style={{ 
+          padding: '1rem', 
+          background: 'rgba(255, 255, 255, 0.1)', 
+          borderRadius: '8px',
+          color: 'white',
+          fontSize: '0.875rem'
+        }}>
+          現在のアドレス: {account?.address}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ color: 'white' }}>
+      <h1 style={{ fontSize: '2rem', fontWeight: '700', marginBottom: '2rem', textAlign: 'center' }}>
+        管理者パネル
+      </h1>
+      
+      <div style={{ 
+        display: 'grid', 
+        gap: '2rem', 
+        gridTemplateColumns: '1fr 1fr',
+        maxWidth: '1000px',
+        margin: '0 auto'
+      }}>
+        {/* 管理者アドレス管理 */}
+        <div style={{ 
+          background: 'rgba(255, 255, 255, 0.1)', 
+          padding: '1.5rem', 
+          borderRadius: '12px',
+          backdropFilter: 'blur(10px)'
+        }}>
+          <h2 style={{ fontWeight: '600', marginBottom: '1rem' }}>管理者アドレス管理</h2>
+          
+          <div style={{ marginBottom: '1rem' }}>
+            <input
+              type="text"
+              placeholder="新しい管理者アドレス"
+              id="newAdminAddress"
               style={{
-                padding: '0.5rem 1rem',
-                background: showAdminPanel ? '#ef4444' : '#10b981',
+                width: '100%',
+                padding: '0.75rem',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                borderRadius: '8px',
+                fontSize: '0.875rem',
+                background: 'rgba(255, 255, 255, 0.1)',
+                color: 'white',
+                marginBottom: '0.5rem'
+              }}
+            />
+            <button
+              onClick={() => {
+                const input = document.getElementById('newAdminAddress') as HTMLInputElement;
+                if (input && input.value.trim()) {
+                  handleAddAdminAddress(input.value.trim());
+                  input.value = '';
+                }
+              }}
+              style={{
+                padding: '0.75rem 1.5rem',
+                background: '#10b981',
                 color: 'white',
                 border: 'none',
-                borderRadius: '6px',
+                borderRadius: '8px',
                 cursor: 'pointer',
                 fontSize: '0.875rem',
                 fontWeight: '500'
               }}
             >
-              {showAdminPanel ? '管理者パネルを閉じる' : '管理者パネルを開く'}
+              追加
             </button>
           </div>
-        )}
-
-        {/* Admin Panel */}
-        {isAdmin && showAdminPanel && (
-          <div style={{ 
-            marginBottom: '1.5rem', 
-            padding: '1rem', 
-            border: '2px solid #e5e7eb', 
-            borderRadius: '8px',
-            background: '#f9fafb'
-          }}>
-            <h3 style={{ fontWeight: '600', color: '#1a1a1a', marginBottom: '1rem' }}>管理者パネル</h3>
-            
-            {/* 管理者アドレス管理 */}
-            <div style={{ marginBottom: '1rem' }}>
-              <h4 style={{ fontWeight: '500', color: '#374151', marginBottom: '0.5rem' }}>管理者アドレス管理</h4>
-              <div style={{ marginBottom: '0.5rem' }}>
-                <input
-                  type="text"
-                  placeholder="新しい管理者アドレス"
-                  id="newAdminAddress"
+          
+          <div>
+            <h3 style={{ fontWeight: '500', marginBottom: '0.5rem' }}>現在の管理者</h3>
+            {adminAddresses.map((address, index) => (
+              <div key={index} style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
+                padding: '0.75rem',
+                background: 'rgba(255, 255, 255, 0.05)',
+                borderRadius: '8px',
+                marginBottom: '0.5rem'
+              }}>
+                <span style={{ fontSize: '0.875rem', fontFamily: 'monospace' }}>{address}</span>
+                <button
+                  onClick={() => handleRemoveAdminAddress(address)}
                   style={{
-                    width: '100%',
-                    padding: '0.5rem',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '4px',
-                    fontSize: '0.875rem'
+                    padding: '0.5rem 1rem',
+                    background: '#ef4444',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '0.75rem'
                   }}
-                />
+                >
+                  削除
+                </button>
               </div>
-              <button
-                onClick={() => {
-                  const input = document.getElementById('newAdminAddress') as HTMLInputElement;
-                  if (input && input.value.trim()) {
-                    handleAddAdminAddress(input.value.trim());
-                    input.value = '';
-                  }
-                }}
+            ))}
+          </div>
+        </div>
+
+        {/* コレクション管理 */}
+        <div style={{ 
+          background: 'rgba(255, 255, 255, 0.1)', 
+          padding: '1.5rem', 
+          borderRadius: '12px',
+          backdropFilter: 'blur(10px)'
+        }}>
+          <h2 style={{ fontWeight: '600', marginBottom: '1rem' }}>コレクション管理</h2>
+          
+          {/* 新しいコレクション追加 */}
+          <div style={{ marginBottom: '1.5rem' }}>
+            <h3 style={{ fontWeight: '500', marginBottom: '0.5rem' }}>新しいコレクション追加</h3>
+            <div style={{ display: 'grid', gap: '0.5rem', gridTemplateColumns: '1fr 1fr' }}>
+              <input
+                type="text"
+                placeholder="コレクション名"
+                id="collectionName"
                 style={{
-                  padding: '0.5rem 1rem',
-                  background: '#3b82f6',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '0.875rem',
-                  marginRight: '0.5rem'
-                }}
-              >
-                追加
-              </button>
-            </div>
-            
-            {/* 管理者アドレス一覧 */}
-            <div>
-              <h4 style={{ fontWeight: '500', color: '#374151', marginBottom: '0.5rem' }}>現在の管理者</h4>
-              {adminAddresses.map((address, index) => (
-                <div key={index} style={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between', 
-                  alignItems: 'center',
                   padding: '0.5rem',
-                  background: 'white',
-                  borderRadius: '4px',
-                  marginBottom: '0.25rem'
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '6px',
+                  fontSize: '0.875rem',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  color: 'white'
+                }}
+              />
+              <input
+                type="text"
+                placeholder="Package ID"
+                id="packageId"
+                style={{
+                  padding: '0.5rem',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '6px',
+                  fontSize: '0.875rem',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  color: 'white'
+                }}
+              />
+              <input
+                type="text"
+                placeholder="Discord Role ID"
+                id="roleId"
+                style={{
+                  padding: '0.5rem',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '6px',
+                  fontSize: '0.875rem',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  color: 'white'
+                }}
+              />
+              <input
+                type="text"
+                placeholder="Discord Role Name"
+                id="roleName"
+                style={{
+                  padding: '0.5rem',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '6px',
+                  fontSize: '0.875rem',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  color: 'white'
+                }}
+              />
+              <input
+                type="text"
+                placeholder="説明"
+                id="description"
+                style={{
+                  padding: '0.5rem',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '6px',
+                  fontSize: '0.875rem',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  color: 'white',
+                  gridColumn: '1 / -1'
+                }}
+              />
+            </div>
+            <button
+              onClick={() => {
+                const name = (document.getElementById('collectionName') as HTMLInputElement)?.value;
+                const packageId = (document.getElementById('packageId') as HTMLInputElement)?.value;
+                const roleId = (document.getElementById('roleId') as HTMLInputElement)?.value;
+                const roleName = (document.getElementById('roleName') as HTMLInputElement)?.value;
+                const description = (document.getElementById('description') as HTMLInputElement)?.value;
+                
+                if (name && packageId && roleId && roleName) {
+                  handleAddCollection({ name, packageId, roleId, roleName, description });
+                  // 入力フィールドをクリア
+                  ['collectionName', 'packageId', 'roleId', 'roleName', 'description'].forEach(id => {
+                    const element = document.getElementById(id) as HTMLInputElement;
+                    if (element) element.value = '';
+                  });
+                }
+              }}
+              style={{
+                padding: '0.75rem 1.5rem',
+                background: '#10b981',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: '500',
+                marginTop: '0.5rem'
+              }}
+            >
+              コレクション追加
+            </button>
+          </div>
+          
+          {/* コレクション一覧 */}
+          <div>
+            <h3 style={{ fontWeight: '500', marginBottom: '0.5rem' }}>コレクション一覧</h3>
+            <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+              {collections.map(collection => (
+                <div key={collection.id} style={{ 
+                  padding: '0.75rem', 
+                  background: 'rgba(255, 255, 255, 0.05)', 
+                  borderRadius: '8px', 
+                  marginBottom: '0.5rem',
+                  border: '1px solid rgba(255, 255, 255, 0.1)'
                 }}>
-                  <span style={{ fontSize: '0.875rem', fontFamily: 'monospace' }}>{address}</span>
-                  <button
-                    onClick={() => handleRemoveAdminAddress(address)}
-                    style={{
-                      padding: '0.25rem 0.5rem',
-                      background: '#ef4444',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontSize: '0.75rem'
-                    }}
-                  >
-                    削除
-                  </button>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <h4 style={{ fontWeight: '600', marginBottom: '0.25rem' }}>
+                        {collection.name}
+                      </h4>
+                      <p style={{ fontSize: '0.75rem', marginBottom: '0.25rem' }}>
+                        Package: {collection.packageId}
+                      </p>
+                      <p style={{ fontSize: '0.75rem', marginBottom: '0.25rem' }}>
+                        Role: {collection.roleName} (ID: {collection.roleId})
+                      </p>
+                      {collection.description && (
+                        <p style={{ fontSize: '0.75rem' }}>
+                          {collection.description}
+                        </p>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.25rem' }}>
+                      <button
+                        onClick={() => handleEditCollection(collection)}
+                        style={{
+                          padding: '0.5rem 1rem',
+                          background: '#3b82f6',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontSize: '0.75rem'
+                        }}
+                      >
+                        編集
+                      </button>
+                      <button
+                        onClick={() => handleDeleteCollection(collection.id)}
+                        style={{
+                          padding: '0.5rem 1rem',
+                          background: '#ef4444',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontSize: '0.75rem'
+                        }}
+                      >
+                        削除
+                      </button>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
-            
-            {/* コレクション管理 */}
-            <div style={{ marginTop: '1rem' }}>
-              <h4 style={{ fontWeight: '500', color: '#374151', marginBottom: '0.5rem' }}>コレクション管理</h4>
-              
-              {/* 新しいコレクション追加 */}
-              <div style={{ marginBottom: '1rem', padding: '1rem', background: 'white', borderRadius: '4px' }}>
-                <h5 style={{ fontWeight: '500', color: '#374151', marginBottom: '0.5rem' }}>新しいコレクション追加</h5>
-                <div style={{ display: 'grid', gap: '0.5rem', gridTemplateColumns: '1fr 1fr' }}>
-                  <input
-                    type="text"
-                    placeholder="コレクション名"
-                    id="collectionName"
-                    style={{
-                      padding: '0.5rem',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '4px',
-                      fontSize: '0.875rem'
-                    }}
-                  />
-                  <input
-                    type="text"
-                    placeholder="Package ID (例: 0x123...::nft::NFT)"
-                    id="packageId"
-                    style={{
-                      padding: '0.5rem',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '4px',
-                      fontSize: '0.875rem'
-                    }}
-                  />
-                  <input
-                    type="text"
-                    placeholder="Discord Role ID"
-                    id="roleId"
-                    style={{
-                      padding: '0.5rem',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '4px',
-                      fontSize: '0.875rem'
-                    }}
-                  />
-                  <input
-                    type="text"
-                    placeholder="Discord Role Name"
-                    id="roleName"
-                    style={{
-                      padding: '0.5rem',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '4px',
-                      fontSize: '0.875rem'
-                    }}
-                  />
-                  <input
-                    type="text"
-                    placeholder="説明"
-                    id="description"
-                    style={{
-                      padding: '0.5rem',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '4px',
-                      fontSize: '0.875rem',
-                      gridColumn: '1 / -1'
-                    }}
-                  />
-                </div>
-                <button
-                  onClick={() => {
-                    const name = (document.getElementById('collectionName') as HTMLInputElement)?.value;
-                    const packageId = (document.getElementById('packageId') as HTMLInputElement)?.value;
-                    const roleId = (document.getElementById('roleId') as HTMLInputElement)?.value;
-                    const roleName = (document.getElementById('roleName') as HTMLInputElement)?.value;
-                    const description = (document.getElementById('description') as HTMLInputElement)?.value;
-                    
-                    if (name && packageId && roleId && roleName) {
-                      handleAddCollection({ name, packageId, roleId, roleName, description });
-                      // 入力フィールドをクリア
-                      ['collectionName', 'packageId', 'roleId', 'roleName', 'description'].forEach(id => {
-                        const element = document.getElementById(id) as HTMLInputElement;
-                        if (element) element.value = '';
-                      });
-                    }
-                  }}
-                  style={{
-                    padding: '0.5rem 1rem',
-                    background: '#10b981',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontSize: '0.875rem',
-                    marginTop: '0.5rem'
-                  }}
-                >
-                  コレクション追加
-                </button>
-              </div>
-              
-              {/* コレクション一覧 */}
-              <div style={{ marginTop: '1rem' }}>
-                <h5 style={{ fontWeight: '500', color: '#374151', marginBottom: '0.5rem' }}>コレクション一覧</h5>
-                {collections.map(collection => (
-                  <div key={collection.id} style={{ 
-                    padding: '0.75rem', 
-                    background: 'white', 
-                    borderRadius: '4px', 
-                    marginBottom: '0.5rem',
-                    border: '1px solid #e5e7eb'
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <h6 style={{ fontWeight: '600', color: '#1a1a1a', marginBottom: '0.25rem' }}>
-                          {collection.name}
-                        </h6>
-                        <p style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.25rem' }}>
-                          Package: {collection.packageId}
-                        </p>
-                        <p style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.25rem' }}>
-                          Role: {collection.roleName} (ID: {collection.roleId})
-                        </p>
-                        {collection.description && (
-                          <p style={{ fontSize: '0.75rem', color: '#666' }}>
-                            {collection.description}
-                          </p>
-                        )}
-                      </div>
-                      <div style={{ display: 'flex', gap: '0.25rem' }}>
-                        <button
-                          onClick={() => handleEditCollection(collection)}
-                          style={{
-                            padding: '0.25rem 0.5rem',
-                            background: '#3b82f6',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: 'pointer',
-                            fontSize: '0.75rem'
-                          }}
-                        >
-                          編集
-                        </button>
-                        <button
-                          onClick={() => handleDeleteCollection(collection.id)}
-                          style={{
-                            padding: '0.25rem 0.5rem',
-                            background: '#ef4444',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: 'pointer',
-                            fontSize: '0.75rem'
-                          }}
-                        >
-                          削除
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
           </div>
-        )}
-
-        <style>{`
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-        `}</style>
+        </div>
       </div>
     </div>
   );
 }
 
 function App() {
-  return <NFTVerification />;
+  const [currentPage, setCurrentPage] = useState<'verification' | 'admin'>('verification');
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+      {/* Navigation Bar */}
+      <nav style={{
+        background: 'rgba(255, 255, 255, 0.95)',
+        backdropFilter: 'blur(10px)',
+        borderBottom: '1px solid rgba(255, 255, 255, 0.2)',
+        padding: '1rem 2rem',
+        position: 'sticky',
+        top: 0,
+        zIndex: 1000
+      }}>
+        <div style={{
+          maxWidth: '1200px',
+          margin: '0 auto',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
+            <h1 style={{ 
+              fontSize: '1.5rem', 
+              fontWeight: '700', 
+              color: '#1a1a1a',
+              margin: 0
+            }}>
+              NFT Verification
+            </h1>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button
+                onClick={() => setCurrentPage('verification')}
+                style={{
+                  padding: '0.75rem 1.5rem',
+                  background: currentPage === 'verification' ? '#3b82f6' : 'transparent',
+                  color: currentPage === 'verification' ? 'white' : '#6b7280',
+                  border: currentPage === 'verification' ? 'none' : '1px solid #d1d5db',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                認証ページ
+              </button>
+              <button
+                onClick={() => setCurrentPage('admin')}
+                style={{
+                  padding: '0.75rem 1.5rem',
+                  background: currentPage === 'admin' ? '#3b82f6' : 'transparent',
+                  color: currentPage === 'admin' ? 'white' : '#6b7280',
+                  border: currentPage === 'admin' ? 'none' : '1px solid #d1d5db',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                管理者パネル
+              </button>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      {/* Content */}
+      <div style={{ 
+        maxWidth: '1200px', 
+        margin: '0 auto', 
+        padding: '2rem',
+        minHeight: 'calc(100vh - 80px)'
+      }}>
+        {currentPage === 'verification' ? <NFTVerification /> : <AdminPage />}
+      </div>
+    </div>
+  );
 }
 
 export default App;
