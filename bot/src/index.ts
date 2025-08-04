@@ -86,7 +86,12 @@ async function setupVerificationChannel() {
           .setCustomId('verify_nft')
           .setLabel('NFT認証を開始')
           .setStyle(ButtonStyle.Primary)
-          .setEmoji('🎫')
+          .setEmoji('🎫'),
+        new ButtonBuilder()
+          .setCustomId('update_channel_message')
+          .setLabel('メッセージ更新')
+          .setStyle(ButtonStyle.Secondary)
+          .setEmoji('🔄')
       );
     
     await channel.send({ embeds: [embed], components: [row] });
@@ -103,6 +108,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
   
   if (interaction.customId === 'verify_nft') {
     await handleVerifyNFT(interaction);
+  }
+  
+  // 管理者用: チャンネルメッセージを更新
+  if (interaction.customId === 'update_channel_message') {
+    if (interaction.user.id === config.ADMIN_USER_ID) {
+      await setupVerificationChannel();
+      await interaction.reply({ content: '✅ チャンネルメッセージを更新しました。', ephemeral: true });
+    } else {
+      await interaction.reply({ content: '❌ 権限がありません。', ephemeral: true });
+    }
   }
 });
 
