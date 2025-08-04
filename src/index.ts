@@ -296,16 +296,46 @@ app.get('/api/collections', async (c) => {
     
     console.log(`Found ${collections.length} collections`);
     
+    // コレクションが空の場合はデフォルトコレクションを追加
+    if (collections.length === 0) {
+      const defaultCollection: NFTCollection = {
+        id: 'default',
+        name: 'Popkins NFT',
+        packageId: c.env.NFT_COLLECTION_ID,
+        roleId: '1400485848008491059', // デフォルトロールID
+        roleName: 'NFT Holder',
+        description: 'Default NFT collection for verification',
+        isActive: true,
+        createdAt: new Date().toISOString()
+      };
+      
+      collections.push(defaultCollection);
+      console.log('✅ Added default collection');
+    }
+    
     return c.json({
       success: true,
       data: collections
     });
   } catch (error) {
     console.error('Collections fetch error:', error);
+    
+    // エラーが発生した場合もデフォルトコレクションを返す
+    const defaultCollection: NFTCollection = {
+      id: 'default',
+      name: 'Popkins NFT',
+      packageId: c.env.NFT_COLLECTION_ID,
+      roleId: '1400485848008491059',
+      roleName: 'NFT Holder',
+      description: 'Default NFT collection for verification',
+      isActive: true,
+      createdAt: new Date().toISOString()
+    };
+    
     return c.json({
-      success: false,
-      error: 'Failed to fetch collections'
-    }, 500);
+      success: true,
+      data: [defaultCollection]
+    });
   }
 });
 
@@ -460,9 +490,9 @@ app.get('/api/discord/roles', async (c) => {
     if (!DISCORD_BOT_API_URL) {
       console.log('⚠️ Discord Bot API URL not configured');
       return c.json({
-        success: false,
-        error: 'Discord Bot API not configured'
-      }, 500);
+        success: true,
+        data: []
+      });
     }
     
     // Discord Bot APIからロール一覧を取得
@@ -487,17 +517,17 @@ app.get('/api/discord/roles', async (c) => {
       console.error(`❌ Discord Bot API error: ${response.status} ${response.statusText}`);
       console.error(`❌ Error response body:`, errorText);
       return c.json({
-        success: false,
-        error: 'Failed to fetch Discord roles'
-      }, 500);
+        success: true,
+        data: []
+      });
     }
     
   } catch (error) {
     console.error('❌ Error fetching Discord roles:', error);
     return c.json({
-      success: false,
-      error: 'Internal server error'
-    }, 500);
+      success: true,
+      data: []
+    });
   }
 });
 
