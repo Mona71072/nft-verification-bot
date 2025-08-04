@@ -434,6 +434,130 @@ export async function revokeRoleFromUser(discordId: string): Promise<boolean> {
   }
 }
 
+// 複数ロール剥奪関数（バッチ処理用）
+export async function revokeMultipleRolesFromUser(discordId: string, roles: Array<{roleId: string, roleName: string}>): Promise<boolean> {
+  try {
+    const guild = await client.guilds.fetch(config.DISCORD_GUILD_ID);
+    const member = await guild.members.fetch(discordId);
+    
+    const revokedRoles = [];
+    const failedRoles = [];
+
+    for (const roleData of roles) {
+      try {
+        const role = await guild.roles.fetch(roleData.roleId);
+        if (role && member.roles.cache.has(role.id)) {
+          await member.roles.remove(role);
+          revokedRoles.push(roleData);
+          console.log(`✅ Role "${roleData.roleName}" revoked from user ${discordId}`);
+        } else if (!role) {
+          failedRoles.push(roleData.roleName);
+          console.error(`❌ Role not found: ${roleData.roleId}`);
+        } else {
+          console.log(`ℹ️ User ${discordId} doesn't have role "${roleData.roleName}"`);
+        }
+      } catch (error) {
+        failedRoles.push(roleData.roleName);
+        console.error(`❌ Error revoking role "${roleData.roleName}":`, error);
+      }
+    }
+
+    // ユーザーにDM送信（ロールが剥奪された場合のみ）
+    if (revokedRoles.length > 0) {
+      try {
+        const embed = new EmbedBuilder()
+          .setTitle('ロール更新通知')
+          .setColor(0xED4245)
+          .setTimestamp()
+          .setFooter({ text: 'NFT Verification Bot' });
+
+        let description = 'NFTの保有が確認できなくなったため、以下のロールが削除されました:\n\n';
+        description += revokedRoles.map(role => `• ${role.roleName}`).join('\n');
+        description += '\n\n再度NFTを取得された場合は、認証チャンネルから再認証を行ってください。';
+
+        if (failedRoles.length > 0) {
+          description += `\n\n⚠️ 以下のロールの削除に失敗しました:\n${failedRoles.map(name => `• ${name}`).join('\n')}`;
+        }
+
+        embed.setDescription(description);
+        await member.send({ embeds: [embed] });
+      } catch (dmError) {
+        console.log('Could not send DM to user:', dmError);
+      }
+    }
+
+    return revokedRoles.length > 0; // 少なくとも1つのロールが剥奪されていれば成功
+  } catch (error) {
+    console.error('Error revoking multiple roles:', error);
+    return false;
+  }
+}
+
+// バッチ処理結果通知関数
+export async function sendBatchProcessNotification(discordId: string, batchData: any): Promise<boolean> {
+  try {
+    const guild = await client.guilds.fetch(config.DISCORD_GUILD_ID);
+    const member = await guild.members.fetch(discordId);
+
+    const embed = new EmbedBuilder()
+      .setTitle('バッチ処理完了通知')
+      .setColor(0x57F287)
+      .setTimestamp()
+      .setFooter({ text: 'NFT Verification Bot' });
+
+    let description = '定期的なNFT保有確認が完了しました。\n\n';
+    
+    if (batchData.revokedRoles && batchData.revokedRoles.length > 0) {
+      description += `❌ **削除されたロール:**\n${batchData.revokedRoles.map((role: any) => `• ${role.roleName}`).join('\n')}\n\n`;
+      embed.setColor(0xED4245);
+    } else {
+      description += '✅ すべてのロールが正常に保持されています。\n\n';
+    }
+
+    description += `📊 **処理結果:**\n• 処理対象: ${batchData.totalUsers}人\n• 処理完了: ${batchData.processed}人\n• ロール削除: ${batchData.revokedRoles?.length || 0}人\n• エラー: ${batchData.errors || 0}件`;
+
+    embed.setDescription(description);
+    await member.send({ embeds: [embed] });
+    
+    console.log(`✅ Batch process notification sent to user ${discordId}`);
+    return true;
+  } catch (error) {
+    console.error('Error sending batch process notification:', error);
+    return false;
+  }
+}
+
+// 管理者用バッチ処理通知関数
+export async function sendAdminBatchNotification(batchStats: any): Promise<boolean> {
+  try {
+    const guild = await client.guilds.fetch(config.DISCORD_GUILD_ID);
+    const adminMember = await guild.members.fetch(config.ADMIN_USER_ID);
+
+    const embed = new EmbedBuilder()
+      .setTitle('バッチ処理完了レポート')
+      .setColor(0x57F287)
+      .setTimestamp()
+      .setFooter({ text: 'NFT Verification Bot' });
+
+    let description = '定期的なNFT保有確認バッチ処理が完了しました。\n\n';
+    description += `📊 **処理統計:**\n• 総ユーザー数: ${batchStats.totalUsers}人\n• 処理完了: ${batchStats.processed}人\n• ロール削除: ${batchStats.revoked}人\n• エラー: ${batchStats.errors}件\n• 処理時間: ${batchStats.duration}ms`;
+
+    if (batchStats.revoked > 0) {
+      description += `\n\n⚠️ **注意:** ${batchStats.revoked}人のロールが削除されました。`;
+      embed.setColor(0xFAA61A);
+    }
+
+    embed.setDescription(description);
+    await adminMember.send({ embeds: [embed] });
+    
+    console.log(`✅ Admin batch notification sent`);
+    return true;
+  } catch (error) {
+    console.error('Error sending admin batch notification:', error);
+    return false;
+  }
+}
+
 // Botログイン
 client.login(config.DISCORD_TOKEN).catch((error) => {
   console.error('❌ Failed to login:', error);

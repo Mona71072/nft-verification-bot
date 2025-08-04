@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, Context } from 'hono';
 
 // NFTコレクション型定義
 interface NFTCollection {
@@ -12,12 +12,13 @@ interface NFTCollection {
   createdAt: string;
 }
 
-// Cloudflare KV型定義
+// Cloudflare Workers環境の型定義
 interface Env {
-  NONCE_STORE: any; // KVNamespace
-  COLLECTION_STORE: any; // KVNamespace
+  NONCE_STORE: KVNamespace;
+  COLLECTION_STORE: KVNamespace;
   NFT_COLLECTION_ID: string;
   DISCORD_BOT_API_URL: string;
+  [key: string]: any;
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -104,7 +105,7 @@ app.post('/api/nonce', async (c) => {
       expiresAt
     };
 
-    await c.env.NONCE_STORE.put(nonce, JSON.stringify(nonceData), {
+    await (c.env.NONCE_STORE as any).put(nonce, JSON.stringify(nonceData), {
       expirationTtl: 300 // 5分後に自動削除
     });
 
@@ -232,7 +233,7 @@ async function hasTargetNft(address: string, collectionId?: string): Promise<boo
 }
 
 // Discord Bot API（認証結果通知）
-async function notifyDiscordBot(c: any, discordId: string, action: string, verificationData?: any): Promise<boolean> {
+async function notifyDiscordBot(c: Context<{ Bindings: Env }>, discordId: string, action: string, verificationData?: any): Promise<boolean> {
   try {
     console.log(`🔄 Discord Bot API: ${action} for user ${discordId}`);
     console.log('📋 Verification data:', verificationData);
@@ -268,7 +269,7 @@ async function notifyDiscordBot(c: any, discordId: string, action: string, verif
     console.log(`📥 Discord Bot API response status: ${response.status} ${response.statusText}`);
     
     if (response.ok) {
-      const result = await response.json();
+      const result = await response.json() as any;
       console.log(`✅ Discord Bot API response:`, result);
       return result.success || false;
     } else {
@@ -286,11 +287,70 @@ async function notifyDiscordBot(c: any, discordId: string, action: string, verif
   }
 }
 
+// 認証済みユーザー管理
+const VERIFIED_USERS_KEY = 'verified_users';
+
+interface VerifiedUser {
+  discordId: string;
+  address: string;
+  collectionId: string;
+  roleId: string;
+  roleName: string;
+  verifiedAt: string;
+  lastChecked: string;
+}
+
+// 認証済みユーザー一覧を取得
+async function getVerifiedUsers(c: Context<{ Bindings: Env }>): Promise<VerifiedUser[]> {
+  try {
+    const usersData = await c.env.COLLECTION_STORE.get(VERIFIED_USERS_KEY);
+    return usersData ? JSON.parse(usersData) : [];
+  } catch (error) {
+    console.error('Error getting verified users:', error);
+    return [];
+  }
+}
+
+// 認証済みユーザーを追加
+async function addVerifiedUser(c: Context<{ Bindings: Env }>, user: VerifiedUser): Promise<boolean> {
+  try {
+    const users = await getVerifiedUsers(c);
+    const existingIndex = users.findIndex(u => u.discordId === user.discordId && u.collectionId === user.collectionId);
+    
+    if (existingIndex >= 0) {
+      // 既存ユーザーを更新
+      users[existingIndex] = { ...users[existingIndex], ...user, lastChecked: new Date().toISOString() };
+    } else {
+      // 新規ユーザーを追加
+      users.push({ ...user, lastChecked: new Date().toISOString() });
+    }
+    
+    await c.env.COLLECTION_STORE.put(VERIFIED_USERS_KEY, JSON.stringify(users));
+    return true;
+  } catch (error) {
+    console.error('Error adding verified user:', error);
+    return false;
+  }
+}
+
+// 認証済みユーザーを削除
+async function removeVerifiedUser(c: Context<{ Bindings: Env }>, discordId: string, collectionId: string): Promise<boolean> {
+  try {
+    const users = await getVerifiedUsers(c);
+    const filteredUsers = users.filter(u => !(u.discordId === discordId && u.collectionId === collectionId));
+    await c.env.COLLECTION_STORE.put(VERIFIED_USERS_KEY, JSON.stringify(filteredUsers));
+    return true;
+  } catch (error) {
+    console.error('Error removing verified user:', error);
+    return false;
+  }
+}
+
 // 管理者アドレス管理
 const ADMIN_ADDRESSES_KEY = 'admin_addresses';
 
 // 管理者アドレス一覧を取得
-async function getAdminAddresses(c: any): Promise<string[]> {
+async function getAdminAddresses(c: Context<{ Bindings: Env }>): Promise<string[]> {
   try {
     const adminData = await c.env.COLLECTION_STORE.get(ADMIN_ADDRESSES_KEY);
     if (adminData) {
@@ -307,7 +367,7 @@ async function getAdminAddresses(c: any): Promise<string[]> {
 }
 
 // 管理者アドレスを更新
-async function updateAdminAddresses(c: any, addresses: string[]): Promise<boolean> {
+async function updateAdminAddresses(c: Context<{ Bindings: Env }>, addresses: string[]): Promise<boolean> {
   try {
     await c.env.COLLECTION_STORE.put(ADMIN_ADDRESSES_KEY, JSON.stringify(addresses));
     return true;
@@ -318,7 +378,7 @@ async function updateAdminAddresses(c: any, addresses: string[]): Promise<boolea
 }
 
 // 管理者チェック
-async function isAdmin(c: any, address: string): Promise<boolean> {
+async function isAdmin(c: Context<{ Bindings: Env }>, address: string): Promise<boolean> {
   try {
     const adminAddresses = await getAdminAddresses(c);
     return adminAddresses.includes(address.toLowerCase());
@@ -343,7 +403,7 @@ app.get('/api/collections', async (c) => {
       const defaultCollection: NFTCollection = {
         id: 'default',
         name: 'Popkins NFT',
-        packageId: c.env.NFT_COLLECTION_ID,
+        packageId: c.env.NFT_COLLECTION_ID as string,
         roleId: '1400485848008491059', // デフォルトロールID
         roleName: 'NFT Holder',
         description: 'Default NFT collection for verification',
@@ -620,7 +680,7 @@ app.get('/api/discord/roles', async (c) => {
     console.log(`📥 Discord Bot API response status: ${response.status} ${response.statusText}`);
     
     if (response.ok) {
-      const result = await response.json();
+      const result = await response.json() as any;
       console.log(`✅ Discord roles fetched:`, result);
       return c.json({
         success: true,
@@ -715,7 +775,7 @@ app.post('/api/verify', async (c) => {
       const defaultCollection: NFTCollection = {
         id: 'default',
         name: 'Popkins NFT',
-        packageId: c.env.NFT_COLLECTION_ID,
+        packageId: c.env.NFT_COLLECTION_ID as string,
         roleId: '1400485848008491059',
         roleName: 'NFT Holder',
         description: 'Default NFT collection for verification',
@@ -793,6 +853,17 @@ app.post('/api/verify', async (c) => {
     // 使用済みナンスを削除
     await c.env.NONCE_STORE.delete(nonce);
 
+    // 認証済みユーザーとして保存
+    await addVerifiedUser(c, {
+      discordId: discordId,
+      address: address,
+      collectionId: collectionIds.join(','), // 複数コレクションの場合はカンマ区切りで保存
+      roleId: grantedRoles[0].roleId, // 最初に付与されたロールIDを保存
+      roleName: grantedRoles[0].roleName, // 最初に付与されたロール名を保存
+      verifiedAt: new Date().toISOString(),
+      lastChecked: new Date().toISOString()
+    });
+
     console.log(`✅ Verification successful for ${address} (Discord: ${discordId})`);
     console.log(`✅ Granted roles: ${grantedRoles.map(r => r.roleName).join(', ')}`);
 
@@ -814,6 +885,416 @@ app.post('/api/verify', async (c) => {
   }
 });
 
+// バッチ処理API
+app.post('/api/admin/batch-check', async (c) => {
+  try {
+    console.log('🔄 Starting batch check process...');
+    
+    const verifiedUsers = await getVerifiedUsers(c);
+    console.log(`📊 Found ${verifiedUsers.length} verified users`);
+    
+    let processedCount = 0;
+    let revokedCount = 0;
+    let errorCount = 0;
+    
+    for (const user of verifiedUsers) {
+      try {
+        console.log(`🔍 Checking user ${user.discordId} for collection ${user.collectionId}`);
+        
+        // NFT保有状況をチェック
+        const hasNft = await hasTargetNft(user.address, user.collectionId);
+        
+        if (!hasNft) {
+          console.log(`❌ User ${user.discordId} no longer has NFT, revoking role`);
+          
+          // Discord Botにロール剥奪を通知
+          const revoked = await notifyDiscordBot(c, user.discordId, 'revoke_role', {
+            address: user.address,
+            collectionId: user.collectionId,
+            reason: 'NFT no longer owned',
+            timestamp: new Date().toISOString()
+          });
+          
+          if (revoked) {
+            // 認証済みユーザーリストから削除
+            await removeVerifiedUser(c, user.discordId, user.collectionId);
+            revokedCount++;
+          }
+        } else {
+          console.log(`✅ User ${user.discordId} still has NFT`);
+        }
+        
+        processedCount++;
+      } catch (error) {
+        console.error(`❌ Error processing user ${user.discordId}:`, error);
+        errorCount++;
+      }
+    }
+    
+    console.log(`✅ Batch check completed: ${processedCount} processed, ${revokedCount} revoked, ${errorCount} errors`);
+    
+    return c.json({
+      success: true,
+      summary: {
+        totalUsers: verifiedUsers.length,
+        processed: processedCount,
+        revoked: revokedCount,
+        errors: errorCount
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Batch check error:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to execute batch check'
+    }, 500);
+  }
+});
+
+// 認証済みユーザー一覧取得API
+app.get('/api/admin/verified-users', async (c) => {
+  try {
+    const users = await getVerifiedUsers(c);
+    
+    return c.json({
+      success: true,
+      data: users
+    });
+  } catch (error) {
+    console.error('Error getting verified users:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to get verified users'
+    }, 500);
+  }
+});
+
+// バッチ処理の設定
+interface BatchConfig {
+  enabled: boolean;
+  interval: number; // 分単位
+  lastRun: string;
+  nextRun: string;
+  maxUsersPerBatch: number;
+  retryAttempts: number;
+}
+
+// バッチ処理の統計
+interface BatchStats {
+  totalUsers: number;
+  processed: number;
+  revoked: number;
+  errors: number;
+  lastRun: string;
+  duration: number; // ミリ秒
+}
+
+// バッチ処理設定の取得
+async function getBatchConfig(c: Context<{ Bindings: Env }>): Promise<BatchConfig> {
+  try {
+    const configData = await c.env.COLLECTION_STORE.get('batch_config');
+    if (configData) {
+      return JSON.parse(configData as string);
+    }
+    // デフォルト設定
+    const defaultConfig: BatchConfig = {
+      enabled: true,
+      interval: 60, // 60分間隔
+      lastRun: new Date(0).toISOString(),
+      nextRun: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      maxUsersPerBatch: 50,
+      retryAttempts: 3
+    };
+    await c.env.COLLECTION_STORE.put('batch_config', JSON.stringify(defaultConfig));
+    return defaultConfig;
+  } catch (error) {
+    console.error('Error getting batch config:', error);
+    return {
+      enabled: true,
+      interval: 60,
+      lastRun: new Date(0).toISOString(),
+      nextRun: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      maxUsersPerBatch: 50,
+      retryAttempts: 3
+    };
+  }
+}
+
+// バッチ処理設定の更新
+async function updateBatchConfig(c: Context<{ Bindings: Env }>, config: Partial<BatchConfig>): Promise<boolean> {
+  try {
+    const currentConfig = await getBatchConfig(c);
+    const updatedConfig = { ...currentConfig, ...config };
+    
+    // nextRunを再計算
+    if (config.interval) {
+      updatedConfig.nextRun = new Date(Date.now() + config.interval * 60 * 1000).toISOString();
+    }
+    
+    await c.env.COLLECTION_STORE.put('batch_config', JSON.stringify(updatedConfig));
+    return true;
+  } catch (error) {
+    console.error('Error updating batch config:', error);
+    return false;
+  }
+}
+
+// バッチ処理統計の取得
+async function getBatchStats(c: Context<{ Bindings: Env }>): Promise<BatchStats> {
+  try {
+    const statsData = await c.env.COLLECTION_STORE.get('batch_stats');
+    return statsData ? JSON.parse(statsData as string) : {
+      totalUsers: 0,
+      processed: 0,
+      revoked: 0,
+      errors: 0,
+      lastRun: new Date(0).toISOString(),
+      duration: 0
+    };
+  } catch (error) {
+    console.error('Error getting batch stats:', error);
+    return {
+      totalUsers: 0,
+      processed: 0,
+      revoked: 0,
+      errors: 0,
+      lastRun: new Date(0).toISOString(),
+      duration: 0
+    };
+  }
+}
+
+// バッチ処理統計の更新
+async function updateBatchStats(c: Context<{ Bindings: Env }>, stats: Partial<BatchStats>): Promise<boolean> {
+  try {
+    const currentStats = await getBatchStats(c);
+    const updatedStats = { ...currentStats, ...stats };
+    await c.env.COLLECTION_STORE.put('batch_stats', JSON.stringify(updatedStats));
+    return true;
+  } catch (error) {
+    console.error('Error updating batch stats:', error);
+    return false;
+  }
+}
+
+// バッチ処理実行関数
+async function executeBatchCheck(c: Context<{ Bindings: Env }>): Promise<BatchStats> {
+  const startTime = Date.now();
+  console.log('🔄 Starting batch check process...');
+  
+  try {
+    const verifiedUsers = await getVerifiedUsers(c);
+    const batchConfig = await getBatchConfig(c);
+    
+    console.log(`📊 Found ${verifiedUsers.length} verified users`);
+    console.log(`⚙️ Batch config: ${JSON.stringify(batchConfig)}`);
+    
+    let processedCount = 0;
+    let revokedCount = 0;
+    let errorCount = 0;
+    
+    // バッチサイズを制限
+    const usersToProcess = verifiedUsers.slice(0, batchConfig.maxUsersPerBatch);
+    
+    for (const user of usersToProcess) {
+      try {
+        console.log(`🔍 Checking user ${user.discordId} for collection ${user.collectionId}`);
+        
+        // NFT保有状況をチェック
+        const hasNft = await hasTargetNft(user.address, user.collectionId);
+        
+        if (!hasNft) {
+          console.log(`❌ User ${user.discordId} no longer has NFT, revoking role`);
+          
+          // Discord Botにロール剥奪を通知
+          const revoked = await notifyDiscordBot(c, user.discordId, 'revoke_role', {
+            address: user.address,
+            collectionId: user.collectionId,
+            reason: 'NFT no longer owned',
+            timestamp: new Date().toISOString()
+          });
+          
+          if (revoked) {
+            // 認証済みユーザーリストから削除
+            await removeVerifiedUser(c, user.discordId, user.collectionId);
+            revokedCount++;
+          }
+        } else {
+          console.log(`✅ User ${user.discordId} still has NFT`);
+        }
+        
+        processedCount++;
+      } catch (error) {
+        console.error(`❌ Error processing user ${user.discordId}:`, error);
+        errorCount++;
+      }
+    }
+    
+    const duration = Date.now() - startTime;
+    const stats: BatchStats = {
+      totalUsers: verifiedUsers.length,
+      processed: processedCount,
+      revoked: revokedCount,
+      errors: errorCount,
+      lastRun: new Date().toISOString(),
+      duration
+    };
+    
+    // 統計を更新
+    await updateBatchStats(c, stats);
+    
+    // 設定を更新（次回実行時刻を設定）
+    await updateBatchConfig(c, {
+      lastRun: new Date().toISOString(),
+      nextRun: new Date(Date.now() + batchConfig.interval * 60 * 1000).toISOString()
+    });
+    
+    console.log(`✅ Batch check completed: ${processedCount} processed, ${revokedCount} revoked, ${errorCount} errors`);
+    console.log(`⏱️ Duration: ${duration}ms`);
+    
+    return stats;
+    
+  } catch (error) {
+    console.error('❌ Batch check error:', error);
+    const duration = Date.now() - startTime;
+    const stats: BatchStats = {
+      totalUsers: 0,
+      processed: 0,
+      revoked: 0,
+      errors: 1,
+      lastRun: new Date().toISOString(),
+      duration
+    };
+    await updateBatchStats(c, stats);
+    return stats;
+  }
+}
+
+// バッチ処理実行API（手動実行用）
+app.post('/api/admin/batch-execute', async (c) => {
+  try {
+    console.log('🔄 Manual batch execution requested...');
+    
+    const stats = await executeBatchCheck(c);
+    
+    return c.json({
+      success: true,
+      data: stats
+    });
+    
+  } catch (error) {
+    console.error('❌ Manual batch execution error:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to execute batch check'
+    }, 500);
+  }
+});
+
+// バッチ処理設定取得API
+app.get('/api/admin/batch-config', async (c) => {
+  try {
+    const config = await getBatchConfig(c);
+    const stats = await getBatchStats(c);
+    
+    return c.json({
+      success: true,
+      data: {
+        config,
+        stats
+      }
+    });
+  } catch (error) {
+    console.error('Error getting batch config:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to get batch configuration'
+    }, 500);
+  }
+});
+
+// バッチ処理設定更新API
+app.put('/api/admin/batch-config', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { enabled, interval, maxUsersPerBatch, retryAttempts } = body;
+    
+    const success = await updateBatchConfig(c, {
+      enabled,
+      interval,
+      maxUsersPerBatch,
+      retryAttempts
+    });
+    
+    if (success) {
+      const updatedConfig = await getBatchConfig(c);
+      return c.json({
+        success: true,
+        data: updatedConfig
+      });
+    } else {
+      return c.json({
+        success: false,
+        error: 'Failed to update batch configuration'
+      }, 500);
+    }
+  } catch (error) {
+    console.error('Error updating batch config:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to update batch configuration'
+    }, 500);
+  }
+});
+
+// バッチ処理統計取得API
+app.get('/api/admin/batch-stats', async (c) => {
+  try {
+    const stats = await getBatchStats(c);
+    
+    return c.json({
+      success: true,
+      data: stats
+    });
+  } catch (error) {
+    console.error('Error getting batch stats:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to get batch statistics'
+    }, 500);
+  }
+});
+
+// バッチ処理実行スケジュール確認API
+app.get('/api/admin/batch-schedule', async (c) => {
+  try {
+    const config = await getBatchConfig(c);
+    const now = new Date();
+    const nextRun = new Date(config.nextRun);
+    const isOverdue = now > nextRun;
+    
+    return c.json({
+      success: true,
+      data: {
+        config,
+        schedule: {
+          isEnabled: config.enabled,
+          isOverdue,
+          nextRun: config.nextRun,
+          lastRun: config.lastRun,
+          intervalMinutes: config.interval
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error getting batch schedule:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to get batch schedule'
+    }, 500);
+  }
+});
 
 
 export default app; 

@@ -1,6 +1,14 @@
 import express from 'express';
 import { config } from './config';
-import { grantRoleToUser, revokeRoleFromUser, grantMultipleRolesToUser, sendVerificationFailedMessage } from './index';
+import { 
+  grantRoleToUser, 
+  revokeRoleFromUser, 
+  grantMultipleRolesToUser, 
+  sendVerificationFailedMessage,
+  revokeMultipleRolesFromUser,
+  sendBatchProcessNotification,
+  sendAdminBatchNotification
+} from './index';
 import { Role } from 'discord.js';
 
 // Expressアプリケーションの型を拡張
@@ -81,11 +89,32 @@ app.post('/api/discord-action', async (req, res) => {
         result = await revokeRoleFromUser(discord_id);
         console.log(`✅ Role revoke result: ${result}`);
         break;
+      case 'revoke_roles':
+        // 複数ロール剥奪（バッチ処理用）
+        if (verification_data && verification_data.revokedRoles) {
+          console.log(`🔄 Revoking ${verification_data.revokedRoles.length} roles from user ${discord_id}`);
+          result = await revokeMultipleRolesFromUser(discord_id, verification_data.revokedRoles);
+          console.log(`✅ Multiple roles revoke result: ${result}`);
+        } else {
+          console.error('❌ No revoked roles data provided');
+          result = false;
+        }
+        break;
+      case 'batch_notification':
+        // バッチ処理結果通知
+        result = await sendBatchProcessNotification(discord_id, verification_data);
+        console.log(`✅ Batch notification result: ${result}`);
+        break;
+      case 'admin_batch_notification':
+        // 管理者用バッチ処理通知
+        result = await sendAdminBatchNotification(verification_data);
+        console.log(`✅ Admin batch notification result: ${result}`);
+        break;
       default:
         console.error('❌ Invalid action:', action);
         return res.status(400).json({
           success: false,
-          error: 'Invalid action. Must be grant_role, grant_roles, verification_failed, or revoke_role'
+          error: 'Invalid action. Must be grant_role, grant_roles, verification_failed, revoke_role, revoke_roles, batch_notification, or admin_batch_notification'
         });
     }
 
@@ -97,6 +126,110 @@ app.post('/api/discord-action', async (req, res) => {
 
   } catch (error) {
     console.error('❌ API Error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+});
+
+// バッチ処理実行エンドポイント
+app.post('/api/batch-execute', async (req, res) => {
+  try {
+    console.log('🔄 Manual batch execution requested via Discord Bot API');
+    
+    // Cloudflare Workers APIにバッチ処理を委譲
+    const workersApiUrl = process.env.WORKERS_API_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
+    
+    const response = await fetch(`${workersApiUrl}/api/admin/batch-execute`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (response.ok) {
+      const result = await response.json() as any;
+      console.log('✅ Batch execution completed via Workers API');
+      
+      // 管理者に通知
+      if (result.success && result.data) {
+        await sendAdminBatchNotification(result.data);
+      }
+      
+      res.json(result);
+    } else {
+      console.error('❌ Workers API error:', response.status, response.statusText);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to execute batch process'
+      });
+    }
+    
+  } catch (error) {
+    console.error('❌ Batch execution error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+});
+
+// バッチ処理設定取得エンドポイント
+app.get('/api/batch-config', async (req, res) => {
+  try {
+    const workersApiUrl = process.env.WORKERS_API_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
+    
+    const response = await fetch(`${workersApiUrl}/api/admin/batch-config`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (response.ok) {
+      const result = await response.json() as any;
+      res.json(result);
+    } else {
+      res.status(500).json({
+        success: false,
+        error: 'Failed to get batch configuration'
+      });
+    }
+    
+  } catch (error) {
+    console.error('❌ Batch config error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+});
+
+// バッチ処理統計取得エンドポイント
+app.get('/api/batch-stats', async (req, res) => {
+  try {
+    const workersApiUrl = process.env.WORKERS_API_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
+    
+    const response = await fetch(`${workersApiUrl}/api/admin/batch-stats`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (response.ok) {
+      const result = await response.json() as any;
+      res.json(result);
+    } else {
+      res.status(500).json({
+        success: false,
+        error: 'Failed to get batch statistics'
+      });
+    }
+    
+  } catch (error) {
+    console.error('❌ Batch stats error:', error);
     res.status(500).json({
       success: false,
       error: 'Internal server error'

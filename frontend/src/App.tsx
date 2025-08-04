@@ -14,6 +14,16 @@ interface NFTCollection {
   createdAt: string;
 }
 
+interface VerifiedUser {
+  discordId: string;
+  address: string;
+  collectionId: string;
+  roleId: string;
+  roleName: string;
+  verifiedAt: string;
+  lastChecked: string;
+}
+
 // APIベースURLの設定（本番環境用）
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
 
@@ -413,7 +423,9 @@ function AdminPage() {
   const { account, connected } = useWallet();
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [adminAddresses, setAdminAddresses] = useState<string[]>([]);
-  const [collections, setCollections] = useState<NFTCollection[]>([]);
+  // const [collections, setCollections] = useState<NFTCollection[]>([]);
+  const [verifiedUsers, setVerifiedUsers] = useState<VerifiedUser[]>([]);
+  const [batchProcessing, setBatchProcessing] = useState<boolean>(false);
 
   // 管理者チェック
   useEffect(() => {
@@ -463,7 +475,7 @@ function AdminPage() {
         const response = await fetch(`${API_BASE_URL}/api/collections`);
         const data = await response.json();
         if (data.success) {
-          setCollections(data.data);
+          // setCollections(data.data); // AdminPanelで管理
           console.log(`✅ Loaded ${data.data.length} collections`);
         } else {
           console.log('⚠️ No collections found, using default');
@@ -476,6 +488,27 @@ function AdminPage() {
     
     fetchCollections();
   }, []);
+
+  // 認証済みユーザー取得
+  useEffect(() => {
+    const fetchVerifiedUsers = async () => {
+      try {
+        console.log('🔄 Fetching verified users...');
+        const response = await fetch(`${API_BASE_URL}/api/admin/verified-users`);
+        const data = await response.json();
+        if (data.success) {
+          setVerifiedUsers(data.data);
+          console.log(`✅ Loaded ${data.data.length} verified users`);
+        }
+      } catch (error) {
+        console.error('❌ Failed to fetch verified users:', error);
+      }
+    };
+    
+    if (isAdmin) {
+      fetchVerifiedUsers();
+    }
+  }, [isAdmin]);
 
   // 管理者アドレス管理
   const handleAddAdminAddress = async (address: string) => {
@@ -514,7 +547,8 @@ function AdminPage() {
     }
   };
 
-  // コレクション管理関連のハンドラー
+  // コレクション管理関連のハンドラー（AdminPanelで使用）
+  /*
   const handleAddCollection = async (newCollection: Omit<NFTCollection, 'id' | 'isActive' | 'createdAt'>) => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/collections`, {
@@ -579,6 +613,42 @@ function AdminPage() {
       }
     } catch (error) {
       console.error('❌ Failed to delete collection:', error);
+    }
+  };
+  */
+
+  // バッチ処理実行
+  const handleBatchCheck = async () => {
+    if (!confirm('バッチ処理を実行しますか？\n\nこの処理は時間がかかる場合があります。')) {
+      return;
+    }
+    
+    setBatchProcessing(true);
+    try {
+      console.log('🔄 Starting batch check...');
+      const response = await fetch(`${API_BASE_URL}/api/admin/batch-check`, {
+        method: 'POST'
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        const summary = data.summary;
+        alert(`バッチ処理が完了しました！\n\n処理結果:\n• 総ユーザー数: ${summary.totalUsers}\n• 処理済み: ${summary.processed}\n• ロール剥奪: ${summary.revoked}\n• エラー: ${summary.errors}`);
+        
+        // 認証済みユーザー一覧を更新
+        const usersResponse = await fetch(`${API_BASE_URL}/api/admin/verified-users`);
+        const usersData = await usersResponse.json();
+        if (usersData.success) {
+          setVerifiedUsers(usersData.data);
+        }
+      } else {
+        alert('バッチ処理でエラーが発生しました: ' + data.error);
+      }
+    } catch (error) {
+      console.error('❌ Batch check error:', error);
+      alert('バッチ処理でエラーが発生しました');
+    } finally {
+      setBatchProcessing(false);
     }
   };
 
@@ -741,7 +811,7 @@ function AdminPage() {
           </div>
         </div>
 
-        {/* コレクション管理 */}
+        {/* バッチ処理とユーザー管理 */}
         <div style={{ 
           background: 'rgba(255, 255, 255, 0.1)', 
           padding: '2rem', 
@@ -750,206 +820,75 @@ function AdminPage() {
           border: '1px solid rgba(255, 255, 255, 0.2)',
           height: 'fit-content'
         }}>
-          <h2 style={{ fontWeight: '600', marginBottom: '1.5rem', fontSize: '1.25rem' }}>コレクション管理</h2>
+          <h2 style={{ fontWeight: '600', marginBottom: '1.5rem', fontSize: '1.25rem' }}>バッチ処理とユーザー管理</h2>
           
-          {/* 新しいコレクション追加 */}
+          {/* バッチ処理 */}
           <div style={{ marginBottom: '2rem' }}>
-            <h3 style={{ fontWeight: '500', marginBottom: '1rem', fontSize: '1rem' }}>新しいコレクション追加</h3>
-            <div style={{ display: 'grid', gap: '1rem', gridTemplateColumns: '1fr 1fr' }}>
-              <input
-                type="text"
-                placeholder="コレクション名"
-                id="collectionName"
-                style={{
-                  padding: '0.875rem',
-                  border: '1px solid rgba(255, 255, 255, 0.3)',
-                  borderRadius: '10px',
-                  fontSize: '0.875rem',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  color: 'white',
-                  outline: 'none',
-                  transition: 'all 0.2s ease'
-                }}
-              />
-              <input
-                type="text"
-                placeholder="Package ID"
-                id="packageId"
-                style={{
-                  padding: '0.875rem',
-                  border: '1px solid rgba(255, 255, 255, 0.3)',
-                  borderRadius: '10px',
-                  fontSize: '0.875rem',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  color: 'white',
-                  outline: 'none',
-                  transition: 'all 0.2s ease'
-                }}
-              />
-              <input
-                type="text"
-                placeholder="Discord Role ID"
-                id="roleId"
-                style={{
-                  padding: '0.875rem',
-                  border: '1px solid rgba(255, 255, 255, 0.3)',
-                  borderRadius: '10px',
-                  fontSize: '0.875rem',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  color: 'white',
-                  outline: 'none',
-                  transition: 'all 0.2s ease'
-                }}
-              />
-              <input
-                type="text"
-                placeholder="Discord Role Name"
-                id="roleName"
-                style={{
-                  padding: '0.875rem',
-                  border: '1px solid rgba(255, 255, 255, 0.3)',
-                  borderRadius: '10px',
-                  fontSize: '0.875rem',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  color: 'white',
-                  outline: 'none',
-                  transition: 'all 0.2s ease'
-                }}
-              />
-              <input
-                type="text"
-                placeholder="説明（オプション）"
-                id="description"
-                style={{
-                  padding: '0.875rem',
-                  border: '1px solid rgba(255, 255, 255, 0.3)',
-                  borderRadius: '10px',
-                  fontSize: '0.875rem',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  color: 'white',
-                  outline: 'none',
-                  transition: 'all 0.2s ease',
-                  gridColumn: '1 / -1'
-                }}
-              />
-            </div>
+            <h3 style={{ fontWeight: '500', marginBottom: '1rem', fontSize: '1rem' }}>自動ロール剥奪</h3>
+            <p style={{ fontSize: '0.875rem', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '1rem' }}>
+              NFTを保有していないユーザーのロールを自動で剥奪します。
+            </p>
             <button
-              onClick={() => {
-                const name = (document.getElementById('collectionName') as HTMLInputElement)?.value;
-                const packageId = (document.getElementById('packageId') as HTMLInputElement)?.value;
-                const roleId = (document.getElementById('roleId') as HTMLInputElement)?.value;
-                const roleName = (document.getElementById('roleName') as HTMLInputElement)?.value;
-                const description = (document.getElementById('description') as HTMLInputElement)?.value;
-                
-                if (name && packageId && roleId && roleName) {
-                  handleAddCollection({ name, packageId, roleId, roleName, description });
-                  // 入力フィールドをクリア
-                  ['collectionName', 'packageId', 'roleId', 'roleName', 'description'].forEach(id => {
-                    const element = document.getElementById(id) as HTMLInputElement;
-                    if (element) element.value = '';
-                  });
-                }
-              }}
+              onClick={handleBatchCheck}
+              disabled={batchProcessing}
               style={{
                 padding: '1rem 1.5rem',
-                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                background: batchProcessing 
+                  ? 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)'
+                  : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
                 color: 'white',
                 border: 'none',
                 borderRadius: '12px',
-                cursor: 'pointer',
+                cursor: batchProcessing ? 'not-allowed' : 'pointer',
                 fontSize: '0.875rem',
                 fontWeight: '600',
-                marginTop: '1rem',
-                width: '100%',
-                transition: 'all 0.2s ease'
+                transition: 'all 0.2s ease',
+                width: '100%'
               }}
             >
-              コレクションを追加
+              {batchProcessing ? '処理中...' : 'バッチ処理を実行'}
             </button>
           </div>
           
-          {/* コレクション一覧 */}
+          {/* 認証済みユーザー一覧 */}
           <div>
-            <h3 style={{ fontWeight: '500', marginBottom: '1rem', fontSize: '1rem' }}>コレクション一覧</h3>
+            <h3 style={{ fontWeight: '500', marginBottom: '1rem', fontSize: '1rem' }}>認証済みユーザー ({verifiedUsers.length})</h3>
             <div style={{ 
               maxHeight: '400px', 
               overflowY: 'auto',
               paddingRight: '0.5rem'
             }}>
-              {collections.length === 0 ? (
+              {verifiedUsers.length === 0 ? (
                 <div style={{
                   padding: '2rem',
                   textAlign: 'center',
                   color: 'rgba(255, 255, 255, 0.6)',
                   fontSize: '0.875rem'
                 }}>
-                  コレクションが登録されていません
+                  認証済みユーザーがいません
                 </div>
               ) : (
-                collections.map(collection => (
-                  <div key={collection.id} style={{ 
-                    padding: '1.25rem', 
+                verifiedUsers.map((user, index) => (
+                  <div key={index} style={{ 
+                    padding: '1rem', 
                     background: 'rgba(255, 255, 255, 0.05)', 
                     borderRadius: '12px', 
-                    marginBottom: '1rem',
+                    marginBottom: '0.75rem',
                     border: '1px solid rgba(255, 255, 255, 0.1)',
                     transition: 'all 0.2s ease'
                   }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <h4 style={{ 
-                          fontWeight: '600', 
-                          marginBottom: '0.5rem',
-                          fontSize: '1rem',
-                          color: 'rgba(255, 255, 255, 0.95)'
-                        }}>
-                          {collection.name}
-                        </h4>
-                        <div style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '0.25rem' }}>
-                          <strong>Package:</strong> {collection.packageId}
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '0.25rem' }}>
-                          <strong>Role:</strong> {collection.roleName} (ID: {collection.roleId})
-                        </div>
-                        {collection.description && (
-                          <div style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.6)', marginTop: '0.5rem' }}>
-                            {collection.description}
-                          </div>
-                        )}
+                    <div style={{ marginBottom: '0.5rem' }}>
+                      <div style={{ fontSize: '0.875rem', fontWeight: '600', color: 'rgba(255, 255, 255, 0.95)' }}>
+                        Discord ID: {user.discordId}
                       </div>
-                      <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
-                        <button
-                          onClick={() => handleEditCollection(collection)}
-                          style={{
-                            padding: '0.5rem 1rem',
-                            background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '8px',
-                            cursor: 'pointer',
-                            fontSize: '0.75rem',
-                            fontWeight: '500',
-                            transition: 'all 0.2s ease'
-                          }}
-                        >
-                          編集
-                        </button>
-                        <button
-                          onClick={() => handleDeleteCollection(collection.id)}
-                          style={{
-                            padding: '0.5rem 1rem',
-                            background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '8px',
-                            cursor: 'pointer',
-                            fontSize: '0.75rem',
-                            fontWeight: '500',
-                            transition: 'all 0.2s ease'
-                          }}
-                        >
-                          削除
-                        </button>
+                      <div style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.7)', marginTop: '0.25rem' }}>
+                        アドレス: {user.address}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.7)' }}>
+                        ロール: {user.roleName}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.6)' }}>
+                        認証日時: {new Date(user.verifiedAt).toLocaleString()}
                       </div>
                     </div>
                   </div>

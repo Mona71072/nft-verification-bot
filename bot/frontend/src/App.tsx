@@ -207,7 +207,7 @@ function NFTVerification() {
             color: '#1a1a1a',
             marginBottom: '0.5rem'
           }}>
-            🎯 SXT NFT Verification Portal
+            SXT NFT Verification Portal
           </h1>
           <p style={{
             color: '#666',

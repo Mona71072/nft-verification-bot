@@ -165,7 +165,7 @@ async function setupVerificationChannel() {
 
     // シンプルでカッコいいユーザー認証メッセージ
     const userVerificationEmbed = new EmbedBuilder()
-      .setTitle('🎯 SXT NFT Verification Portal')
+      .setTitle('SXT NFT Verification Portal')
       .setDescription(`**Join the exclusive NFT community by verifying your Sui wallet ownership!**
 
 🌟 **What you'll get:**
