@@ -11,10 +11,21 @@ interface NFTCollection {
   createdAt: string;
 }
 
+interface DiscordRole {
+  id: string;
+  name: string;
+  color: number;
+  position: number;
+  permissions: string[];
+  mentionable: boolean;
+  hoist: boolean;
+}
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
 
 function AdminPanel() {
   const [collections, setCollections] = useState<NFTCollection[]>([]);
+  const [discordRoles, setDiscordRoles] = useState<DiscordRole[]>([]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -37,6 +48,41 @@ function AdminPanel() {
       }
     } catch (error) {
       console.error('Failed to fetch collections:', error);
+    }
+  };
+
+  // Discordロール取得
+  const fetchDiscordRoles = async () => {
+    try {
+      console.log('🔄 Fetching Discord roles...');
+      const response = await fetch(`${API_BASE_URL}/api/discord/roles`);
+      const data = await response.json();
+      if (data.success) {
+        setDiscordRoles(data.data);
+        console.log(`✅ Loaded ${data.data.length} Discord roles`);
+      } else {
+        console.error('❌ Failed to fetch Discord roles:', data.error);
+      }
+    } catch (error) {
+      console.error('❌ Error fetching Discord roles:', error);
+    }
+  };
+
+  // ロール選択時の処理
+  const handleRoleSelect = (roleId: string) => {
+    const selectedRole = discordRoles.find(role => role.id === roleId);
+    if (selectedRole) {
+      setNewCollection({
+        ...newCollection,
+        roleId: selectedRole.id,
+        roleName: selectedRole.name
+      });
+    } else {
+      setNewCollection({
+        ...newCollection,
+        roleId: '',
+        roleName: ''
+      });
     }
   };
 
@@ -103,6 +149,7 @@ function AdminPanel() {
   useEffect(() => {
     if (isAuthenticated) {
       fetchCollections();
+      fetchDiscordRoles(); // 認証後にDiscordロールを取得
     }
   }, [isAuthenticated]);
 
@@ -175,19 +222,25 @@ function AdminPanel() {
             onChange={(e) => setNewCollection({...newCollection, packageId: e.target.value})}
             style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
           />
-          <input 
-            type="text" 
-            placeholder="Discord Role ID" 
-            value={newCollection.roleId} 
-            onChange={(e) => setNewCollection({...newCollection, roleId: e.target.value})}
+          <select
+            value={newCollection.roleId}
+            onChange={(e) => handleRoleSelect(e.target.value)}
             style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
-          />
+          >
+            <option value="">ロールを選択してください</option>
+            {discordRoles.map(role => (
+              <option key={role.id} value={role.id}>
+                {role.name} (ID: {role.id})
+              </option>
+            ))}
+          </select>
           <input 
             type="text" 
-            placeholder="ロール名" 
+            placeholder="ロール名（自動設定）" 
             value={newCollection.roleName} 
             onChange={(e) => setNewCollection({...newCollection, roleName: e.target.value})}
             style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+            readOnly
           />
           <textarea 
             placeholder="説明" 

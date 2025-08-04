@@ -2,7 +2,12 @@ import express from 'express';
 import { config } from './config';
 import { grantRoleToUser, revokeRoleFromUser } from './index';
 
-const app = express();
+// Expressアプリケーションの型を拡張
+interface CustomExpressApp extends express.Application {
+  setDiscordClient?: (client: any) => void;
+}
+
+const app = express() as CustomExpressApp;
 const PORT = config.PORT;
 
 app.use(express.json());
@@ -82,6 +87,60 @@ app.post('/api/discord-action', async (req, res) => {
   }
 });
 
+// Discordロール取得エンドポイント
+app.get('/api/roles', async (req, res) => {
+  try {
+    console.log('=== DISCORD ROLES API CALLED ===');
+    
+    // Discordクライアントが準備できているかチェック
+    if (!req.app.locals.discordClient) {
+      console.error('❌ Discord client not available');
+      return res.status(503).json({
+        success: false,
+        error: 'Discord client not ready'
+      });
+    }
+    
+    const client = req.app.locals.discordClient;
+    
+    // ギルドを取得
+    const guild = await client.guilds.fetch(config.DISCORD_GUILD_ID);
+    if (!guild) {
+      console.error('❌ Guild not found');
+      return res.status(404).json({
+        success: false,
+        error: 'Discord guild not found'
+      });
+    }
+    
+    // ロール一覧を取得
+    const roles = await guild.roles.fetch();
+    const roleList = roles.map(role => ({
+      id: role.id,
+      name: role.name,
+      color: role.color,
+      position: role.position,
+      permissions: role.permissions.toArray(),
+      mentionable: role.mentionable,
+      hoist: role.hoist
+    }));
+    
+    console.log(`✅ Fetched ${roleList.length} Discord roles`);
+    
+    res.json({
+      success: true,
+      data: roleList
+    });
+    
+  } catch (error) {
+    console.error('❌ Error fetching Discord roles:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch Discord roles'
+    });
+  }
+});
+
 // ヘルスチェック
 app.get('/health', (req, res) => {
   res.json({
@@ -110,9 +169,17 @@ app.get('/api/verified-users', async (req, res) => {
 });
 
 export function startApiServer() {
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`🚀 Discord Bot API server running on http://localhost:${PORT}`);
   });
+  
+  // Discordクライアントを設定するための関数を追加
+  app.setDiscordClient = (client: any) => {
+    app.locals.discordClient = client;
+    console.log('✅ Discord client attached to API server');
+  };
+  
+  return app;
 }
 
 export { app };

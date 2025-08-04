@@ -448,6 +448,59 @@ app.delete('/api/collections/:id', async (c) => {
   }
 });
 
+// Discordロール取得エンドポイント
+app.get('/api/discord/roles', async (c) => {
+  try {
+    console.log('=== DISCORD ROLES API CALLED ===');
+    
+    // Discord Bot API URLを取得
+    const DISCORD_BOT_API_URL = c.env.DISCORD_BOT_API_URL || '';
+    console.log('🔗 Discord Bot API URL:', DISCORD_BOT_API_URL);
+    
+    if (!DISCORD_BOT_API_URL) {
+      console.log('⚠️ Discord Bot API URL not configured');
+      return c.json({
+        success: false,
+        error: 'Discord Bot API not configured'
+      }, 500);
+    }
+    
+    // Discord Bot APIからロール一覧を取得
+    const response = await fetch(`${DISCORD_BOT_API_URL}/api/roles`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    console.log(`📥 Discord Bot API response status: ${response.status} ${response.statusText}`);
+    
+    if (response.ok) {
+      const result = await response.json();
+      console.log(`✅ Discord roles fetched:`, result);
+      return c.json({
+        success: true,
+        data: result.data || []
+      });
+    } else {
+      const errorText = await response.text();
+      console.error(`❌ Discord Bot API error: ${response.status} ${response.statusText}`);
+      console.error(`❌ Error response body:`, errorText);
+      return c.json({
+        success: false,
+        error: 'Failed to fetch Discord roles'
+      }, 500);
+    }
+    
+  } catch (error) {
+    console.error('❌ Error fetching Discord roles:', error);
+    return c.json({
+      success: false,
+      error: 'Internal server error'
+    }, 500);
+  }
+});
+
 // 認証エンドポイント
 app.post('/api/verify', async (c) => {
   try {

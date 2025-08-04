@@ -77,8 +77,13 @@ client.once(Events.ClientReady, async (readyClient) => {
   
   // APIサーバー起動
   console.log('🚀 Starting API server...');
-  startApiServer();
-  
+  const apiServer = startApiServer();
+
+  // DiscordクライアントをAPIサーバーで利用できるように設定
+  if (apiServer && apiServer.setDiscordClient) {
+    apiServer.setDiscordClient(client);
+  }
+
   // 認証チャンネルをセットアップ
   console.log('🔧 Setting up verification channel...');
   await setupVerificationChannel();
