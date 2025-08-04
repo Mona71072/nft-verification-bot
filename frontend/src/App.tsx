@@ -1,6 +1,7 @@
 import { ConnectButton, useWallet } from '@suiet/wallet-kit';
 import '@suiet/wallet-kit/style.css';
 import { useState, useEffect } from 'react';
+import AdminPanel from './AdminPanel';
 
 // NFTコレクション型定義
 interface NFTCollection {
@@ -461,7 +462,51 @@ function NFTVerification() {
 }
 
 function App() {
-  return <NFTVerification />;
+  const [currentPage, setCurrentPage] = useState<'verification' | 'admin'>('verification');
+
+  return (
+    <div>
+      {/* Navigation */}
+      <div style={{
+        position: 'fixed',
+        top: '1rem',
+        right: '1rem',
+        zIndex: 1000,
+        display: 'flex',
+        gap: '0.5rem'
+      }}>
+        <button
+          onClick={() => setCurrentPage('verification')}
+          style={{
+            padding: '0.5rem 1rem',
+            background: currentPage === 'verification' ? '#007bff' : '#6c757d',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer'
+          }}
+        >
+          認証ページ
+        </button>
+        <button
+          onClick={() => setCurrentPage('admin')}
+          style={{
+            padding: '0.5rem 1rem',
+            background: currentPage === 'admin' ? '#007bff' : '#6c757d',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer'
+          }}
+        >
+          管理者パネル
+        </button>
+      </div>
+
+      {/* Content */}
+      {currentPage === 'verification' ? <NFTVerification /> : <AdminPanel />}
+    </div>
+  );
 }
 
 export default App;
