@@ -242,28 +242,11 @@ function NFTVerification() {
           </p>
         </div>
 
-        {/* Step 1: Wallet Connection */}
+        {/* Wallet Connection */}
         <div style={{ marginBottom: '1.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem' }}>
-            <div style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: '50%',
-              background: connected ? '#10b981' : '#e5e7eb',
-              color: connected ? 'white' : '#6b7280',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '0.875rem',
-              fontWeight: '600',
-              marginRight: '0.75rem'
-            }}>
-              1
-            </div>
-            <div>
-              <h3 style={{ fontWeight: '600', color: '#1a1a1a' }}>ウォレット接続</h3>
-              <p style={{ fontSize: '0.875rem', color: '#666' }}>Suiウォレットを接続してNFT所有権を確認</p>
-            </div>
+          <div style={{ marginBottom: '1rem' }}>
+            <h3 style={{ fontWeight: '600', color: '#1a1a1a', marginBottom: '0.5rem' }}>ウォレット接続</h3>
+            <p style={{ fontSize: '0.875rem', color: '#666' }}>Suiウォレットを接続してNFT所有権を確認</p>
           </div>
           <ConnectButton />
           {connected && account && (
@@ -281,33 +264,16 @@ function NFTVerification() {
           )}
         </div>
 
-        {/* Step 2: Discord ID Input */}
+        {/* Discord ID Input */}
         <div style={{ marginBottom: '1.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem' }}>
-            <div style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: '50%',
-              background: '#e5e7eb',
-              color: '#6b7280',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '0.875rem',
-              fontWeight: '600',
-              marginRight: '0.75rem'
-            }}>
-              2
-            </div>
-            <div>
-              <h3 style={{ fontWeight: '600', color: '#1a1a1a' }}>Discord ID入力</h3>
-              <p style={{ fontSize: '0.875rem', color: '#666' }}>
-                {isDiscordIdFromUrl() 
-                  ? 'エクスクルーシブなロールを受け取るDiscord ID（自動取得済み・変更不可）'
-                  : 'エクスクルーシブなロールを受け取るDiscord IDを入力'
-                }
-              </p>
-            </div>
+          <div style={{ marginBottom: '1rem' }}>
+            <h3 style={{ fontWeight: '600', color: '#1a1a1a', marginBottom: '0.5rem' }}>Discord ID入力</h3>
+            <p style={{ fontSize: '0.875rem', color: '#666' }}>
+              {isDiscordIdFromUrl() 
+                ? 'エクスクルーシブなロールを受け取るDiscord ID（自動取得済み・変更不可）'
+                : 'エクスクルーシブなロールを受け取るDiscord IDを入力'
+              }
+            </p>
           </div>
           <input
             type="text"
@@ -332,31 +298,14 @@ function NFTVerification() {
           />
         </div>
 
-        {/* Step 2.5: Collection Selection */}
+        {/* Collection Selection */}
         {collections.length > 0 && (
           <div style={{ marginBottom: '1.5rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem' }}>
-              <div style={{
-                width: '32px',
-                height: '32px',
-                borderRadius: '50%',
-                background: '#e5e7eb',
-                color: '#6b7280',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '0.875rem',
-                fontWeight: '600',
-                marginRight: '0.75rem'
-              }}>
-                2.5
-              </div>
-              <div>
-                <h3 style={{ fontWeight: '600', color: '#1a1a1a' }}>NFTコレクション選択</h3>
-                <p style={{ fontSize: '0.875rem', color: '#666' }}>
-                  認証したいNFTコレクションを選択してください
-                </p>
-              </div>
+            <div style={{ marginBottom: '1rem' }}>
+              <h3 style={{ fontWeight: '600', color: '#1a1a1a', marginBottom: '0.5rem' }}>NFTコレクション選択</h3>
+              <p style={{ fontSize: '0.875rem', color: '#666' }}>
+                認証したいNFTコレクションを選択してください
+              </p>
             </div>
             <div style={{ marginBottom: '0.5rem' }}>
               <label style={{ fontSize: '0.875rem', color: '#666', marginRight: '0.5rem' }}>
@@ -397,28 +346,11 @@ function NFTVerification() {
           </div>
         )}
 
-        {/* Step 3: Verification */}
+        {/* Verification */}
         <div style={{ marginBottom: '1.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem' }}>
-            <div style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: '50%',
-              background: '#e5e7eb',
-              color: '#6b7280',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '0.875rem',
-              fontWeight: '600',
-              marginRight: '0.75rem'
-            }}>
-              3
-            </div>
-            <div>
-              <h3 style={{ fontWeight: '600', color: '#1a1a1a' }}>NFT所有権確認</h3>
-              <p style={{ fontSize: '0.875rem', color: '#666' }}>メッセージに署名してNFT所有権を安全に確認</p>
-            </div>
+          <div style={{ marginBottom: '1rem' }}>
+            <h3 style={{ fontWeight: '600', color: '#1a1a1a', marginBottom: '0.5rem' }}>NFT所有権確認</h3>
+            <p style={{ fontSize: '0.875rem', color: '#666' }}>メッセージに署名してNFT所有権を安全に確認</p>
           </div>
           <button
             onClick={handleVerifyNFT}
