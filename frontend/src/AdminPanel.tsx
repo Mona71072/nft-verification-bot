@@ -30,6 +30,7 @@ function AdminPanel() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [editingCollection, setEditingCollection] = useState<NFTCollection | null>(null);
 
   const [newCollection, setNewCollection] = useState({
     name: '',
@@ -136,6 +137,54 @@ function AdminPanel() {
     setLoading(false);
   };
 
+  // コレクション編集開始
+  const handleEditCollection = (collection: NFTCollection) => {
+    setEditingCollection(collection);
+    setNewCollection({
+      name: collection.name,
+      packageId: collection.packageId,
+      roleId: collection.roleId,
+      roleName: collection.roleName,
+      description: collection.description
+    });
+  };
+
+  // コレクション編集キャンセル
+  const handleCancelEdit = () => {
+    setEditingCollection(null);
+    setNewCollection({ name: '', packageId: '', roleId: '', roleName: '', description: '' });
+  };
+
+  // コレクション更新
+  const handleUpdateCollection = async () => {
+    if (!editingCollection || !newCollection.name || !newCollection.packageId || !newCollection.roleId || !newCollection.roleName) {
+      setMessage('すべての必須フィールドを入力してください');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/collections/${editingCollection.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newCollection)
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setMessage('コレクションが正常に更新されました');
+        setEditingCollection(null);
+        setNewCollection({ name: '', packageId: '', roleId: '', roleName: '', description: '' });
+        fetchCollections();
+      } else {
+        setMessage('コレクションの更新に失敗しました');
+      }
+    } catch (error) {
+      setMessage('エラーが発生しました');
+    }
+    setLoading(false);
+  };
+
   const handleAuth = () => {
     // 簡単な認証（実際の運用ではより安全な認証が必要）
     if (password === 'admin123') {
@@ -206,7 +255,7 @@ function AdminPanel() {
         border: '1px solid #ccc',
         borderRadius: '8px'
       }}>
-        <h3>新しいコレクション追加</h3>
+        <h3>{editingCollection ? 'コレクション編集' : '新しいコレクション追加'}</h3>
         <div style={{ display: 'grid', gap: '0.5rem', maxWidth: '600px' }}>
           <input 
             type="text" 
@@ -248,21 +297,60 @@ function AdminPanel() {
             onChange={(e) => setNewCollection({...newCollection, description: e.target.value})}
             style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', minHeight: '80px' }}
           />
-          <button 
-            onClick={handleAddCollection}
-            disabled={loading}
-            style={{
-              padding: '0.5rem 1rem',
-              background: '#28a745',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              opacity: loading ? 0.6 : 1
-            }}
-          >
-            {loading ? '追加中...' : 'コレクション追加'}
-          </button>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            {editingCollection ? (
+              <>
+                <button 
+                  onClick={handleUpdateCollection}
+                  disabled={loading}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    background: '#007bff',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    opacity: loading ? 0.6 : 1,
+                    flex: 1
+                  }}
+                >
+                  {loading ? '更新中...' : 'コレクション更新'}
+                </button>
+                <button 
+                  onClick={handleCancelEdit}
+                  disabled={loading}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    background: '#6c757d',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    opacity: loading ? 0.6 : 1,
+                    flex: 1
+                  }}
+                >
+                  キャンセル
+                </button>
+              </>
+            ) : (
+              <button 
+                onClick={handleAddCollection}
+                disabled={loading}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: '#28a745',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  opacity: loading ? 0.6 : 1
+                }}
+              >
+                {loading ? '追加中...' : 'コレクション追加'}
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -296,19 +384,36 @@ function AdminPanel() {
                 </p>
               )}
             </div>
-            <button
-              onClick={() => handleDeleteCollection(collection.id)}
-              style={{ 
-                background: '#dc3545', 
-                color: 'white', 
-                padding: '0.5rem 1rem',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer'
-              }}
-            >
-              削除
-            </button>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button
+                onClick={() => handleEditCollection(collection)}
+                style={{
+                  padding: '0.25rem 0.5rem',
+                  background: '#007bff',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.8rem'
+                }}
+              >
+                編集
+              </button>
+              <button
+                onClick={() => handleDeleteCollection(collection.id)}
+                style={{
+                  padding: '0.25rem 0.5rem',
+                  background: '#dc3545',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.8rem'
+                }}
+              >
+                削除
+              </button>
+            </div>
           </div>
         ))}
         {collections.length === 0 && (
