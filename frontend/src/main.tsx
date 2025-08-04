@@ -40,7 +40,7 @@ window.addEventListener('unhandledrejection', (event) => {
 
 // より強力なエラー抑制
 const originalConsoleError = console.error;
-console.error = (...args) => {
+console.error = (...args: any[]) => {
   const message = args.join(' ');
   if (message.includes('inpage-script.js') || 
       message.includes('register') || 
@@ -53,27 +53,9 @@ console.error = (...args) => {
   originalConsoleError.apply(console, args);
 };
 
-// スクリプトエラーの抑制
-const originalAddEventListener = window.addEventListener;
-window.addEventListener = function(type, listener, options) {
-  if (type === 'error') {
-    const wrappedListener = (event) => {
-      if (event.filename?.includes('inpage-script.js') || 
-          event.error?.message?.includes('register') ||
-          event.error?.message?.includes('wallet')) {
-        console.log('Error event suppressed:', event.error?.message);
-        return;
-      }
-      listener(event);
-    };
-    return originalAddEventListener.call(this, type, wrappedListener, options);
-  }
-  return originalAddEventListener.call(this, type, listener, options);
-};
-
 // より強力なスクリプトエラー抑制
 const originalOnError = window.onerror;
-window.onerror = function(message, source, lineno, colno, error) {
+window.onerror = function(message: string | Event, source?: string, lineno?: number, colno?: number, error?: Error) {
   if (source?.includes('inpage-script.js') || 
       message?.toString().includes('register') ||
       message?.toString().includes('wallet') ||
@@ -86,25 +68,6 @@ window.onerror = function(message, source, lineno, colno, error) {
     return originalOnError(message, source, lineno, colno, error);
   }
   return false;
-};
-
-// スクリプト読み込みエラーの抑制
-const originalCreateElement = document.createElement;
-document.createElement = function(tagName) {
-  const element = originalCreateElement.call(this, tagName);
-  if (tagName.toLowerCase() === 'script') {
-    const originalOnError = element.onerror;
-    element.onerror = function(event) {
-      if (event.target?.src?.includes('inpage-script.js')) {
-        console.log('Script load error suppressed');
-        return;
-      }
-      if (originalOnError) {
-        originalOnError.call(this, event);
-      }
-    };
-  }
-  return element;
 };
 
 // エラーハンドリングを追加
