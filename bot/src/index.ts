@@ -139,23 +139,9 @@ async function setupVerificationChannel() {
           .setEmoji('🔐')
       );
 
-    const adminButton = new ActionRowBuilder<ButtonBuilder>()
-      .addComponents(
-        new ButtonBuilder()
-          .setCustomId('admin_stats')
-          .setLabel('📊 統計情報')
-          .setStyle(ButtonStyle.Secondary)
-          .setEmoji('📊'),
-        new ButtonBuilder()
-          .setCustomId('admin_refresh')
-          .setLabel('🔄 更新')
-          .setStyle(ButtonStyle.Secondary)
-          .setEmoji('🔄')
-      );
-
     await channel.send({
       embeds: [verificationEmbed],
-      components: [verifyButton, adminButton]
+      components: [verifyButton]
     });
 
     console.log('✅ Verification message sent successfully');
@@ -174,14 +160,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     switch (interaction.customId) {
       case 'verify_nft':
         await handleVerifyNFT(interaction);
-        break;
-      case 'admin_stats':
-        const isAdmin = interaction.user.id === config.ADMIN_USER_ID;
-        await handleAdminStats(interaction, isAdmin);
-        break;
-      case 'admin_refresh':
-        const isAdminRefresh = interaction.user.id === config.ADMIN_USER_ID;
-        await handleAdminRefresh(interaction, isAdminRefresh);
         break;
       default:
         console.log(`Unknown button interaction: ${interaction.customId}`);
@@ -349,68 +327,6 @@ export async function grantMultipleRolesToUser(discordId: string, roles: Array<{
   } catch (error) {
     console.error('Error granting multiple roles:', error);
     return false;
-  }
-}
-
-// 管理者統計情報（ミニマル版）
-async function handleAdminStats(interaction: ButtonInteraction, isAdmin: boolean) {
-  try {
-    if (!isAdmin) {
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({
-          content: '❌ 管理者権限が必要です。',
-          ephemeral: true
-        });
-      }
-      return;
-    }
-
-    const statsEmbed = new EmbedBuilder()
-      .setTitle('📊 統計情報')
-      .setDescription('**システム統計**\\n\\n実装予定')
-      .setColor(0x5865F2)
-      .setTimestamp();
-
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({
-        embeds: [statsEmbed],
-        ephemeral: true
-      });
-    }
-  } catch (error) {
-    console.error('Error in handleAdminStats:', error);
-    throw error;
-  }
-}
-
-// 管理者リフレッシュ（ミニマル版）
-async function handleAdminRefresh(interaction: ButtonInteraction, isAdmin: boolean) {
-  try {
-    if (!isAdmin) {
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({
-          content: '❌ 管理者権限が必要です。',
-          ephemeral: true
-        });
-      }
-      return;
-    }
-
-    const refreshEmbed = new EmbedBuilder()
-      .setTitle('🔄 更新完了')
-      .setDescription('**システムを更新しました**\\n\\n実装予定')
-      .setColor(0x57F287)
-      .setTimestamp();
-
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({
-        embeds: [refreshEmbed],
-        ephemeral: true
-      });
-    }
-  } catch (error) {
-    console.error('Error in handleAdminRefresh:', error);
-    throw error;
   }
 }
 
