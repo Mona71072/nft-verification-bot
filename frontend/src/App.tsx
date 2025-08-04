@@ -287,6 +287,74 @@ function NFTVerification() {
     }
   };
 
+  // コレクション管理関連のハンドラー
+  const handleAddCollection = async (newCollection: Omit<NFTCollection, 'id' | 'isActive' | 'createdAt'>) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/collections`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newCollection)
+      });
+      const data = await response.json();
+      if (data.success) {
+        setCollections(prev => [...prev, data.data]);
+        console.log('✅ Collection added successfully');
+      } else {
+        console.error('❌ Failed to add collection:', data.error);
+      }
+    } catch (error) {
+      console.error('❌ Failed to add collection:', error);
+    }
+  };
+
+  const handleEditCollection = async (collection: NFTCollection) => {
+    const updatedCollection = {
+      ...collection,
+      name: prompt('コレクション名を変更:', collection.name) || collection.name,
+      packageId: prompt('Package IDを変更:', collection.packageId) || collection.packageId,
+      roleId: prompt('Discord Role IDを変更:', collection.roleId) || collection.roleId,
+      roleName: prompt('Discord Role Nameを変更:', collection.roleName) || collection.roleName,
+      description: prompt('説明を変更:', collection.description) || collection.description
+    };
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/collections/${collection.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedCollection)
+      });
+      const data = await response.json();
+      if (data.success) {
+        setCollections(prev => prev.map(col => col.id === collection.id ? data.data : col));
+        console.log('✅ Collection updated successfully');
+      } else {
+        console.error('❌ Failed to update collection:', data.error);
+      }
+    } catch (error) {
+      console.error('❌ Failed to update collection:', error);
+    }
+  };
+
+  const handleDeleteCollection = async (collectionId: string) => {
+    if (!confirm('このコレクションを削除しますか？')) {
+      return;
+    }
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/collections/${collectionId}`, {
+        method: 'DELETE'
+      });
+      const data = await response.json();
+      if (data.success) {
+        setCollections(prev => prev.filter(col => col.id !== collectionId));
+        console.log('✅ Collection deleted successfully');
+      } else {
+        console.error('❌ Failed to delete collection:', data.error);
+      }
+    } catch (error) {
+      console.error('❌ Failed to delete collection:', error);
+    }
+  };
+
   return (
     <div style={{
       minHeight: '100vh',
@@ -593,9 +661,162 @@ function NFTVerification() {
             {/* コレクション管理 */}
             <div style={{ marginTop: '1rem' }}>
               <h4 style={{ fontWeight: '500', color: '#374151', marginBottom: '0.5rem' }}>コレクション管理</h4>
-              <p style={{ fontSize: '0.875rem', color: '#666' }}>
-                コレクションの追加・編集・削除機能は管理者パネル内で利用できます。
-              </p>
+              
+              {/* 新しいコレクション追加 */}
+              <div style={{ marginBottom: '1rem', padding: '1rem', background: 'white', borderRadius: '4px' }}>
+                <h5 style={{ fontWeight: '500', color: '#374151', marginBottom: '0.5rem' }}>新しいコレクション追加</h5>
+                <div style={{ display: 'grid', gap: '0.5rem', gridTemplateColumns: '1fr 1fr' }}>
+                  <input
+                    type="text"
+                    placeholder="コレクション名"
+                    id="collectionName"
+                    style={{
+                      padding: '0.5rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px',
+                      fontSize: '0.875rem'
+                    }}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Package ID (例: 0x123...::nft::NFT)"
+                    id="packageId"
+                    style={{
+                      padding: '0.5rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px',
+                      fontSize: '0.875rem'
+                    }}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Discord Role ID"
+                    id="roleId"
+                    style={{
+                      padding: '0.5rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px',
+                      fontSize: '0.875rem'
+                    }}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Discord Role Name"
+                    id="roleName"
+                    style={{
+                      padding: '0.5rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px',
+                      fontSize: '0.875rem'
+                    }}
+                  />
+                  <input
+                    type="text"
+                    placeholder="説明"
+                    id="description"
+                    style={{
+                      padding: '0.5rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '4px',
+                      fontSize: '0.875rem',
+                      gridColumn: '1 / -1'
+                    }}
+                  />
+                </div>
+                <button
+                  onClick={() => {
+                    const name = (document.getElementById('collectionName') as HTMLInputElement)?.value;
+                    const packageId = (document.getElementById('packageId') as HTMLInputElement)?.value;
+                    const roleId = (document.getElementById('roleId') as HTMLInputElement)?.value;
+                    const roleName = (document.getElementById('roleName') as HTMLInputElement)?.value;
+                    const description = (document.getElementById('description') as HTMLInputElement)?.value;
+                    
+                    if (name && packageId && roleId && roleName) {
+                      handleAddCollection({ name, packageId, roleId, roleName, description });
+                      // 入力フィールドをクリア
+                      ['collectionName', 'packageId', 'roleId', 'roleName', 'description'].forEach(id => {
+                        const element = document.getElementById(id) as HTMLInputElement;
+                        if (element) element.value = '';
+                      });
+                    }
+                  }}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    background: '#10b981',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '0.875rem',
+                    marginTop: '0.5rem'
+                  }}
+                >
+                  コレクション追加
+                </button>
+              </div>
+              
+              {/* コレクション一覧 */}
+              <div style={{ marginTop: '1rem' }}>
+                <h5 style={{ fontWeight: '500', color: '#374151', marginBottom: '0.5rem' }}>コレクション一覧</h5>
+                {collections.map(collection => (
+                  <div key={collection.id} style={{ 
+                    padding: '0.75rem', 
+                    background: 'white', 
+                    borderRadius: '4px', 
+                    marginBottom: '0.5rem',
+                    border: '1px solid #e5e7eb'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <h6 style={{ fontWeight: '600', color: '#1a1a1a', marginBottom: '0.25rem' }}>
+                          {collection.name}
+                        </h6>
+                        <p style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.25rem' }}>
+                          Package: {collection.packageId}
+                        </p>
+                        <p style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.25rem' }}>
+                          Role: {collection.roleName} (ID: {collection.roleId})
+                        </p>
+                        {collection.description && (
+                          <p style={{ fontSize: '0.75rem', color: '#666' }}>
+                            {collection.description}
+                          </p>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.25rem' }}>
+                        <button
+                          onClick={() => handleEditCollection(collection)}
+                          style={{
+                            padding: '0.25rem 0.5rem',
+                            background: '#3b82f6',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontSize: '0.75rem'
+                          }}
+                        >
+                          編集
+                        </button>
+                        <button
+                          onClick={() => handleDeleteCollection(collection.id)}
+                          style={{
+                            padding: '0.25rem 0.5rem',
+                            background: '#ef4444',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontSize: '0.75rem'
+                          }}
+                        >
+                          削除
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
