@@ -1,3 +1,587 @@
+<<<<<<< HEAD
+import { Hono } from 'hono';
+
+// NFTコレクション型定義
+interface NFTCollection {
+  id: string;
+  name: string;
+  packageId: string;
+  roleId: string;
+  roleName: string;
+  description: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+// Cloudflare KV型定義
+interface Env {
+  NONCE_STORE: any; // KVNamespace
+  COLLECTION_STORE: any; // KVNamespace
+  NFT_COLLECTION_ID: string;
+  DISCORD_BOT_API_URL: string;
+}
+
+const app = new Hono<{ Bindings: Env }>();
+
+// カスタムCORSミドルウェア
+app.use('*', async (c, next) => {
+  const origin = c.req.header('Origin');
+  const method = c.req.method;
+  
+  console.log('=== CORS MIDDLEWARE ===');
+  console.log('Origin:', origin);
+  console.log('Method:', method);
+  console.log('URL:', c.req.url);
+  console.log('User-Agent:', c.req.header('User-Agent'));
+  
+  // すべてのレスポンスにCORSヘッダーを設定
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
+  c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+  c.header('Access-Control-Allow-Credentials', 'true');
+  c.header('Access-Control-Max-Age', '86400');
+  c.header('Vary', 'Origin');
+  
+  // OPTIONSリクエストの場合は即座にレスポンス
+  if (method === 'OPTIONS') {
+    console.log('OPTIONS request handled by middleware');
+    return new Response('', {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS, PUT, DELETE',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Accept, Origin',
+        'Access-Control-Allow-Credentials': 'true',
+        'Access-Control-Max-Age': '86400',
+        'Vary': 'Origin'
+      }
+    });
+  }
+  
+  await next();
+});
+
+// ヘルスチェック
+app.get('/', (c) => {
+  return c.json({
+    status: 'ok',
+    message: 'NFT Verification API',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// ナンス生成エンドポイント
+app.post('/api/nonce', async (c) => {
+  try {
+    console.log('=== NONCE ENDPOINT CALLED ===');
+    console.log('URL:', c.req.url);
+    console.log('Method:', c.req.method);
+    console.log('Origin:', c.req.header('Origin'));
+    console.log('User-Agent:', c.req.header('User-Agent'));
+    console.log('Content-Type:', c.req.header('Content-Type'));
+    
+    const body = await c.req.json();
+    console.log('Request body:', body);
+    
+    const { discordId, address } = body;
+
+    if (!discordId || !address) {
+      console.log('Missing required fields:', { discordId, address });
+      return c.json({
+        success: false,
+        error: 'discordId and address are required'
+      }, 400);
+    }
+
+    // ナンス生成
+    const nonce = Date.now().toString(36) + Math.random().toString(36).substr(2);
+    const expiresAt = Date.now() + 5 * 60 * 1000; // 5分後
+
+    // Cloudflare KVに保存
+    const nonceData = {
+      nonce,
+      discordId,
+      address,
+      expiresAt
+    };
+
+    await c.env.NONCE_STORE.put(nonce, JSON.stringify(nonceData), {
+      expirationTtl: 300 // 5分後に自動削除
+    });
+
+    console.log(`Generated nonce for ${address} (Discord: ${discordId}): ${nonce}`);
+
+    return c.json({
+      success: true,
+      data: {
+        nonce,
+        expiresAt
+      }
+    });
+
+  } catch (error) {
+    console.error('Nonce generation error:', error);
+    return c.json({
+      success: false,
+      error: `Failed to generate nonce: ${error instanceof Error ? error.message : 'Unknown error'}`
+    }, 500);
+  }
+});
+
+
+
+// 署名検証関数（@suiet/wallet-kit対応）
+function verifySignedMessage(signatureData: any): boolean {
+  try {
+    console.log('Verifying signature with @suiet/wallet-kit format...');
+    console.log('Signature data received:', signatureData);
+    
+    const { signature, bytes } = signatureData;
+    
+    if (!signature) {
+      console.error('Missing signature field');
+      return false;
+    }
+
+    // 開発用: 署名が存在し、適切な形式であれば有効とする
+    if (signature && signature.length > 50) {  // Base64署名の長さチェック
+      console.log('Development mode: Signature verification passed');
+      console.log('Signature length:', signature.length);
+      console.log('Has bytes:', !!bytes);
+      return true;
+    }
+
+    console.log('Signature verification failed: invalid signature format');
+    return false;
+  } catch (error) {
+    console.error('Signature verification error:', error);
+    return false;
+  }
+}
+
+// ナンス検証関数
+function validateNonce(nonce: string, storedNonceData: any): boolean {
+  try {
+    const now = Date.now();
+    return storedNonceData.nonce === nonce && now < storedNonceData.expiresAt;
+  } catch (error) {
+    console.error('Nonce validation error:', error);
+    return false;
+  }
+}
+
+// NFT保有確認関数
+async function hasTargetNft(address: string, collectionId?: string): Promise<boolean> {
+  try {
+    console.log(`Checking NFT ownership for address: ${address}, collection: ${collectionId || 'any'}`);
+    
+    // 実際のNFT保有確認を実行（開発モードを無効化）
+    console.log('Production mode: Performing actual NFT ownership check...');
+    
+    // 実際のSui APIを使用する場合（本番環境用）
+    if (collectionId && collectionId.trim() !== '') {
+      try {
+        // Sui RPC APIを使用してNFT保有を確認
+        const suiRpcUrl = 'https://fullnode.mainnet.sui.io:443';
+        const packageId = collectionId.split('::')[0];
+        
+        console.log(`Checking Popkins ownership for address: ${address}, package: ${packageId}`);
+        
+        const response = await fetch(`${suiRpcUrl}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'suix_getOwnedObjects',
+            params: [
+              address,
+              {
+                filter: {
+                  Package: packageId
+                }
+              },
+              null,
+              null,
+              true
+            ]
+          })
+        });
+        
+        const data = await response.json() as any;
+        const hasNft = data.result && data.result.data && data.result.data.length > 0;
+        
+        if (hasNft) {
+          console.log(`✅ Popkins found: ${data.result.data.length} NFTs for address ${address}`);
+        } else {
+          console.log(`❌ No Popkins found for address ${address}`);
+        }
+        
+        return Boolean(hasNft);
+      } catch (apiError) {
+        console.error('❌ Sui API error:', apiError);
+        console.log('🔄 NFT check failed due to API error - returning false');
+        return false;
+      }
+    }
+    
+    return false;
+  } catch (error) {
+    console.error('NFT check error:', error);
+    return false;
+  }
+}
+
+// Discord Bot API（認証結果通知）
+async function notifyDiscordBot(c: any, discordId: string, action: string, verificationData?: any): Promise<boolean> {
+  try {
+    console.log(`🔄 Discord Bot API: ${action} for user ${discordId}`);
+    console.log('📋 Verification data:', verificationData);
+    
+    // レンダーのDiscord Bot API URL
+    const DISCORD_BOT_API_URL = c.env.DISCORD_BOT_API_URL || '';
+    console.log('🔗 Discord Bot API URL:', DISCORD_BOT_API_URL);
+    
+    if (!DISCORD_BOT_API_URL) {
+      console.log('⚠️ Discord Bot API URL not configured, using mock');
+      return true; // モックモード
+    }
+    
+    // リクエストボディの構築
+    const requestBody = {
+      discordId,
+      action,
+      verificationData,
+      timestamp: new Date().toISOString()
+    };
+    
+    console.log('📤 Sending request to Discord Bot API:', requestBody);
+    
+    // レンダーのDiscord Bot APIにリクエスト送信
+    const response = await fetch(`${DISCORD_BOT_API_URL}/notify`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    });
+    
+    console.log(`📥 Discord Bot API response status: ${response.status} ${response.statusText}`);
+    
+    if (response.ok) {
+      const result = await response.json();
+      console.log(`✅ Discord Bot API response:`, result);
+      return true;
+    } else {
+      const errorText = await response.text();
+      console.error(`❌ Discord Bot API error: ${response.status} ${response.statusText}`);
+      console.error(`❌ Error response body:`, errorText);
+      return false;
+    }
+    
+  } catch (error) {
+    console.error('❌ Error with Discord Bot API:', error);
+    console.error('❌ Error details:', (error as Error).message);
+    console.error('❌ Error stack:', (error as Error).stack);
+    return false;
+  }
+}
+
+// コレクション取得API
+app.get('/api/collections', async (c) => {
+  try {
+    console.log('=== COLLECTIONS API CALLED ===');
+    
+    const collectionsData = await c.env.COLLECTION_STORE.get('collections');
+    const collections = collectionsData ? JSON.parse(collectionsData) : [];
+    
+    console.log(`Found ${collections.length} collections`);
+    
+    return c.json({
+      success: true,
+      data: collections
+    });
+  } catch (error) {
+    console.error('Collections fetch error:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to fetch collections'
+    }, 500);
+  }
+});
+
+// コレクション追加API（管理者用）
+app.post('/api/collections', async (c) => {
+  try {
+    console.log('=== ADD COLLECTION API CALLED ===');
+    
+    const body = await c.req.json();
+    const { name, packageId, roleId, roleName, description } = body;
+    
+    console.log('Request body:', body);
+    
+    // バリデーション
+    if (!name || !packageId || !roleId || !roleName) {
+      console.log('Missing required fields:', { name, packageId, roleId, roleName });
+      return c.json({
+        success: false,
+        error: 'Missing required fields: name, packageId, roleId, roleName'
+      }, 400);
+    }
+    
+    const newCollection: NFTCollection = {
+      id: Date.now().toString(),
+      name,
+      packageId,
+      roleId,
+      roleName,
+      description: description || '',
+      isActive: true,
+      createdAt: new Date().toISOString()
+    };
+    
+    // 既存コレクションを取得
+    const existingData = await c.env.COLLECTION_STORE.get('collections');
+    const collections = existingData ? JSON.parse(existingData) : [];
+    
+    // 新しいコレクションを追加
+    collections.push(newCollection);
+    
+    // KVに保存
+    await c.env.COLLECTION_STORE.put('collections', JSON.stringify(collections));
+    
+    console.log(`✅ Added new collection: ${name} (ID: ${newCollection.id})`);
+    
+    return c.json({
+      success: true,
+      data: newCollection
+    });
+  } catch (error) {
+    console.error('Add collection error:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to add collection'
+    }, 500);
+  }
+});
+
+// コレクション更新API
+app.put('/api/collections/:id', async (c) => {
+  try {
+    const collectionId = c.req.param('id');
+    const body = await c.req.json();
+    
+    console.log(`=== UPDATE COLLECTION API CALLED ===`);
+    console.log(`Collection ID: ${collectionId}`);
+    console.log('Request body:', body);
+    
+    const existingData = await c.env.COLLECTION_STORE.get('collections');
+    const collections = existingData ? JSON.parse(existingData) : [];
+    
+    const collectionIndex = collections.findIndex((c: NFTCollection) => c.id === collectionId);
+    if (collectionIndex === -1) {
+      return c.json({
+        success: false,
+        error: 'Collection not found'
+      }, 404);
+    }
+    
+    // コレクションを更新
+    collections[collectionIndex] = {
+      ...collections[collectionIndex],
+      ...body,
+      updatedAt: new Date().toISOString()
+    };
+    
+    await c.env.COLLECTION_STORE.put('collections', JSON.stringify(collections));
+    
+    console.log(`✅ Updated collection: ${collections[collectionIndex].name}`);
+    
+    return c.json({
+      success: true,
+      data: collections[collectionIndex]
+    });
+  } catch (error) {
+    console.error('Update collection error:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to update collection'
+    }, 500);
+  }
+});
+
+// コレクション削除API
+app.delete('/api/collections/:id', async (c) => {
+  try {
+    const collectionId = c.req.param('id');
+    
+    console.log(`=== DELETE COLLECTION API CALLED ===`);
+    console.log(`Collection ID: ${collectionId}`);
+    
+    const existingData = await c.env.COLLECTION_STORE.get('collections');
+    const collections = existingData ? JSON.parse(existingData) : [];
+    
+    const collectionIndex = collections.findIndex((c: NFTCollection) => c.id === collectionId);
+    if (collectionIndex === -1) {
+      return c.json({
+        success: false,
+        error: 'Collection not found'
+      }, 404);
+    }
+    
+    const deletedCollection = collections[collectionIndex];
+    collections.splice(collectionIndex, 1);
+    
+    await c.env.COLLECTION_STORE.put('collections', JSON.stringify(collections));
+    
+    console.log(`✅ Deleted collection: ${deletedCollection.name}`);
+    
+    return c.json({
+      success: true,
+      data: deletedCollection
+    });
+  } catch (error) {
+    console.error('Delete collection error:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to delete collection'
+    }, 500);
+  }
+});
+
+// 認証エンドポイント
+app.post('/api/verify', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { signature, address, discordId, nonce, message, collectionId } = body;
+
+    // 必須パラメータチェック
+    if (!signature || !address || !discordId || !nonce) {
+      return c.json({
+        success: false,
+        error: 'Missing required parameters'
+      }, 400);
+    }
+
+    console.log(`Verification request for ${address} (Discord: ${discordId})`);
+    console.log(`Collection ID: ${collectionId || 'default'}`);
+
+    // ナンス検証
+    const storedNonceDataStr = await c.env.NONCE_STORE.get(nonce);
+    if (!storedNonceDataStr) {
+      return c.json({
+        success: false,
+        error: 'Invalid or expired nonce'
+      }, 400);
+    }
+
+    const storedNonceData = JSON.parse(storedNonceDataStr);
+    const isValidNonce = validateNonce(nonce, storedNonceData);
+    if (!isValidNonce) {
+      return c.json({
+        success: false,
+        error: 'Invalid or expired nonce'
+      }, 400);
+    }
+
+    // 署名検証（@suiet/wallet-kit形式）
+    console.log('=== SIGNATURE VERIFICATION ===');
+    console.log('Request body:', body);
+    
+    const signatureData = {
+      signature: signature,
+      bytes: body.bytes || body.messageBytes,
+      authMessage: body.authMessage
+    };
+    
+    const isValidSignature = verifySignedMessage(signatureData);
+    if (!isValidSignature) {
+      return c.json({
+        success: false,
+        error: 'Invalid signature'
+      }, 400);
+    }
+
+    // コレクションIDが指定されている場合、そのコレクションの設定を取得
+    let targetPackageId = c.env.NFT_COLLECTION_ID; // デフォルト
+    let roleName = 'NFT Holder'; // デフォルト
+    
+    if (collectionId) {
+      try {
+        const collectionsData = await c.env.COLLECTION_STORE.get('collections');
+        const collections = collectionsData ? JSON.parse(collectionsData) : [];
+        const targetCollection = collections.find((c: NFTCollection) => c.id === collectionId);
+        
+        if (targetCollection && targetCollection.isActive) {
+          targetPackageId = targetCollection.packageId;
+          roleName = targetCollection.roleName;
+          console.log(`✅ Using collection: ${targetCollection.name} (${targetCollection.packageId})`);
+        } else {
+          console.log(`⚠️ Collection ${collectionId} not found or inactive, using default`);
+        }
+      } catch (error) {
+        console.error('Error fetching collection config:', error);
+        console.log('⚠️ Using default collection configuration');
+      }
+    }
+
+    // NFT保有確認
+    const hasNft = await hasTargetNft(address, targetPackageId);
+    
+    // 認証結果の通知データ
+    const notificationData = {
+      address: address,
+      discordId: discordId,
+      collectionId: collectionId,
+      roleName: roleName,
+      timestamp: new Date().toISOString()
+    };
+    
+    if (!hasNft) {
+      // NFT保有失敗時の通知
+      await notifyDiscordBot(c, discordId, 'verification_failed', {
+        ...notificationData,
+        reason: 'NFT not found in wallet'
+      });
+      
+      return c.json({
+        success: false,
+        error: 'NFT not found in wallet'
+      }, 400);
+    }
+
+    // Discordロール付与（成功時）
+    const roleGranted = await notifyDiscordBot(c, discordId, 'grant_role', notificationData);
+    if (!roleGranted) {
+      console.log('⚠️ Discord notification failed, but verification succeeded');
+    }
+
+    // 使用済みナンスを削除
+    await c.env.NONCE_STORE.delete(nonce);
+
+    console.log(`✅ Verification successful for ${address} (Discord: ${discordId}) with role: ${roleName}`);
+
+    return c.json({
+      success: true,
+      data: {
+        roleName: roleName,
+        message: 'Verification completed successfully'
+      }
+    });
+
+  } catch (error) {
+    console.error('Verification error:', error);
+    return c.json({
+      success: false,
+      error: 'Internal server error'
+    }, 500);
+  }
+});
+
+
+
+export default app; 
+=======
 import { 
   Client, 
   GatewayIntentBits, 
@@ -9,8 +593,7 @@ import {
   ChannelType,
   TextChannel,
   ButtonInteraction,
-  GuildMember,
-  MessageFlags
+  GuildMember
 } from 'discord.js';
 import { config, validateConfig } from './config';
 import { startApiServer } from './api-server';
@@ -118,95 +701,56 @@ async function setupVerificationChannel() {
       }
     }
 
-    // 既存のBotメッセージをチェック（すべてのBotメッセージを削除）
+    // 既存のBotメッセージをチェック
     console.log('🔍 Checking existing bot messages...');
     const messages = await verificationChannel.messages.fetch({ limit: 50 });
     const botMessages = messages.filter(msg => 
-      msg.author.id === client.user!.id
+      msg.author.id === client.user!.id && 
+      msg.embeds.length > 0 &&
+      (msg.embeds[0].title?.includes('NFT認証') || msg.embeds[0].title?.includes('管理者'))
     );
 
     console.log(`📊 Found ${botMessages.size} existing bot messages`);
-    console.log('📋 Bot message titles:', botMessages.map(msg => 
-      msg.embeds.length > 0 ? msg.embeds[0].title : 'No embed'
-    ));
+
+    if (botMessages.size >= 2) {
+      console.log('✅ Verification messages already exist, skipping setup');
+      return;
+    }
 
     // 古いメッセージを削除（権限があれば）
     if (botMessages.size > 0) {
       try {
         const permissions = verificationChannel.permissionsFor(client.user!);
         if (permissions?.has('ManageMessages')) {
-          // 一括削除を試行
-          try {
-            await verificationChannel.bulkDelete(botMessages);
-            console.log(`🧹 Bulk deleted ${botMessages.size} old bot messages`);
-          } catch (bulkError) {
-            console.log('⚠️ Bulk delete failed, trying individual deletion:', bulkError);
-            // 個別削除を試行
-            for (const message of botMessages.values()) {
-              try {
-                await message.delete();
-                console.log(`🧹 Deleted individual message: ${message.embeds[0]?.title || 'No title'}`);
-              } catch (individualError) {
-                console.log(`⚠️ Could not delete message: ${individualError}`);
-              }
-            }
-          }
+          await verificationChannel.bulkDelete(botMessages);
+          console.log(`🧹 Deleted ${botMessages.size} old bot messages`);
         } else {
           console.log('⚠️ No permission to delete messages, keeping existing ones');
-          // 権限がない場合は既存メッセージを削除せずに新しいメッセージを送信
+          return;
         }
       } catch (error) {
         console.log('⚠️ Could not delete old messages:', error);
-        // エラーが発生しても新しいメッセージを送信
       }
     }
 
     console.log('🔄 Creating new verification messages...');
 
-    // シンプルでカッコいいユーザー認証メッセージ
+    // ミニマル認証メッセージ
     const userVerificationEmbed = new EmbedBuilder()
-      .setTitle('🎯 SXT NFT Verification Portal')
-      .setDescription(`**Join the exclusive NFT community by verifying your Sui wallet ownership!**
-
-🌟 **What you'll get:**
-• **Exclusive Discord Role:** NFT Holder
-• **Premium Access:** Special channels and features
-• **Community Status:** Verified NFT holder
-• **Future Benefits:** Early access to upcoming features
-
-🎯 **How to verify:**
-1. **Click the verification button below**
-2. **Get your personalized verification URL**
-3. **Connect your Sui wallet** (Sui Wallet, Slush Wallet, etc.)
-4. **Complete the verification process**
-5. **Get your exclusive role automatically!**
-
-💎 **Security Features:**
-• Blockchain-verified NFT ownership
-• Secure message signing (no private key access)
-• Instant role assignment
-• Professional verification process`)
+      .setTitle('🎨 NFT認証')
+      .setDescription('**Sui NFT保有者にロールを付与**\\n\\nボタンをクリックしてウォレット認証を開始してください。')
       .setColor(0x6366f1)
-      .setFooter({ 
-        text: 'Sui NFT Verification'
-      })
-      .setTimestamp();
+      .setFooter({ text: 'Powered by Sui' });
 
-    // シンプルなボタン
+    // シンプルボタン
     const verifyButton = new ButtonBuilder()
       .setCustomId('verify_nft')
-      .setLabel('Verify NFT')
+      .setLabel('認証開始')
       .setStyle(ButtonStyle.Primary)
-      .setEmoji('🚀');
-
-    const helpButton = new ButtonBuilder()
-      .setCustomId('help_verification')
-      .setLabel('Help')
-      .setStyle(ButtonStyle.Secondary)
-      .setEmoji('❓');
+      .setEmoji('🔗');
 
     const userActionRow = new ActionRowBuilder<ButtonBuilder>()
-      .addComponents(verifyButton, helpButton);
+      .addComponents(verifyButton);
 
     // 一般ユーザー向けメッセージ送信
     console.log('📤 Sending user verification message...');
@@ -216,45 +760,28 @@ async function setupVerificationChannel() {
     });
     console.log('✅ User verification message sent');
 
-    // シンプルでカッコいい管理者パネル
+    // ミニマル管理者パネル
     const adminEmbed = new EmbedBuilder()
-      .setTitle('⚙️ Admin Panel')
-      .setDescription(`**System Status: Online**
-
-Manage verification system and monitor performance.`)
+      .setTitle('⚙️ 管理')
+      .setDescription(`**システム状態:** 🟢 稼働中\\n**ネットワーク:** ${config.SUI_NETWORK}`)
       .setColor(0x71717a)
-      .setFooter({ 
-        text: 'Admin Panel'
-      })
-      .setTimestamp();
+      .setFooter({ text: '管理者専用' });
 
-    // シンプルな管理ボタン
+    // シンプル管理ボタン
     const statsButton = new ButtonBuilder()
       .setCustomId('admin_stats')
-      .setLabel('Stats')
+      .setLabel('統計')
       .setStyle(ButtonStyle.Secondary)
       .setEmoji('📊');
 
     const refreshButton = new ButtonBuilder()
       .setCustomId('admin_refresh')
-      .setLabel('Refresh')
+      .setLabel('更新')
       .setStyle(ButtonStyle.Secondary)
       .setEmoji('🔄');
 
-    const statusButton = new ButtonBuilder()
-      .setCustomId('admin_status')
-      .setLabel('Status')
-      .setStyle(ButtonStyle.Secondary)
-      .setEmoji('🟢');
-
-    const collectionsButton = new ButtonBuilder()
-      .setCustomId('admin_collections')
-      .setLabel('Collections')
-      .setStyle(ButtonStyle.Secondary)
-      .setEmoji('🎨');
-
     const adminActionRow = new ActionRowBuilder<ButtonBuilder>()
-      .addComponents(statsButton, refreshButton, statusButton, collectionsButton);
+      .addComponents(statsButton, refreshButton);
 
     // 管理者向けメッセージ送信
     console.log('📤 Sending admin verification message...');
@@ -306,16 +833,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       console.log(`✅ Processing verify_nft for user ${user.username}`);
       await handleVerifyNFT(interaction);
     }
-    // ヘルプボタン
-    else if (customId === 'help_verification') {
-      console.log(`✅ Processing help_verification for user ${user.username}`);
-      await handleHelpVerification(interaction);
-    }
-    // サポートボタン
-    else if (customId === 'support_verification') {
-      console.log(`✅ Processing support_verification for user ${user.username}`);
-      await handleSupportVerification(interaction);
-    }
     // 管理者向けボタン
     else if (customId === 'admin_stats') {
       console.log(`✅ Processing admin_stats for user ${user.username} (isAdmin: ${isAdmin})`);
@@ -323,20 +840,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
     } else if (customId === 'admin_refresh') {
       console.log(`✅ Processing admin_refresh for user ${user.username} (isAdmin: ${isAdmin})`);
       await handleAdminRefresh(interaction, isAdmin);
-    } else if (customId === 'admin_status') {
-      console.log(`✅ Processing admin_status for user ${user.username} (isAdmin: ${isAdmin})`);
-      await handleAdminStatus(interaction, isAdmin);
-    } else if (customId === 'admin_logs') {
-      console.log(`✅ Processing admin_logs for user ${user.username} (isAdmin: ${isAdmin})`);
-      await handleAdminLogs(interaction, isAdmin);
-    } else if (customId === 'admin_collections') {
-      console.log(`✅ Processing admin_collections for user ${user.username} (isAdmin: ${isAdmin})`);
-      await handleAdminCollections(interaction, isAdmin);
     } else {
       console.log(`❌ Unknown button interaction: ${customId}`);
       if (!interaction.replied && !interaction.deferred) {
         await interaction.reply({
-          content: '❌ Unknown button interaction.',
+          content: '❌ 不明なボタンです。',
           ephemeral: true
         });
       }
@@ -360,10 +868,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
     
     try {
       if (!interaction.replied && !interaction.deferred) {
+        console.log('🔄 Sending error reply...');
         await interaction.reply({
-          content: '❌ An error occurred while processing your request.',
+          content: '❌ インタラクションに失敗しました。しばらく待ってから再試行してください。',
           ephemeral: true
         });
+        console.log('✅ Error reply sent');
+      } else {
+        console.log('⚠️ Interaction already replied, cannot send error message');
       }
     } catch (replyError) {
       console.error('❌ Error sending error reply:', replyError);
@@ -395,13 +907,9 @@ async function handleVerifyNFT(interaction: ButtonInteraction) {
     console.log(`🔗 Verification URL: ${verificationUrl}`);
 
     const verifyEmbed = new EmbedBuilder()
-      .setTitle('🔗 NFT Verification')
-      .setDescription(`**Starting NFT verification**
-[Open verification page](${verificationUrl})`)
+      .setTitle('🔗 NFT認証')
+      .setDescription(`**NFT認証を開始します**\\n\\n[認証ページを開く](${verificationUrl})\\n\\n※ このメッセージは5分後に自動削除されます`)
       .setColor(0x6366f1)
-      .setFooter({ 
-        text: 'Sui NFT Verification'
-      })
       .setTimestamp();
 
     console.log(`🔄 Sending verification reply...`);
@@ -462,107 +970,12 @@ async function handleVerifyNFT(interaction: ButtonInteraction) {
   }
 }
 
-// ヘルプボタン処理
-async function handleHelpVerification(interaction: ButtonInteraction) {
-  try {
-    console.log(`🔄 Handling help_verification for user ${interaction.user.username} (${interaction.user.id})`);
-
-    const helpEmbed = new EmbedBuilder()
-      .setTitle('❓ Help')
-      .setDescription(`**How to verify your NFT:**
-
-1. Click "Verify NFT" button
-2. Open the verification page
-3. Connect your wallet
-4. Sign the message
-5. Get your role
-
-**Requirements:**
-• Sui wallet with NFTs
-• Wallet extension installed
-• Discord server membership`)
-      .setColor(0x57F287)
-      .setFooter({ 
-        text: 'Sui NFT Verification'
-      })
-      .setTimestamp();
-
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({
-        embeds: [helpEmbed],
-        ephemeral: true
-      });
-    }
-  } catch (error) {
-    console.error('❌ Error in handleHelpVerification:', error);
-    console.error('❌ Error stack:', (error as Error).stack);
-    
-    if (!interaction.replied && !interaction.deferred) {
-      try {
-        await interaction.reply({
-          content: '❌ 認証方法の説明に失敗しました。',
-          ephemeral: true
-        });
-      } catch (replyError) {
-        console.error('❌ Error sending help reply:', replyError);
-      }
-    }
-  }
-}
-
-// サポートボタン処理
-async function handleSupportVerification(interaction: ButtonInteraction) {
-  try {
-    console.log(`🔄 Handling support_verification for user ${interaction.user.username} (${interaction.user.id})`);
-
-    const supportEmbed = new EmbedBuilder()
-      .setTitle('🆘 Support & Assistance')
-      .setDescription(`**Need help with the NFT verification process?**\\n\\n🔗 **[🔐 Open Secure Verification Portal](${config.VERIFICATION_URL || 'Configured in system'})**\\n\\n📚 **Documentation:**\\n• Visit our official documentation for detailed guides: [Sui NFT Verification Docs](https://docs.sui.network/docs/learn/nft-verification)\\n\\n💬 **Discord Support:**\\n• Join our official Discord server for immediate assistance: [Sui NFT Verification Discord](https://discord.gg/sui)\\n\\n🔒 **Security:**\\n• All verification is done through secure signatures\\n• Your wallet data remains private\\n• Blockchain-verified ownership only\\n\\n❓ **Common Issues:**\\n• **Q: I can't connect my wallet.**\\n  A: Ensure your Sui Wallet extension is installed and up-to-date.\\n\\n• **Q: The verification link expired.**\\n  A: The verification link is valid for 5 minutes. If it expires, please request a new one.\\n\\n• **Q: My role isn't showing up.**\\n  A: Please check your wallet connection and try again. If the issue persists, contact support.`)
-      .setColor(0xFEE75C)
-      .setThumbnail('https://i.imgur.com/8tBXd6L.png')
-      .addFields(
-        { name: '🌐 Verification Portal', value: config.VERIFICATION_URL || 'Configured in system', inline: true },
-        { name: '💬 Support Channel', value: 'https://discord.gg/sui', inline: true },
-        { name: '🔒 Security Level', value: 'Maximum Protection', inline: true },
-        { name: '⚡ Process Speed', value: 'Under 2 minutes', inline: true },
-        { name: '🎁 Benefits', value: 'Exclusive Access', inline: true }
-      )
-      .setFooter({ 
-        text: 'Sui NFT Verification Support • Professional Assistance',
-        iconURL: 'https://i.imgur.com/8tBXd6L.png'
-      })
-      .setTimestamp();
-
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({
-        embeds: [supportEmbed],
-        ephemeral: true
-      });
-    }
-  } catch (error) {
-    console.error('❌ Error in handleSupportVerification:', error);
-    console.error('❌ Error stack:', (error as Error).stack);
-    
-    if (!interaction.replied && !interaction.deferred) {
-      try {
-        await interaction.reply({
-          content: '❌ サポートに失敗しました。',
-          ephemeral: true
-        });
-      } catch (replyError) {
-        console.error('❌ Error sending support reply:', replyError);
-      }
-    }
-  }
-}
 
 
 // ロール付与関数（APIから呼び出される）
-export async function grantRoleToUser(discordId: string, collectionId?: string, roleName?: string): Promise<boolean> {
+export async function grantRoleToUser(discordId: string): Promise<boolean> {
   try {
     console.log(`🔄 Attempting to grant role to Discord ID: ${discordId}`);
-    console.log(`📋 Collection ID: ${collectionId || 'default'}`);
-    console.log(`📋 Role Name: ${roleName || 'NFT Holder'}`);
     console.log(`📋 Config: Guild ID: ${config.DISCORD_GUILD_ID}, Role ID: ${config.DISCORD_ROLE_ID}`);
     
     const guild = await client.guilds.fetch(config.DISCORD_GUILD_ID);
@@ -579,26 +992,7 @@ export async function grantRoleToUser(discordId: string, collectionId?: string, 
     }
     console.log(`✅ Found member: ${member.user.username} (${member.id})`);
 
-    // コレクションIDが指定されている場合、そのコレクションのロールIDを取得
-    let roleId = config.DISCORD_ROLE_ID; // デフォルトロール
-    
-    if (collectionId) {
-      try {
-        console.log(`🔄 Fetching role ID for collection: ${collectionId}`);
-        const collectionRoleId = await getRoleIdForCollection(collectionId);
-        if (collectionRoleId) {
-          roleId = collectionRoleId;
-          console.log(`✅ Found role ID for collection: ${roleId}`);
-        } else {
-          console.log(`⚠️ No role ID found for collection ${collectionId}, using default`);
-        }
-      } catch (error) {
-        console.error('❌ Error fetching collection role ID:', error);
-        console.log('⚠️ Using default role ID');
-      }
-    }
-
-    const role = await guild.roles.fetch(roleId);
+    const role = await guild.roles.fetch(config.DISCORD_ROLE_ID);
     if (!role) {
       console.error('❌ Role not found');
       return false;
@@ -606,59 +1000,27 @@ export async function grantRoleToUser(discordId: string, collectionId?: string, 
     console.log(`✅ Found role: ${role.name} (${role.id})`);
 
     // 既にロールを持っているかチェック
-    const hasRole = member.roles.cache.has(roleId);
+    const hasRole = member.roles.cache.has(config.DISCORD_ROLE_ID);
     
     if (!hasRole) {
       console.log(`🔄 Adding role ${role.name} to user ${member.user.username}...`);
       await member.roles.add(role);
       console.log(`✅ Role granted to user ${discordId} (${member.user.username})`);
     } else {
-      console.log(`ℹ️ User ${discordId} (${member.user.username}) already has the role ${role.name}`);
+      console.log(`ℹ️ User ${discordId} (${member.user.username}) already has the role`);
     }
 
-    // ユーザーにDM送信（成功通知）
+    // ユーザーにDM送信（ロール付与の有無に関係なく）
     try {
-      const successEmbed = new EmbedBuilder()
-        .setTitle('🎉 NFT Verification Successful!')
-        .setDescription(`**Congratulations! Your NFT verification has been completed successfully!**\\n\\n🌟 **What you've received:**\\n• **Exclusive Discord Role:** "${role.name}"\\n• **Premium Access:** Special channels and features\\n• **Community Status:** Verified NFT holder\\n• **Future Benefits:** Early access to upcoming features\\n\\n🎯 **Your Benefits:**\\n• Access to exclusive channels\\n• Special community recognition\\n• Priority support and assistance\\n• Early access to new features\\n\\n💎 **Security Confirmation:**\\n• Your NFT ownership has been verified on the blockchain\\n• All verification was done securely without accessing private keys\\n• Your wallet data remains completely private\\n\\n*Welcome to the exclusive NFT community! Enjoy your new privileges!*`)
+      const dmEmbed = new EmbedBuilder()
+        .setTitle('🎉 認証完了！')
+        .setDescription(`**NFTの保有が確認されました！**\\n\\n特別ロール "${role.name}" ${hasRole ? 'は既に付与されています' : 'が付与されました'}。`)
         .setColor(0x57F287)
-        .setThumbnail('https://i.imgur.com/8tBXd6L.png')
-        .addFields(
-          { name: '🎁 Role Granted', value: role.name, inline: true },
-          { name: '🆔 Discord ID', value: discordId, inline: true },
-          { name: '⏰ Verified At', value: new Date().toLocaleString(), inline: true },
-          { name: '🔒 Security Level', value: 'Maximum Protection', inline: true },
-          { name: '⚡ Process Speed', value: 'Instant Verification', inline: true },
-          { name: '🎯 Status', value: 'Active & Verified', inline: true }
-        )
-        .setFooter({ 
-          text: 'Sui NFT Verification • Professional & Secure',
-          iconURL: 'https://i.imgur.com/8tBXd6L.png'
-        })
         .setTimestamp();
 
-      console.log('📤 Sending success embed to user DM...');
-      
-      // ユーザーにDMを送信（自分以外には見られない）
-      const message = await member.send({
-        embeds: [successEmbed]
+      await member.send({
+        embeds: [dmEmbed]
       });
-
-      console.log(`✅ Success message sent for Discord ID: ${discordId}`);
-
-      // 5分後にメッセージを自動削除
-      setTimeout(async () => {
-        try {
-          console.log(`🔄 Auto-deleting success message for Discord ID: ${discordId}...`);
-          await message.delete();
-          console.log(`✅ Auto-deleted success message for Discord ID: ${discordId}`);
-        } catch (error) {
-          console.log('❌ Failed to auto-delete message:', error);
-          console.log('Message may have been deleted manually or expired');
-        }
-      }, 5 * 60 * 1000); // 5分 = 300秒
-
-      console.log(`⏰ Auto-delete scheduled for Discord ID: ${discordId} in 5 minutes`);
       console.log(`✅ DM sent to user ${member.user.username}`);
     } catch (dmError) {
       console.log('Could not send DM to user:', dmError);
@@ -672,108 +1034,13 @@ export async function grantRoleToUser(discordId: string, collectionId?: string, 
   }
 }
 
-// コレクション別ロールID取得関数
-async function getRoleIdForCollection(collectionId: string): Promise<string | null> {
-  try {
-    console.log(`🔄 Fetching collection config for ID: ${collectionId}`);
-    
-    // Cloudflare Workers APIからコレクション設定を取得
-    const response = await fetch(`${config.CLOUDFLARE_WORKERS_API_URL}/api/collections`);
-    const data = await response.json() as any;
-    
-    if (data.success && data.data) {
-      const collection = data.data.find((c: any) => c.id === collectionId);
-      if (collection && collection.isActive) {
-        console.log(`✅ Found active collection: ${collection.name} with role ID: ${collection.roleId}`);
-        return collection.roleId;
-      } else {
-        console.log(`⚠️ Collection ${collectionId} not found or inactive`);
-      }
-    } else {
-      console.log('❌ Failed to fetch collections from API');
-    }
-  } catch (error) {
-    console.error('❌ Error fetching collection config:', error);
-  }
-  return null;
-}
-
-// 認証失敗時のDiscordチャンネル通知
-export async function sendVerificationFailureMessage(discordId: string, verificationData: any): Promise<boolean> {
-  try {
-    console.log(`🔄 Sending verification failure message for Discord ID: ${discordId}`);
-    console.log('📋 Verification data:', verificationData);
-    
-    const guild = await client.guilds.fetch(config.DISCORD_GUILD_ID);
-    if (!guild) {
-      console.error('❌ Guild not found');
-      return false;
-    }
-    console.log(`✅ Found guild: ${guild.name}`);
-
-    // ユーザーを取得
-    const user = await client.users.fetch(discordId);
-    if (!user) {
-      console.error('❌ User not found');
-      return false;
-    }
-
-    const failureEmbed = new EmbedBuilder()
-      .setTitle('❌ NFT Verification Failed')
-      .setDescription(`**NFT verification failed for user <@${discordId}>**
-
-**Wallet Address:** \`${verificationData?.address || 'Unknown'}\`
-**Reason:** ${verificationData?.reason || 'NFT not found in wallet'}
-**Timestamp:** ${new Date().toLocaleString()}
-
-**Next Steps:**
-• Ensure you own the required NFTs
-• Check your wallet connection
-• Try the verification process again`)
-      .setColor(0xED4245)
-      .setFooter({ 
-        text: 'Sui NFT Verification • Professional System'
-      })
-      .setTimestamp();
-
-    console.log('📤 Sending failure embed to user DM...');
-    
-    // ユーザーにDMを送信（自分以外には見られない）
-    const message = await user.send({
-      embeds: [failureEmbed]
-    });
-
-    console.log(`✅ Verification failure message sent for Discord ID: ${discordId}`);
-
-    // 5分後にメッセージを自動削除
-    setTimeout(async () => {
-      try {
-        console.log(`🔄 Auto-deleting verification failure message for Discord ID: ${discordId}...`);
-        await message.delete();
-        console.log(`✅ Auto-deleted verification failure message for Discord ID: ${discordId}`);
-      } catch (error) {
-        console.log('❌ Failed to auto-delete message:', error);
-        console.log('Message may have been deleted manually or expired');
-      }
-    }, 5 * 60 * 1000); // 5分 = 300秒
-
-    console.log(`⏰ Auto-delete scheduled for Discord ID: ${discordId} in 5 minutes`);
-    return true;
-  } catch (error) {
-    console.error('❌ Error sending verification failure message:', error);
-    console.error('❌ Error details:', (error as Error).message);
-    console.error('❌ Error stack:', (error as Error).stack);
-    return false;
-  }
-}
-
-// 管理者統計表示（シンプル版）
+// 管理者統計表示（ミニマル版）
 async function handleAdminStats(interaction: ButtonInteraction, isAdmin: boolean) {
   try {
     if (!isAdmin) {
       if (!interaction.replied && !interaction.deferred) {
         await interaction.reply({
-          content: '❌ Administrator privileges required.',
+          content: '❌ 管理者権限が必要です。',
           ephemeral: true
         });
       }
@@ -781,16 +1048,9 @@ async function handleAdminStats(interaction: ButtonInteraction, isAdmin: boolean
     }
 
     const statsEmbed = new EmbedBuilder()
-      .setTitle('📊 Stats')
-      .setDescription(`**System Statistics**
-
-Bot ID: ${client.user?.id || 'Unknown'}
-Guild: ${interaction.guild?.name || 'Unknown'}
-Version: 2.0.0`)
+      .setTitle('📊 統計情報')
+      .setDescription('**システム統計**\\n\\n実装予定')
       .setColor(0x57F287)
-      .setFooter({ 
-        text: 'Admin Panel'
-      })
       .setTimestamp();
 
     if (!interaction.replied && !interaction.deferred) {
@@ -805,13 +1065,15 @@ Version: 2.0.0`)
   }
 }
 
-// 管理者リフレッシュ（シンプル版）
+
+
+// 管理者リフレッシュ（ミニマル版）
 async function handleAdminRefresh(interaction: ButtonInteraction, isAdmin: boolean) {
   try {
     if (!isAdmin) {
       if (!interaction.replied && !interaction.deferred) {
         await interaction.reply({
-          content: '❌ Administrator privileges required.',
+          content: '❌ 管理者権限が必要です。',
           ephemeral: true
         });
       }
@@ -819,16 +1081,9 @@ async function handleAdminRefresh(interaction: ButtonInteraction, isAdmin: boole
     }
 
     const refreshEmbed = new EmbedBuilder()
-      .setTitle('🔄 Refresh')
-      .setDescription(`**System refreshed successfully**
-
-Status: Online
-Network: ${config.SUI_NETWORK}
-Time: ${new Date().toLocaleString()}`)
+      .setTitle('🔄 更新完了')
+      .setDescription('**システムを更新しました**\\n\\n実装予定')
       .setColor(0x57F287)
-      .setFooter({ 
-        text: 'Admin Panel'
-      })
       .setTimestamp();
 
     if (!interaction.replied && !interaction.deferred) {
@@ -839,150 +1094,6 @@ Time: ${new Date().toLocaleString()}`)
     }
   } catch (error) {
     console.error('Error in handleAdminRefresh:', error);
-    throw error;
-  }
-}
-
-// 管理者ステータス表示（シンプル版）
-async function handleAdminStatus(interaction: ButtonInteraction, isAdmin: boolean) {
-  try {
-    if (!isAdmin) {
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({
-          content: '❌ Administrator privileges required.',
-          ephemeral: true
-        });
-      }
-      return;
-    }
-
-    const statusEmbed = new EmbedBuilder()
-      .setTitle('🟢 Status')
-      .setDescription(`**System Status: Online**
-
-Bot Service: Online
-API Connection: Connected
-Database: Healthy
-Verification: Active`)
-      .setColor(0x57F287)
-      .setFooter({ 
-        text: 'Admin Panel'
-      })
-      .setTimestamp();
-
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({
-        embeds: [statusEmbed],
-        ephemeral: true
-      });
-    }
-  } catch (error) {
-    console.error('Error in handleAdminStatus:', error);
-    throw error;
-  }
-}
-
-// 管理者ログ表示（プロフェッショナル版）
-async function handleAdminLogs(interaction: ButtonInteraction, isAdmin: boolean) {
-  try {
-    if (!isAdmin) {
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({
-          content: '❌ Administrator privileges required.',
-          ephemeral: true
-        });
-      }
-      return;
-    }
-
-    const logsEmbed = new EmbedBuilder()
-      .setTitle('📋 System Logs')
-      .setDescription(`**Latest System Logs**\\n\\n*Logs will be implemented in future updates*`)
-      .setColor(0x57F287)
-      .setThumbnail('https://i.imgur.com/8tBXd6L.png')
-      .addFields(
-        { name: '🆔 Bot ID', value: client.user?.id || 'Unknown', inline: true },
-        { name: '🏠 Guild', value: interaction.guild?.name || 'Unknown', inline: true },
-        { name: '📈 Version', value: '2.0.0', inline: true }
-      )
-      .setFooter({ 
-        text: 'System Logs • Real-time Monitoring',
-        iconURL: client.user?.displayAvatarURL()
-      })
-      .setTimestamp();
-
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({
-        embeds: [logsEmbed],
-        ephemeral: true
-      });
-    }
-  } catch (error) {
-    console.error('Error in handleAdminLogs:', error);
-    throw error;
-  }
-}
-
-// コレクション管理ボタン処理
-async function handleAdminCollections(interaction: ButtonInteraction, isAdmin: boolean) {
-  try {
-    if (!isAdmin) {
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({
-          content: '❌ Administrator privileges required.',
-          ephemeral: true
-        });
-      }
-      return;
-    }
-
-    const collectionsEmbed = new EmbedBuilder()
-      .setTitle('🎨 Collections Management')
-      .setDescription(`**Manage your NFT collections and their associated roles.**
-
-\`\`\`
-Collection ID: ${config.NFT_COLLECTION_ID || 'Not set'}
-Role ID: ${config.DISCORD_ROLE_ID || 'Not set'}
-\`\`\`
-
-**Current Collections:**
-${config.NFT_COLLECTION_ID ? `• \`${config.NFT_COLLECTION_ID}\` (Active)` : '• No collections configured.'}
-
-**Add New Collection:**
-1. Create a new channel in Discord.
-2. Set its ID in \`VERIFICATION_CHANNEL_ID\` in \`config.ts\`.
-3. Set its \`collectionId\` in \`NFT_COLLECTION_ID\` in \`config.ts\`.
-4. Set its \`roleId\` in \`DISCORD_ROLE_ID\` in \`config.ts\`.
-
-**Note:**
-• \`VERIFICATION_CHANNEL_ID\` must be a text channel.
-• \`NFT_COLLECTION_ID\` must be a valid Sui Network collection ID.
-• \`DISCORD_ROLE_ID\` must be a role that exists in your Discord server.
-• The \`roleId\` in \`config.ts\` must match the role ID in your Discord server.`)
-      .setColor(0x57F287)
-      .setFooter({ 
-        text: 'Collections Management'
-      })
-      .setTimestamp();
-
-    const backButton = new ButtonBuilder()
-      .setCustomId('admin_back_to_status')
-      .setLabel('Back to Status')
-      .setStyle(ButtonStyle.Secondary)
-      .setEmoji('⬅️');
-
-    const actionRow = new ActionRowBuilder<ButtonBuilder>()
-      .addComponents(backButton);
-
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({
-        embeds: [collectionsEmbed],
-        components: [actionRow],
-        ephemeral: true
-      });
-    }
-  } catch (error) {
-    console.error('Error in handleAdminCollections:', error);
     throw error;
   }
 }
@@ -1007,22 +1118,9 @@ export async function revokeRoleFromUser(discordId: string): Promise<boolean> {
       await member.send({
         embeds: [
           new EmbedBuilder()
-            .setTitle('📋 Role Update Notification')
-            .setDescription(`**Your NFT verification status has been updated**\\n\\n⚠️ **Role Removed:** The "${role.name}" role has been removed from your account.\\n\\n🔍 **Reason:** Your NFT ownership could not be verified on the blockchain.\\n\\n🔄 **How to restore your role:**\\n1. Ensure you still own the required NFTs\\n2. Visit the verification channel\\n3. Click "Start Verification" to re-verify\\n4. Complete the verification process again\\n\\n💡 **Tips:**\\n• Make sure your wallet is properly connected\\n• Verify that you still own the required NFTs\\n• Check that your NFTs are on the correct network\\n\\n*If you believe this is an error, please contact server administrators for assistance.*`)
+            .setTitle('📋 ロール更新通知')
+            .setDescription(`**NFTの保有が確認できなくなったため、ロール "${role.name}" が削除されました。**\\n\\n再度NFTを取得された場合は、認証チャンネルから再認証を行ってください。`)
             .setColor(0xED4245)
-            .setThumbnail('https://i.imgur.com/8tBXd6L.png')
-            .addFields(
-              { name: '🎭 Role Removed', value: role.name, inline: true },
-              { name: '🆔 Discord ID', value: discordId, inline: true },
-              { name: '⏰ Updated At', value: new Date().toLocaleString(), inline: true },
-              { name: '🔍 Status', value: 'Verification Required', inline: true },
-              { name: '🔄 Action', value: 'Re-verify to restore', inline: true },
-              { name: '💬 Support', value: 'Contact administrators', inline: true }
-            )
-            .setFooter({ 
-              text: 'Sui NFT Verification • Professional System',
-              iconURL: 'https://i.imgur.com/8tBXd6L.png'
-            })
             .setTimestamp()
         ]
       });
@@ -1065,3 +1163,4 @@ console.log(`  - DISCORD_CLIENT_ID: ${config.DISCORD_CLIENT_ID ? '✅ Set' : '�
 console.log(`  - DISCORD_GUILD_ID: ${config.DISCORD_GUILD_ID ? '✅ Set' : '❌ Not set'}`);
 console.log(`  - VERIFICATION_CHANNEL_ID: ${config.VERIFICATION_CHANNEL_ID ? '✅ Set' : '❌ Not set'}`);
 console.log(`  - VERIFICATION_URL: ${config.VERIFICATION_URL ? '✅ Set' : '❌ Not set'}`);
+>>>>>>> 16da97f (Initial commit: NFT Verification Discord Bot)

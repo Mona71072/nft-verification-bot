@@ -1,0 +1,9 @@
+name = "nft-verification-sxt"
+compatibility_date = "2024-01-01"
+pages_build_output_dir = "dist"
+
+[env.production]
+name = "nft-verification-sxt-production"
+
+[env.production.vars]
+VITE_API_BASE_URL = "https://nft-verification-production.mona-syndicatextokyo.workers.dev" 
