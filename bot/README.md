@@ -9,12 +9,12 @@ Suiブロックチェーン上のNFT保有を確認し、Discordロールを自�
 ```
 📁 NFT Verification Portal
 ├── 🎯 frontend/          # React + Vite + @suiet/wallet-kit
-│   ├── src/App.tsx      # メインアプリケーション
-│   ├── src/main.tsx     # エントリーポイント
+│   ├── src/App.tsx      # メインアプリケーション（エラーハンドリング強化）
+│   ├── src/main.tsx     # エントリーポイント（グローバルエラーハンドリング）
 │   ├── package.json     # フロントエンド依存関係
 │   └── wrangler.toml    # Cloudflare Pages設定
 ├── 🔧 src/              # Cloudflare Workers API
-│   └── index.ts         # Hono APIサーバー
+│   └── index.ts         # Hono APIサーバー（バッチ処理機能付き）
 ├── 🤖 bot/              # Discord Bot (Render)
 │   ├── src/index.ts     # Discord Bot実装
 │   ├── src/api-server.ts # APIサーバー
@@ -43,9 +43,9 @@ Discord → フロントエンド → Cloudflare Workers → Discord Bot → Dis
 ### テスト環境
 - **フロントエンド**: https://c840eaf3.nft-verification-frontend.pages.dev
 
-## 📋 主要機能
+## ✨ 主要機能
 
-### ✅ 実装済み機能
+### ✅ 実装済み機能（Phase 1）
 - 🔗 **安定したウォレット接続**: @suiet/wallet-kitによる確実なSuiウォレット統合
 - 🎨 **NFT保有確認**: Suiブロックチェーン上のNFT所有権検証（Claynosaurz Popkins）
 - 🔐 **署名検証**: セキュアなメッセージ署名による認証
@@ -54,6 +54,22 @@ Discord → フロントエンド → Cloudflare Workers → Discord Bot → Dis
 - ⚡ **高速開発**: Viteによる高速な開発環境
 - 🔒 **プライバシー保護**: DM通知 + 5分間自動削除
 - 📊 **詳細ログ**: 開発・デバッグ用の詳細ログ機能
+
+### ✅ 新機能（Phase 2）
+- 🔄 **定期的なバッチ処理**: 自動NFT保有確認とロール管理
+- ⏰ **スケジュール実行**: 設定可能な実行間隔（デフォルト60分）
+- 🎛️ **管理者パネル**: バッチ処理の設定・監視・手動実行
+- 📈 **統計ダッシュボード**: 処理結果の詳細統計表示
+- 🔔 **自動通知**: ロール削除時の自動DM通知
+- 🛡️ **エラーハンドリング**: 堅牢なエラー処理とリトライ機能
+- 📊 **リアルタイム監視**: 処理状況のリアルタイム表示
+
+### 🛡️ 最新の改善（Phase 3）
+- 🔧 **エラーハンドリング強化**: ウォレット関連エラーの適切な処理
+- 🛡️ **グローバルエラーハンドリング**: 未処理エラーの自動キャッチ
+- 🔄 **フォールバック機能**: ウォレット初期化失敗時の代替表示
+- 📱 **ユーザビリティ向上**: より分かりやすいエラーメッセージ
+- 🎯 **管理者機能拡張**: コレクション管理、ユーザー管理機能
 
 ### 🎯 現在のNFT設定
 - **コレクション**: Claynosaurz Popkins
@@ -68,12 +84,13 @@ Discord → フロントエンド → Cloudflare Workers → Discord Bot → Dis
 - **Vite** - 高速な開発サーバー
 - **@suiet/wallet-kit** - Suiウォレット統合（安定版）
 - **インラインスタイル** - 一貫性のあるデザイン
+- **エラーハンドリング** - 堅牢なエラー処理システム
 
 ### バックエンド（Cloudflare Workers）
 - **Hono** - Cloudflare Workers用Webフレームワーク
 - **TypeScript** - 型安全性
 - **Cloudflare Workers** - エッジコンピューティング
-- **Cloudflare KV** - ナンスデータストレージ
+- **Cloudflare KV** - データストレージ（ナンス・コレクション・バッチ設定）
 
 ### Discord Bot（Render）
 - **Node.js** - サーバーサイドJavaScript
@@ -95,6 +112,10 @@ NFT_COLLECTION_ID = "0xb908f3c6fea6865d32e2048c520cdfe3b5c5bbcebb658117c41bad70f
 [[env.production.kv_namespaces]]
 binding = "NONCE_STORE"
 id = "dfd1a07f0e704320bd5324fc3102f3ba"
+
+[[env.production.kv_namespaces]]
+binding = "COLLECTION_STORE"
+id = "73186a10a62946718119aa112e87dba9"
 ```
 
 #### フロントエンド (`frontend/wrangler.toml`)
@@ -129,7 +150,7 @@ envVars:
 ### 2. Discord Bot設定
 
 #### 必要な権限
-- **Manage Roles** - ロール付与
+- **Manage Roles** - ロール付与・削除
 - **Send Messages** - メッセージ送信
 - **Read Message History** - メッセージ履歴読み取り
 - **Use Slash Commands** - スラッシュコマンド使用
@@ -215,6 +236,74 @@ Response: {
 }
 ```
 
+#### 管理者機能
+
+##### 管理者チェック
+```bash
+GET /api/admin/check/{address}
+Response: { "success": true, "isAdmin": true }
+```
+
+##### 管理者アドレス管理
+```bash
+GET /api/admin/addresses
+POST /api/admin/addresses
+DELETE /api/admin/addresses/{address}
+```
+
+##### コレクション管理
+```bash
+GET /api/collections
+POST /api/collections
+PUT /api/collections/{id}
+DELETE /api/collections/{id}
+```
+
+##### バッチ処理実行（管理者用）
+```bash
+POST /api/admin/batch-execute
+Content-Type: application/json
+
+Response: {
+  "success": true,
+  "data": {
+    "totalUsers": 100,
+    "processed": 95,
+    "revoked": 5,
+    "errors": 0,
+    "lastRun": "2025-01-20T10:00:00.000Z",
+    "duration": 15000
+  }
+}
+```
+
+##### バッチ処理設定取得（管理者用）
+```bash
+GET /api/admin/batch-config
+
+Response: {
+  "success": true,
+  "data": {
+    "config": {
+      "enabled": true,
+      "interval": 60,
+      "lastRun": "2025-01-20T10:00:00.000Z",
+      "nextRun": "2025-01-20T11:00:00.000Z",
+      "maxUsersPerBatch": 50,
+      "retryAttempts": 3
+    },
+    "stats": {
+      "totalUsers": 100,
+      "processed": 95,
+      "revoked": 5,
+      "errors": 0,
+      "lastRun": "2025-01-20T10:00:00.000Z",
+      "duration": 15000
+    }
+  }
+}
+```
+
 ### Discord Bot API
 
 #### ヘルスチェック
@@ -230,13 +319,99 @@ Content-Type: application/json
 
 {
   "discordId": "123456789012345678",
-  "action": "grant_role" | "verification_failed",
+  "action": "grant_role" | "verification_failed" | "revoke_role" | "revoke_roles" | "batch_notification" | "admin_batch_notification",
   "verificationData": {
     "address": "0x...",
-    "reason": "NFT not found in wallet"
+    "reason": "NFT no longer owned"
   },
   "timestamp": "2025-08-03T16:16:09.752Z"
 }
+```
+
+#### バッチ処理実行（Discord Bot経由）
+```bash
+POST /api/batch-execute
+Content-Type: application/json
+
+Response: {
+  "success": true,
+  "data": {
+    "totalUsers": 100,
+    "processed": 95,
+    "revoked": 5,
+    "errors": 0,
+    "lastRun": "2025-01-20T10:00:00.000Z",
+    "duration": 15000
+  }
+}
+```
+
+## 🔄 Phase 2: バッチ処理機能
+
+### バッチ処理の概要
+Phase 2では、定期的なNFT保有確認とロール自動管理機能を追加しました。
+
+#### 主要機能
+1. **自動NFT保有確認**: 設定された間隔で全認証済みユーザーのNFT保有状況をチェック
+2. **ロール自動削除**: NFTを売却したユーザーのロールを自動削除
+3. **管理者通知**: バッチ処理完了時に管理者に詳細レポートを送信
+4. **ユーザー通知**: ロール削除時にユーザーにDM通知
+5. **統計管理**: 処理結果の詳細統計を保存・表示
+
+#### バッチ処理設定
+- **実行間隔**: デフォルト60分（設定可能）
+- **バッチサイズ**: デフォルト50ユーザー（設定可能）
+- **リトライ回数**: デフォルト3回（設定可能）
+- **有効/無効**: 管理者がバッチ処理を有効/無効に切り替え可能
+
+#### 管理者パネル機能
+- **バッチ処理設定**: 実行間隔、バッチサイズ、リトライ回数の設定
+- **手動実行**: バッチ処理の手動実行
+- **統計表示**: 処理結果の詳細統計表示
+- **リアルタイム監視**: 処理状況のリアルタイム表示
+
+### バッチ処理の流れ
+1. **スケジュール実行**: 設定された間隔でバッチ処理が自動実行
+2. **NFT保有確認**: 各ユーザーのウォレットでNFT保有状況をチェック
+3. **ロール削除**: NFTを売却したユーザーのロールを削除
+4. **通知送信**: 削除されたユーザーと管理者に通知
+5. **統計更新**: 処理結果の統計を更新
+
+## 🛡️ Phase 3: エラーハンドリング強化
+
+### 最新の改善点
+1. **グローバルエラーハンドリング**: 未処理エラーの自動キャッチ
+2. **ウォレット初期化エラー対策**: WalletProvider初期化失敗時のフォールバック
+3. **カスタムウォレットフック**: エラーハンドリング付きのuseWalletフック
+4. **ConnectButtonエラーハンドリング**: ウォレット接続エラーの適切な処理
+5. **署名機能エラーハンドリング**: 署名失敗時のユーザーフレンドリーなメッセージ
+
+### エラーハンドリングの実装
+```typescript
+// グローバルエラーハンドリング
+window.addEventListener('error', (event) => {
+  if (event.error?.message?.includes('register') || 
+      event.error?.message?.includes('wallet') ||
+      event.error?.message?.includes('@suiet')) {
+    console.log('Wallet-related error ignored:', event.error.message);
+    event.preventDefault();
+  }
+});
+
+// カスタムウォレットフック
+const useWalletWithErrorHandling = () => {
+  try {
+    return useWallet();
+  } catch (error) {
+    console.error('Wallet hook error:', error);
+    return {
+      account: null,
+      connected: false,
+      signPersonalMessage: null,
+      // ... デフォルト値
+    };
+  }
+};
 ```
 
 ## ⚠️ 開発時の注意点
@@ -248,11 +423,17 @@ Content-Type: application/json
 // @suiet/wallet-kitを使用
 import { ConnectButton, useWallet } from '@suiet/wallet-kit';
 
-const { account, connected, signPersonalMessage } = useWallet();
+const { account, connected, signPersonalMessage } = useWalletWithErrorHandling();
 
-// 署名リクエスト
+// 署名リクエスト（エラーハンドリング付き）
+if (!signPersonalMessage) {
+  throw new Error('署名機能が利用できません。');
+}
+
 const signatureResult = await signPersonalMessage({
   message: new TextEncoder().encode(authMessage)
+}).catch(error => {
+  throw new Error('署名に失敗しました。ウォレットで署名を承認してください。');
 });
 ```
 
@@ -260,6 +441,7 @@ const signatureResult = await signPersonalMessage({
 - `@mysten/dapp-kit`は使用しない（不安定）
 - `signMessage`ではなく`signPersonalMessage`を使用
 - メッセージは`Uint8Array`でエンコード
+- エラーハンドリングを忘れがち
 
 ### 2. CORS設定
 
@@ -355,6 +537,15 @@ cd bot
 npm run dev
 ```
 
+### 4. バッチ処理デバッグ
+```bash
+# 手動実行でテスト
+curl -X POST https://nft-verification-production.mona-syndicatextokyo.workers.dev/api/admin/batch-execute
+
+# 設定確認
+curl https://nft-verification-production.mona-syndicatextokyo.workers.dev/api/admin/batch-config
+```
+
 ## 🚨 よくある問題と解決策
 
 ### 1. CORSエラー
@@ -362,8 +553,8 @@ npm run dev
 **解決策**: Cloudflare WorkersのCORS設定を確認
 
 ### 2. ウォレット接続エラー
-**症状**: `WALLET.METHOD_NOT_IMPLEMENTED_ERROR`
-**解決策**: `@suiet/wallet-kit`の`signPersonalMessage`を使用
+**症状**: `Cannot destructure property 'register' of 'undefined'`
+**解決策**: エラーハンドリング強化により自動的に処理されます
 
 ### 3. NFT検証エラー
 **症状**: `NFT not found in wallet`
@@ -379,6 +570,13 @@ npm run dev
 - レンダーの環境変数設定確認
 - `/notify`エンドポイントの動作確認
 
+### 5. バッチ処理エラー
+**症状**: バッチ処理が実行されない
+**解決策**:
+- バッチ処理設定の確認
+- KVストレージの権限確認
+- 管理者パネルでの手動実行テスト
+
 ## 📊 パフォーマンス最適化
 
 ### 1. Cloudflare Workers
@@ -390,11 +588,17 @@ npm run dev
 - ✅ Viteによる高速ビルド
 - ✅ インラインスタイルで一貫性
 - ✅ 最小限の依存関係
+- ✅ エラーハンドリング強化
 
 ### 3. Discord Bot
 - ✅ レンダーの無料プラン
 - ✅ 自動復旧機能
 - ✅ 詳細ログ機能
+
+### 4. バッチ処理
+- ✅ 設定可能なバッチサイズ
+- ✅ エラー時のリトライ機能
+- ✅ 統計情報の保存
 
 ## 🔒 セキュリティ考慮事項
 
@@ -413,22 +617,36 @@ npm run dev
 - ✅ ユーザーフレンドリーなエラーメッセージ
 - ✅ 適切なHTTPステータスコード
 
+### 4. バッチ処理セキュリティ
+- ✅ 管理者認証
+- ✅ 設定可能な実行間隔
+- ✅ エラー時の安全な処理
+
 ## 🎯 今後の改善点
 
 ### 1. 機能拡張
 - [ ] 複数NFTコレクション対応
 - [ ] ロール階層システム
 - [ ] 統計ダッシュボード
+- [ ] リアルタイム通知
 
 ### 2. セキュリティ強化
 - [ ] 実際の署名検証実装
 - [ ] レート制限
 - [ ] IP制限
+- [ ] より強固な認証システム
 
 ### 3. ユーザビリティ改善
 - [ ] 多言語対応
 - [ ] ダークモード
 - [ ] モバイル最適化
+- [ ] より詳細な統計表示
+
+### 4. バッチ処理拡張
+- [ ] より細かいスケジュール設定
+- [ ] 複数コレクション対応
+- [ ] より詳細な統計
+- [ ] 自動復旧機能
 
 ## 📝 ライセンス
 
