@@ -329,6 +329,34 @@ export async function grantMultipleRolesToUser(discordId: string, roles: Array<{
   }
 }
 
+// 認証失敗時のDM送信関数
+export async function sendVerificationFailedMessage(discordId: string, verificationData?: any): Promise<boolean> {
+  try {
+    const guild = await client.guilds.fetch(config.DISCORD_GUILD_ID);
+    const member = await guild.members.fetch(discordId);
+
+    // ユーザーにDM送信
+    try {
+      const embed = new EmbedBuilder()
+        .setTitle('認証失敗')
+        .setDescription(`NFT認証が失敗しました。\n\n選択されたコレクションでNFTが見つかりませんでした。\n\n再度認証を試行するか、別のコレクションを選択してください。`)
+        .setColor(0xED4245)
+        .setTimestamp()
+        .setFooter({ text: 'NFT Verification Bot' });
+
+      await member.send({ embeds: [embed] });
+      console.log(`✅ Verification failed message sent to user ${discordId}`);
+      return true;
+    } catch (dmError) {
+      console.log('Could not send DM to user:', dmError);
+      return false;
+    }
+  } catch (error) {
+    console.error('Error sending verification failed message:', error);
+    return false;
+  }
+}
+
 // ロール剥奪関数（Cronから呼び出される）
 export async function revokeRoleFromUser(discordId: string): Promise<boolean> {
   try {
@@ -350,7 +378,7 @@ export async function revokeRoleFromUser(discordId: string): Promise<boolean> {
         embeds: [
           new EmbedBuilder()
             .setTitle('ロール更新通知')
-            .setDescription(`NFTの保有が確認できなくなったため、ロール "${role.name}" が削除されました。\n\n再度NFTを取得された場合は、認証チャンネルから再認証を行ってください。`)
+            .setDescription(`NFTの保有が確認できなくなったため、ロール "${role.name}" が削除されました。\n再度NFTを取得された場合は、認証チャンネルから再認証を行ってください。`)
             .setColor(0xED4245)
             .setTimestamp()
         ]

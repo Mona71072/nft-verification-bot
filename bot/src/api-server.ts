@@ -1,6 +1,6 @@
 import express from 'express';
 import { config } from './config';
-import { grantRoleToUser, revokeRoleFromUser, grantMultipleRolesToUser } from './index';
+import { grantRoleToUser, revokeRoleFromUser, grantMultipleRolesToUser, sendVerificationFailedMessage } from './index';
 import { Role } from 'discord.js';
 
 // Expressアプリケーションの型を拡張
@@ -72,6 +72,11 @@ app.post('/api/discord-action', async (req, res) => {
           result = false;
         }
         break;
+      case 'verification_failed':
+        // 認証失敗時のDM送信
+        result = await sendVerificationFailedMessage(discord_id, verification_data);
+        console.log(`✅ Verification failed message result: ${result}`);
+        break;
       case 'revoke_role':
         result = await revokeRoleFromUser(discord_id);
         console.log(`✅ Role revoke result: ${result}`);
@@ -80,7 +85,7 @@ app.post('/api/discord-action', async (req, res) => {
         console.error('❌ Invalid action:', action);
         return res.status(400).json({
           success: false,
-          error: 'Invalid action. Must be grant_role, grant_roles, or revoke_role'
+          error: 'Invalid action. Must be grant_role, grant_roles, verification_failed, or revoke_role'
         });
     }
 
