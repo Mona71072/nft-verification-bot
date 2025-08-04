@@ -6,8 +6,7 @@ import {
   grantMultipleRolesToUser, 
   sendVerificationFailedMessage,
   revokeMultipleRolesFromUser,
-  sendBatchProcessNotification,
-  sendAdminBatchNotification
+  sendBatchProcessNotification
 } from './index';
 import { Role } from 'discord.js';
 
@@ -106,9 +105,9 @@ app.post('/api/discord-action', async (req, res) => {
         console.log(`✅ Batch notification result: ${result}`);
         break;
       case 'admin_batch_notification':
-        // 管理者用バッチ処理通知
-        result = await sendAdminBatchNotification(verification_data);
-        console.log(`✅ Admin batch notification result: ${result}`);
+        // 管理者用バッチ処理通知（実装予定）
+        console.log(`⚠️ Admin batch notification not implemented yet`);
+        result = false;
         break;
       default:
         console.error('❌ Invalid action:', action);
@@ -152,9 +151,9 @@ app.post('/api/batch-execute', async (req, res) => {
       const result = await response.json() as any;
       console.log('✅ Batch execution completed via Workers API');
       
-      // 管理者に通知
+      // 管理者に通知（実装予定）
       if (result.success && result.data) {
-        await sendAdminBatchNotification(result.data);
+        console.log(`⚠️ Admin notification not implemented yet`);
       }
       
       res.json(result);
