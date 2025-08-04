@@ -286,7 +286,7 @@ export async function grantMultipleRolesToUser(discordId: string, roles: Array<{
         const role = await guild.roles.fetch(roleData.roleId);
         if (role) {
           await member.roles.add(role);
-          grantedRoles.push(roleData.roleName);
+          grantedRoles.push(roleData); // オブジェクトを追加
           console.log(`✅ Role "${roleData.roleName}" granted to user ${discordId}`);
         } else {
           failedRoles.push(roleData.roleName);
@@ -301,12 +301,18 @@ export async function grantMultipleRolesToUser(discordId: string, roles: Array<{
     // ユーザーにDM送信
     try {
       const embed = new EmbedBuilder()
-        .setTitle('認証完了')
         .setColor(0x57F287)
-        .setTimestamp();
+        .setTimestamp()
+        .setFooter({ text: 'NFT Verification Bot' });
 
+      // 認証結果の詳細を構築
+      let title = '認証完了';
+      let description = '';
+      
       if (grantedRoles.length > 0) {
-        embed.setDescription(`NFT認証が完了しました。\n\n以下のロールが付与されました:\n\n${grantedRoles.map(name => `• ${name}`).join('\n')}\n\nサーバーでロールが表示されるまで少し時間がかかる場合があります。`);
+        title = '認証完了';
+        embed.setColor(0x57F287);
+        description = `NFT認証が完了しました。\n\n以下のコレクションでNFTが確認されました:\n\n${grantedRoles.map(role => `• ${role.roleName}`).join('\n')}\n\n対応するロールが付与されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。`;
       }
 
       if (failedRoles.length > 0) {
@@ -316,6 +322,8 @@ export async function grantMultipleRolesToUser(discordId: string, roles: Array<{
           inline: false
         });
       }
+
+      embed.setTitle(title).setDescription(description);
 
       await member.send({ embeds: [embed] });
     } catch (dmError) {
@@ -338,21 +346,53 @@ export async function sendVerificationFailedMessage(discordId: string, verificat
     // ユーザーにDM送信
     try {
       const embed = new EmbedBuilder()
-        .setTitle('認証失敗')
-        .setDescription(`NFT認証が失敗しました。\n\n選択されたコレクションでNFTが見つかりませんでした。\n\n再度認証を試行するか、別のコレクションを選択してください。`)
         .setColor(0xED4245)
         .setTimestamp()
         .setFooter({ text: 'NFT Verification Bot' });
 
+      // 認証結果の詳細を構築
+      let title = '認証完了';
+      let description = '';
+      
+      if (verificationData && verificationData.verificationResults) {
+        const results = verificationData.verificationResults;
+        const successful = results.filter((r: any) => r.hasNft);
+        const failed = results.filter((r: any) => !r.hasNft);
+
+        if (successful.length > 0 && failed.length === 0) {
+          // すべて成功
+          title = '認証完了';
+          embed.setColor(0x57F287);
+          description = `NFT認証が完了しました。\n\n以下のコレクションでNFTが確認されました:\n\n${successful.map((result: any) => `• ${result.collectionName}`).join('\n')}\n\n対応するロールが付与されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。`;
+        } else if (successful.length > 0 && failed.length > 0) {
+          // 一部成功
+          title = '認証完了（一部成功）';
+          embed.setColor(0xFAA61A);
+          description = `NFT認証が完了しました。\n\n✅ **認証成功:**\n${successful.map((result: any) => `• ${result.collectionName}`).join('\n')}\n\n❌ **認証失敗:**\n${failed.map((result: any) => `• ${result.collectionName}`).join('\n')}\n\n認証に成功したコレクションのロールが付与されました。`;
+        } else {
+          // すべて失敗
+          title = '認証失敗';
+          embed.setColor(0xED4245);
+          description = `NFT認証が失敗しました。\n\n以下のコレクションでNFTが見つかりませんでした:\n\n${failed.map((result: any) => `• ${result.collectionName}`).join('\n')}\n\n再度認証を試行するか、別のコレクションを選択してください。`;
+        }
+      } else {
+        // データがない場合
+        title = '認証失敗';
+        embed.setColor(0xED4245);
+        description = `NFT認証が失敗しました。\n\n選択されたコレクションでNFTが見つかりませんでした。\n\n再度認証を試行するか、別のコレクションを選択してください。`;
+      }
+
+      embed.setTitle(title).setDescription(description);
+
       await member.send({ embeds: [embed] });
-      console.log(`✅ Verification failed message sent to user ${discordId}`);
+      console.log(`✅ Verification result message sent to user ${discordId}`);
       return true;
     } catch (dmError) {
       console.log('Could not send DM to user:', dmError);
       return false;
     }
   } catch (error) {
-    console.error('Error sending verification failed message:', error);
+    console.error('Error sending verification result message:', error);
     return false;
   }
 }
