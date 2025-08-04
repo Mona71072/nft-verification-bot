@@ -8,12 +8,12 @@ Suiブロックチェーン上のNFT保有を確認し、Discordロールを自�
 ```
 📁 NFT Verification Portal
 ├── 🎯 frontend/          # React + Vite + @suiet/wallet-kit
-│   ├── src/App.tsx      # メインアプリケーション
-│   ├── src/main.tsx     # エントリーポイント
+│   ├── src/App.tsx      # メインアプリケーション（エラーハンドリング強化）
+│   ├── src/main.tsx     # エントリーポイント（グローバルエラーハンドリング）
 │   ├── package.json     # フロントエンド依存関係
 │   └── wrangler.toml    # Cloudflare Pages設定
 ├── 🔧 src/              # Cloudflare Workers API
-│   └── index.ts         # Hono APIサーバー
+│   └── index.ts         # Hono APIサーバー（バッチ処理機能付き）
 ├── 🤖 bot/              # Discord Bot (Render)
 │   ├── src/index.ts     # Discord Bot実装
 │   ├── src/api-server.ts # APIサーバー
@@ -42,7 +42,7 @@ Discord → フロントエンド → Cloudflare Workers → Discord Bot → Dis
 ### テスト環境
 - **フロントエンド**: https://c840eaf3.nft-verification-frontend.pages.dev
 
-## �� 主要機能
+## ✨ 主要機能
 
 ### ✅ 実装済み機能（Phase 1）
 - 🔗 **安定したウォレット接続**: @suiet/wallet-kitによる確実なSuiウォレット統合
@@ -63,6 +63,13 @@ Discord → フロントエンド → Cloudflare Workers → Discord Bot → Dis
 - 🛡️ **エラーハンドリング**: 堅牢なエラー処理とリトライ機能
 - 📊 **リアルタイム監視**: 処理状況のリアルタイム表示
 
+### 🛡️ 最新の改善（Phase 3）
+- 🔧 **エラーハンドリング強化**: ウォレット関連エラーの適切な処理
+- 🛡️ **グローバルエラーハンドリング**: 未処理エラーの自動キャッチ
+- 🔄 **フォールバック機能**: ウォレット初期化失敗時の代替表示
+- 📱 **ユーザビリティ向上**: より分かりやすいエラーメッセージ
+- 🎯 **管理者機能拡張**: コレクション管理、ユーザー管理機能
+
 ### 🎯 現在のNFT設定
 - **コレクション**: Claynosaurz Popkins
 - **Package ID**: `0xb908f3c6fea6865d32e2048c520cdfe3b5c5bbcebb658117c41bad70f52b7ccc::popkins_nft::Popkins`
@@ -76,6 +83,7 @@ Discord → フロントエンド → Cloudflare Workers → Discord Bot → Dis
 - **Vite** - 高速な開発サーバー
 - **@suiet/wallet-kit** - Suiウォレット統合（安定版）
 - **インラインスタイル** - 一貫性のあるデザイン
+- **エラーハンドリング** - 堅牢なエラー処理システム
 
 ### バックエンド（Cloudflare Workers）
 - **Hono** - Cloudflare Workers用Webフレームワーク
@@ -227,7 +235,30 @@ Response: {
 }
 ```
 
-#### バッチ処理実行（管理者用）
+#### 管理者機能
+
+##### 管理者チェック
+```bash
+GET /api/admin/check/{address}
+Response: { "success": true, "isAdmin": true }
+```
+
+##### 管理者アドレス管理
+```bash
+GET /api/admin/addresses
+POST /api/admin/addresses
+DELETE /api/admin/addresses/{address}
+```
+
+##### コレクション管理
+```bash
+GET /api/collections
+POST /api/collections
+PUT /api/collections/{id}
+DELETE /api/collections/{id}
+```
+
+##### バッチ処理実行（管理者用）
 ```bash
 POST /api/admin/batch-execute
 Content-Type: application/json
@@ -245,7 +276,7 @@ Response: {
 }
 ```
 
-#### バッチ処理設定取得（管理者用）
+##### バッチ処理設定取得（管理者用）
 ```bash
 GET /api/admin/batch-config
 
@@ -345,6 +376,43 @@ Phase 2では、定期的なNFT保有確認とロール自動管理機能を追�
 4. **通知送信**: 削除されたユーザーと管理者に通知
 5. **統計更新**: 処理結果の統計を更新
 
+## 🛡️ Phase 3: エラーハンドリング強化
+
+### 最新の改善点
+1. **グローバルエラーハンドリング**: 未処理エラーの自動キャッチ
+2. **ウォレット初期化エラー対策**: WalletProvider初期化失敗時のフォールバック
+3. **カスタムウォレットフック**: エラーハンドリング付きのuseWalletフック
+4. **ConnectButtonエラーハンドリング**: ウォレット接続エラーの適切な処理
+5. **署名機能エラーハンドリング**: 署名失敗時のユーザーフレンドリーなメッセージ
+
+### エラーハンドリングの実装
+```typescript
+// グローバルエラーハンドリング
+window.addEventListener('error', (event) => {
+  if (event.error?.message?.includes('register') || 
+      event.error?.message?.includes('wallet') ||
+      event.error?.message?.includes('@suiet')) {
+    console.log('Wallet-related error ignored:', event.error.message);
+    event.preventDefault();
+  }
+});
+
+// カスタムウォレットフック
+const useWalletWithErrorHandling = () => {
+  try {
+    return useWallet();
+  } catch (error) {
+    console.error('Wallet hook error:', error);
+    return {
+      account: null,
+      connected: false,
+      signPersonalMessage: null,
+      // ... デフォルト値
+    };
+  }
+};
+```
+
 ## ⚠️ 開発時の注意点
 
 ### 1. ウォレット統合
@@ -354,11 +422,17 @@ Phase 2では、定期的なNFT保有確認とロール自動管理機能を追�
 // @suiet/wallet-kitを使用
 import { ConnectButton, useWallet } from '@suiet/wallet-kit';
 
-const { account, connected, signPersonalMessage } = useWallet();
+const { account, connected, signPersonalMessage } = useWalletWithErrorHandling();
 
-// 署名リクエスト
+// 署名リクエスト（エラーハンドリング付き）
+if (!signPersonalMessage) {
+  throw new Error('署名機能が利用できません。');
+}
+
 const signatureResult = await signPersonalMessage({
   message: new TextEncoder().encode(authMessage)
+}).catch(error => {
+  throw new Error('署名に失敗しました。ウォレットで署名を承認してください。');
 });
 ```
 
@@ -366,6 +440,7 @@ const signatureResult = await signPersonalMessage({
 - `@mysten/dapp-kit`は使用しない（不安定）
 - `signMessage`ではなく`signPersonalMessage`を使用
 - メッセージは`Uint8Array`でエンコード
+- エラーハンドリングを忘れがち
 
 ### 2. CORS設定
 
@@ -477,8 +552,8 @@ curl https://nft-verification-production.mona-syndicatextokyo.workers.dev/api/ad
 **解決策**: Cloudflare WorkersのCORS設定を確認
 
 ### 2. ウォレット接続エラー
-**症状**: `WALLET.METHOD_NOT_IMPLEMENTED_ERROR`
-**解決策**: `@suiet/wallet-kit`の`signPersonalMessage`を使用
+**症状**: `Cannot destructure property 'register' of 'undefined'`
+**解決策**: エラーハンドリング強化により自動的に処理されます
 
 ### 3. NFT検証エラー
 **症状**: `NFT not found in wallet`
@@ -512,6 +587,7 @@ curl https://nft-verification-production.mona-syndicatextokyo.workers.dev/api/ad
 - ✅ Viteによる高速ビルド
 - ✅ インラインスタイルで一貫性
 - ✅ 最小限の依存関係
+- ✅ エラーハンドリング強化
 
 ### 3. Discord Bot
 - ✅ レンダーの無料プラン

@@ -354,25 +354,72 @@ async function getAdminAddresses(c: Context<{ Bindings: Env }>): Promise<string[
   try {
     const adminData = await c.env.COLLECTION_STORE.get(ADMIN_ADDRESSES_KEY);
     if (adminData) {
-      return JSON.parse(adminData);
+      const addresses = JSON.parse(adminData);
+      console.log(`📋 Retrieved admin addresses from KV: ${addresses.join(', ')}`);
+      return addresses;
     }
-    // 初期設定の管理者アドレス
-    const defaultAdmins = ['0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d'];
-    await c.env.COLLECTION_STORE.put(ADMIN_ADDRESSES_KEY, JSON.stringify(defaultAdmins));
+    
+    // 初期設定の管理者アドレス（現在のアドレスを含む）
+    const defaultAdmins = [
+      '0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d',
+      '0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d'.toLowerCase()
+    ];
+    
+    console.log(`📝 Setting default admin addresses: ${defaultAdmins.join(', ')}`);
+    
+    try {
+      await c.env.COLLECTION_STORE.put(ADMIN_ADDRESSES_KEY, JSON.stringify(defaultAdmins));
+      console.log('✅ Successfully saved default admin addresses to KV');
+    } catch (kvError) {
+      console.error('❌ Failed to save admin addresses to KV:', kvError);
+      // KVストアに保存できなくても、デフォルトアドレスを返す
+    }
+    
     return defaultAdmins;
   } catch (error) {
     console.error('Error getting admin addresses:', error);
-    return [];
+    // エラーが発生した場合でも、デフォルトの管理者アドレスを返す
+    return [
+      '0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d',
+      '0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d'.toLowerCase()
+    ];
   }
 }
 
 // 管理者アドレスを更新
 async function updateAdminAddresses(c: Context<{ Bindings: Env }>, addresses: string[]): Promise<boolean> {
   try {
-    await c.env.COLLECTION_STORE.put(ADMIN_ADDRESSES_KEY, JSON.stringify(addresses));
-    return true;
+    console.log(`📝 Updating admin addresses: ${addresses.join(', ')}`);
+    
+    // 重複を除去（大文字小文字は維持）
+    const uniqueAddresses = [...new Set(addresses.filter(addr => addr && addr.trim()))];
+    console.log(`📝 Unique addresses: ${uniqueAddresses.join(', ')}`);
+    
+    // KVストアに保存する前に検証
+    if (uniqueAddresses.length === 0) {
+      console.error('❌ Cannot save empty admin addresses');
+      return false;
+    }
+    
+    // JSON文字列に変換して保存
+    const jsonData = JSON.stringify(uniqueAddresses);
+    console.log(`📝 Saving to KV: ${jsonData}`);
+    
+    await c.env.COLLECTION_STORE.put(ADMIN_ADDRESSES_KEY, jsonData);
+    
+    // 保存後に確認
+    const savedData = await c.env.COLLECTION_STORE.get(ADMIN_ADDRESSES_KEY);
+    if (savedData) {
+      const savedAddresses = JSON.parse(savedData);
+      console.log(`✅ Successfully saved admin addresses: ${savedAddresses.join(', ')}`);
+      return true;
+    } else {
+      console.error('❌ Failed to verify saved data');
+      return false;
+    }
   } catch (error) {
-    console.error('Error updating admin addresses:', error);
+    console.error('❌ Error updating admin addresses:', error);
+    console.error('❌ Error details:', error);
     return false;
   }
 }
@@ -381,7 +428,13 @@ async function updateAdminAddresses(c: Context<{ Bindings: Env }>, addresses: st
 async function isAdmin(c: Context<{ Bindings: Env }>, address: string): Promise<boolean> {
   try {
     const adminAddresses = await getAdminAddresses(c);
-    return adminAddresses.includes(address.toLowerCase());
+    const normalizedAddress = address.toLowerCase();
+    console.log(`🔍 Checking admin status for address: ${address}`);
+    console.log(`🔍 Normalized address: ${normalizedAddress}`);
+    console.log(`🔍 Available admin addresses: ${adminAddresses.join(', ')}`);
+    const isAdminUser = adminAddresses.includes(normalizedAddress);
+    console.log(`🔍 Is admin: ${isAdminUser}`);
+    return isAdminUser;
   } catch (error) {
     console.error('Error checking admin status:', error);
     return false;
@@ -621,21 +674,34 @@ app.get('/api/admin/addresses', async (c) => {
 app.post('/api/admin/addresses', async (c) => {
   try {
     const body = await c.req.json();
-    const { addresses } = body;
+    const { addresses, address } = body;
     
-    if (!Array.isArray(addresses)) {
+    let targetAddresses: string[];
+    
+    if (address) {
+      // 単一アドレスを追加する場合
+      const currentAddresses = await getAdminAddresses(c);
+      targetAddresses = [...currentAddresses, address];
+    } else if (Array.isArray(addresses)) {
+      // 複数アドレスを設定する場合
+      targetAddresses = addresses;
+    } else {
       return c.json({
         success: false,
-        error: 'Addresses must be an array'
+        error: 'Either "address" or "addresses" array is required'
       }, 400);
     }
     
-    const success = await updateAdminAddresses(c, addresses);
+    console.log(`📝 Target addresses: ${targetAddresses.join(', ')}`);
+    
+    const success = await updateAdminAddresses(c, targetAddresses);
     
     if (success) {
+      const updatedAddresses = await getAdminAddresses(c);
       return c.json({
         success: true,
-        message: 'Admin addresses updated successfully'
+        message: 'Admin addresses updated successfully',
+        data: updatedAddresses
       });
     } else {
       return c.json({
@@ -648,6 +714,106 @@ app.post('/api/admin/addresses', async (c) => {
     return c.json({
       success: false,
       error: 'Failed to update admin addresses'
+    }, 500);
+  }
+});
+
+// 管理者アドレスリセットAPI
+app.post('/api/admin/reset-addresses', async (c) => {
+  try {
+    console.log('🔄 Resetting admin addresses...');
+    
+    const body = await c.req.json().catch(() => ({}));
+    const { addresses } = body;
+    
+    let adminAddresses: string[];
+    
+    if (addresses && Array.isArray(addresses) && addresses.length > 0) {
+      // 新しい管理者アドレスが指定された場合
+      adminAddresses = addresses;
+      console.log(`📝 Setting new admin addresses: ${adminAddresses.join(', ')}`);
+    } else {
+      // デフォルトの管理者アドレスを設定
+      adminAddresses = [
+        '0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d'
+      ];
+      console.log(`📝 Setting default admin addresses: ${adminAddresses.join(', ')}`);
+    }
+    
+    const success = await updateAdminAddresses(c, adminAddresses);
+    
+    if (success) {
+      console.log('✅ Admin addresses reset successfully');
+      return c.json({
+        success: true,
+        message: 'Admin addresses reset successfully',
+        data: adminAddresses
+      });
+    } else {
+      console.log('❌ Failed to reset admin addresses');
+      return c.json({
+        success: false,
+        error: 'Failed to reset admin addresses'
+      }, 500);
+    }
+  } catch (error) {
+    console.error('Reset admin addresses error:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to reset admin addresses'
+    }, 500);
+  }
+});
+
+
+
+// 管理者アドレス削除API
+app.delete('/api/admin/addresses/:address', async (c) => {
+  try {
+    const addressToRemove = c.req.param('address');
+    console.log(`🗑️ Removing admin address: ${addressToRemove}`);
+    
+    const currentAddresses = await getAdminAddresses(c);
+    console.log(`📋 Current addresses: ${currentAddresses.join(', ')}`);
+    
+    // 大文字小文字を区別せずに削除
+    const newAddresses = currentAddresses.filter(addr => 
+      addr.toLowerCase() !== addressToRemove.toLowerCase()
+    );
+    
+    console.log(`📋 New addresses: ${newAddresses.join(', ')}`);
+    
+    // 最低1つの管理者アドレスが残るようにする
+    if (newAddresses.length === 0) {
+      console.log('⚠️ Cannot remove all admin addresses, keeping at least one');
+      return c.json({
+        success: false,
+        error: 'Cannot remove all admin addresses. At least one admin address must remain.',
+        message: '管理者アドレスを全て削除することはできません。最低1つの管理者アドレスが必要です。'
+      }, 400);
+    }
+    
+    const success = await updateAdminAddresses(c, newAddresses);
+    
+    if (success) {
+      console.log('✅ Admin address removed successfully');
+      return c.json({
+        success: true,
+        message: 'Admin address removed successfully',
+        data: newAddresses
+      });
+    } else {
+      console.log('❌ Failed to remove admin address');
+      return c.json({
+        success: false,
+        error: 'Failed to remove admin address'
+      }, 500);
+    }
+  } catch (error) {
+    console.error('Remove admin address error:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to remove admin address'
     }, 500);
   }
 });
