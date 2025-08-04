@@ -120,12 +120,12 @@ async function setupVerificationChannel() {
 
     // 新しい認証メッセージを作成
     const verificationEmbed = new EmbedBuilder()
-      .setTitle('🔐 NFT認証システム')
-      .setDescription('**Sui NFTの保有を確認してロールを取得できます**\\n\\n下のボタンをクリックして認証を開始してください。')
+      .setTitle('NFT Verification')
+      .setDescription('Sui NFTの保有を確認してロールを取得できます。\n\n下のボタンをクリックして認証を開始してください。')
       .setColor(0x5865F2)
       .addFields(
-        { name: '📋 認証手順', value: '1. ボタンをクリック\\n2. ウォレットアドレスを入力\\n3. 署名を実行\\n4. NFT保有を確認\\n5. ロールを付与', inline: false },
-        { name: '⚠️ 注意事項', value: '• 認証は一度のみ必要です\\n• NFTを売却した場合、ロールは自動で削除されます\\n• プライベートキーは要求されません', inline: false }
+        { name: '認証手順', value: '1. ボタンをクリック\n2. ウォレットアドレスを入力\n3. 署名を実行\n4. NFT保有を確認\n5. ロールを付与', inline: false },
+        { name: '注意事項', value: '• 認証は一度のみ必要です\n• NFTを売却した場合、ロールは自動で削除されます\n• プライベートキーは要求されません', inline: false }
       )
       .setTimestamp()
       .setFooter({ text: 'NFT Verification Bot' });
@@ -134,9 +134,8 @@ async function setupVerificationChannel() {
       .addComponents(
         new ButtonBuilder()
           .setCustomId('verify_nft')
-          .setLabel('🔐 NFT認証を開始')
+          .setLabel('NFT認証を開始')
           .setStyle(ButtonStyle.Primary)
-          .setEmoji('🔐')
       );
 
     await channel.send({
@@ -211,12 +210,12 @@ async function handleVerifyNFT(interaction: ButtonInteraction) {
     const verificationUrl = `${config.VERIFICATION_URL}?discord_id=${interaction.user.id}`;
     
     const verificationEmbed = new EmbedBuilder()
-      .setTitle('🔐 NFT認証')
-      .setDescription(`**認証を開始します**\\n\\n下のリンクをクリックして認証を完了してください。\\n\\n[🔗 認証ページを開く](${verificationUrl})`)
+      .setTitle('NFT認証')
+      .setDescription(`認証を開始します。\n\n下のリンクをクリックして認証を完了してください。\n\n[認証ページを開く](${verificationUrl})`)
       .setColor(0x5865F2)
       .addFields(
-        { name: '📋 手順', value: '1. リンクをクリック\\n2. ウォレットアドレスを入力\\n3. 署名を実行\\n4. 認証完了', inline: false },
-        { name: '⚠️ 注意', value: '• プライベートキーは要求されません\\n• 認証は安全に行われます\\n• 5分以内に完了してください', inline: false }
+        { name: '手順', value: '1. リンクをクリック\n2. ウォレットアドレスを入力\n3. 署名を実行\n4. 認証完了', inline: false },
+        { name: '注意', value: '• プライベートキーは要求されません\n• 認証は安全に行われます\n• 5分以内に完了してください', inline: false }
       )
       .setTimestamp()
       .setFooter({ text: 'NFT Verification Bot' });
@@ -230,7 +229,7 @@ async function handleVerifyNFT(interaction: ButtonInteraction) {
   } catch (error) {
     console.error('Error in handleVerifyNFT:', error);
     await interaction.reply({
-      content: '❌ エラーが発生しました。もう一度お試しください。',
+      content: 'エラーが発生しました。もう一度お試しください。',
       ephemeral: true
     });
   }
@@ -256,8 +255,8 @@ export async function grantRoleToUser(discordId: string): Promise<boolean> {
       await member.send({
         embeds: [
           new EmbedBuilder()
-            .setTitle('🎉 認証完了！')
-            .setDescription(`**NFT認証が完了しました！**\\n\\nロール "${role.name}" が付与されました。\\n\\nサーバーでロールが表示されるまで少し時間がかかる場合があります。`)
+            .setTitle('認証完了')
+            .setDescription(`NFT認証が完了しました。\n\nロール "${role.name}" が付与されました。\n\nサーバーでロールが表示されるまで少し時間がかかる場合があります。`)
             .setColor(0x57F287)
             .setTimestamp()
         ]
@@ -302,18 +301,18 @@ export async function grantMultipleRolesToUser(discordId: string, roles: Array<{
     // ユーザーにDM送信
     try {
       const embed = new EmbedBuilder()
-        .setTitle('🎉 認証完了！')
+        .setTitle('認証完了')
         .setColor(0x57F287)
         .setTimestamp();
 
       if (grantedRoles.length > 0) {
-        embed.setDescription(`**NFT認証が完了しました！**\\n\\n以下のロールが付与されました:\\n\\n${grantedRoles.map(name => `• ${name}`).join('\\n')}\\n\\nサーバーでロールが表示されるまで少し時間がかかる場合があります。`);
+        embed.setDescription(`NFT認証が完了しました。\n\n以下のロールが付与されました:\n\n${grantedRoles.map(name => `• ${name}`).join('\n')}\n\nサーバーでロールが表示されるまで少し時間がかかる場合があります。`);
       }
 
       if (failedRoles.length > 0) {
         embed.addFields({
-          name: '⚠️ 付与できなかったロール',
-          value: failedRoles.map(name => `• ${name}`).join('\\n'),
+          name: '付与できなかったロール',
+          value: failedRoles.map(name => `• ${name}`).join('\n'),
           inline: false
         });
       }
@@ -350,8 +349,8 @@ export async function revokeRoleFromUser(discordId: string): Promise<boolean> {
       await member.send({
         embeds: [
           new EmbedBuilder()
-            .setTitle('📋 ロール更新通知')
-            .setDescription(`**NFTの保有が確認できなくなったため、ロール "${role.name}" が削除されました。**\\n\\n再度NFTを取得された場合は、認証チャンネルから再認証を行ってください。`)
+            .setTitle('ロール更新通知')
+            .setDescription(`NFTの保有が確認できなくなったため、ロール "${role.name}" が削除されました。\n\n再度NFTを取得された場合は、認証チャンネルから再認証を行ってください。`)
             .setColor(0xED4245)
             .setTimestamp()
         ]
