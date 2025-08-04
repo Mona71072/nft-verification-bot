@@ -11,5 +11,6 @@ export declare const config: {
     VERIFICATION_CHANNEL_NAME: string;
     VERIFICATION_URL: string;
     ADMIN_USER_ID: string;
+    CLOUDFLARE_WORKERS_API_URL: string;
 };
 export declare function validateConfig(): boolean;
