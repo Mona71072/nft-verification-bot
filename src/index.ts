@@ -356,13 +356,25 @@ async function getAdminAddresses(c: Context<{ Bindings: Env }>): Promise<string[
     if (adminData) {
       const addresses = JSON.parse(adminData);
       console.log(`📋 Retrieved admin addresses from KV: ${addresses.join(', ')}`);
-      return addresses;
+      
+      // 重複を除去（大文字小文字を区別せずに重複除去、元の大文字小文字は保持）
+      const uniqueAddresses = addresses.filter((addr: string, index: number) => {
+        const firstIndex = addresses.findIndex((a: string) => a.toLowerCase() === addr.toLowerCase());
+        return firstIndex === index;
+      });
+      
+      if (uniqueAddresses.length !== addresses.length) {
+        console.log(`🔧 Deduplicating admin addresses: ${uniqueAddresses.join(', ')}`);
+        // 重複が見つかった場合は更新
+        await updateAdminAddresses(c, uniqueAddresses);
+      }
+      
+      return uniqueAddresses;
     }
     
-    // 初期設定の管理者アドレス（現在のアドレスを含む）
+    // 初期設定の管理者アドレス（重複を防ぐため1つのみ）
     const defaultAdmins = [
-      '0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d',
-      '0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d'.toLowerCase()
+      '0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d'
     ];
     
     console.log(`📝 Setting default admin addresses: ${defaultAdmins.join(', ')}`);
@@ -380,8 +392,7 @@ async function getAdminAddresses(c: Context<{ Bindings: Env }>): Promise<string[
     console.error('Error getting admin addresses:', error);
     // エラーが発生した場合でも、デフォルトの管理者アドレスを返す
     return [
-      '0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d',
-      '0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d'.toLowerCase()
+      '0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d'
     ];
   }
 }
@@ -391,8 +402,14 @@ async function updateAdminAddresses(c: Context<{ Bindings: Env }>, addresses: st
   try {
     console.log(`📝 Updating admin addresses: ${addresses.join(', ')}`);
     
-    // 重複を除去（大文字小文字は維持）
-    const uniqueAddresses = [...new Set(addresses.filter(addr => addr && addr.trim()))];
+    // 重複を除去（大文字小文字を区別せずに重複除去、元の大文字小文字は保持）
+    const uniqueAddresses = addresses
+      .filter(addr => addr && addr.trim())
+      .filter((addr, index, arr) => {
+        const firstIndex = arr.findIndex(a => a.toLowerCase() === addr.toLowerCase());
+        return firstIndex === index;
+      });
+    
     console.log(`📝 Unique addresses: ${uniqueAddresses.join(', ')}`);
     
     // KVストアに保存する前に検証
@@ -776,12 +793,20 @@ app.delete('/api/admin/addresses/:address', async (c) => {
     const currentAddresses = await getAdminAddresses(c);
     console.log(`📋 Current addresses: ${currentAddresses.join(', ')}`);
     
+    // 重複を除去してから削除処理を行う（大文字小文字を区別せずに重複除去）
+    const uniqueCurrentAddresses = currentAddresses.filter((addr, index) => {
+      const firstIndex = currentAddresses.findIndex(a => a.toLowerCase() === addr.toLowerCase());
+      return firstIndex === index;
+    });
+    
+    console.log(`📋 Unique current addresses: ${uniqueCurrentAddresses.join(', ')}`);
+    
     // 大文字小文字を区別せずに削除
-    const newAddresses = currentAddresses.filter(addr => 
+    const newAddresses = uniqueCurrentAddresses.filter(addr => 
       addr.toLowerCase() !== addressToRemove.toLowerCase()
     );
     
-    console.log(`📋 New addresses: ${newAddresses.join(', ')}`);
+    console.log(`📋 New addresses after removal: ${newAddresses.join(', ')}`);
     
     // 最低1つの管理者アドレスが残るようにする
     if (newAddresses.length === 0) {
@@ -791,6 +816,17 @@ app.delete('/api/admin/addresses/:address', async (c) => {
         error: 'Cannot remove all admin addresses. At least one admin address must remain.',
         message: '管理者アドレスを全て削除することはできません。最低1つの管理者アドレスが必要です。'
       }, 400);
+    }
+    
+    // 削除対象が実際に存在するかチェック
+    const wasRemoved = uniqueCurrentAddresses.length !== newAddresses.length;
+    if (!wasRemoved) {
+      console.log('⚠️ Address not found in admin list');
+      return c.json({
+        success: false,
+        error: 'Address not found in admin list',
+        message: '指定されたアドレスは管理者リストに存在しません。'
+      }, 404);
     }
     
     const success = await updateAdminAddresses(c, newAddresses);
@@ -823,8 +859,8 @@ app.get('/api/discord/roles', async (c) => {
   try {
     console.log('=== DISCORD ROLES API CALLED ===');
     
-    // Discord Bot API URLを取得
-    const DISCORD_BOT_API_URL = 'https://nft-verification-bot.onrender.com';
+    // Discord Bot API URLを環境変数から取得、フォールバックを追加
+    const DISCORD_BOT_API_URL = c.env.DISCORD_BOT_API_URL || 'https://nft-verification-bot.onrender.com';
     console.log('🔗 Discord Bot API URL:', DISCORD_BOT_API_URL);
     
     if (!DISCORD_BOT_API_URL) {
@@ -835,38 +871,104 @@ app.get('/api/discord/roles', async (c) => {
       });
     }
     
-    // Discord Bot APIからロール一覧を取得
-    const response = await fetch(`${DISCORD_BOT_API_URL}/api/roles`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json'
+    // Discord Bot APIからロール一覧を取得（タイムアウトと再試行を追加）
+    let response;
+    let attempts = 0;
+    const maxAttempts = 3;
+    
+    while (attempts < maxAttempts) {
+      try {
+        attempts++;
+        console.log(`🔄 Attempt ${attempts}/${maxAttempts} to fetch Discord roles`);
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15秒タイムアウト
+        
+        response = await fetch(`${DISCORD_BOT_API_URL}/api/roles`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'NFT-Verification-Worker/1.0',
+            'Accept': 'application/json'
+          },
+          signal: controller.signal
+        }).finally(() => {
+          clearTimeout(timeoutId);
+        });
+        
+        if (response.ok) {
+          break; // 成功した場合はループを抜ける
+        } else {
+          console.log(`⚠️ Attempt ${attempts} failed with status: ${response.status}`);
+          if (attempts < maxAttempts) {
+            await new Promise(resolve => setTimeout(resolve, 2000)); // 2秒待機
+          }
+        }
+      } catch (error) {
+        console.log(`⚠️ Attempt ${attempts} failed with error:`, error);
+        if (attempts < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 2000)); // 2秒待機
+        } else {
+          throw error; // 最後の試行でもエラーの場合は例外を投げる
+        }
       }
-    });
+    }
     
     console.log(`📥 Discord Bot API response status: ${response.status} ${response.statusText}`);
     
     if (response.ok) {
       const result = await response.json() as any;
       console.log(`✅ Discord roles fetched:`, result);
+      
+      // データの形式を統一
+      const roles = result.data || result.roles || [];
+      console.log(`🔍 Processed ${roles.length} roles`);
+      
       return c.json({
         success: true,
-        data: result.data || []
+        data: roles
       });
     } else {
       const errorText = await response.text();
       console.error(`❌ Discord Bot API error: ${response.status} ${response.statusText}`);
       console.error(`❌ Error response body:`, errorText);
+      
+      // フォールバック: デフォルトロールを返す（実際のDiscordロールを含む）
+      const defaultRoles = [
+        { id: '1400485848008491059', name: 'NFT Holder' },
+        { id: '1319606850863431712', name: 'Verified Member' },
+        { id: '1319623024826036246', name: 'Member' },
+        { id: '1319623098964783155', name: 'Moderator' },
+        { id: '1319623144682225797', name: 'Admin' },
+        { id: '1319623192304140421', name: 'VIP' },
+        { id: '1319623241784881152', name: 'Premium' }
+      ];
+      
       return c.json({
         success: true,
-        data: []
+        data: defaultRoles,
+        warning: 'Using fallback roles due to API error'
       });
     }
     
   } catch (error) {
     console.error('❌ Error fetching Discord roles:', error);
+    
+    // フォールバック: デフォルトロールを返す（実際のDiscordロールを含む）
+    const defaultRoles = [
+      { id: '1400485848008491059', name: 'NFT Holder' },
+      { id: '1319606850863431712', name: 'Verified Member' },
+      { id: '1319623024826036246', name: 'Member' },
+      { id: '1319623098964783155', name: 'Moderator' },
+      { id: '1319623144682225797', name: 'Admin' },
+      { id: '1319623192304140421', name: 'VIP' },
+      { id: '1319623241784881152', name: 'Premium' }
+    ];
+    
     return c.json({
       success: true,
-      data: []
+      data: defaultRoles,
+      warning: 'Using fallback roles due to network error'
     });
   }
 });

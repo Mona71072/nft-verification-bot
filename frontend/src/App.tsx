@@ -20,29 +20,6 @@ const useWalletWithErrorHandling = () => {
   }
 };
 
-// ウォレット初期化エラーの抑制
-useEffect(() => {
-  const suppressWalletErrors = () => {
-    // inpage-script.jsのエラーを抑制
-    const originalError = window.onerror;
-    window.onerror = function(message, source, lineno, colno, error) {
-      if (source?.includes('inpage-script.js') || 
-          message?.toString().includes('register') ||
-          message?.toString().includes('wallet') ||
-          message?.toString().includes('Cannot destructure')) {
-        console.log('Wallet error suppressed:', message);
-        return true; // エラーを抑制
-      }
-      if (originalError) {
-        return originalError(message, source, lineno, colno, error);
-      }
-      return false;
-    };
-  };
-
-  suppressWalletErrors();
-}, []);
-
 // NFTコレクション型定義
 interface NFTCollection {
   id: string;
@@ -84,11 +61,40 @@ function NFTVerification() {
 
   // URLパラメータからDiscord IDを自動取得
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const discordIdFromUrl = urlParams.get('discord_id');
-    if (discordIdFromUrl) {
-      setDiscordId(discordIdFromUrl);
-      console.log('Discord ID from URL:', discordIdFromUrl);
+    try {
+      console.log('🔍 Checking URL for Discord ID parameter...');
+      console.log('🔍 Current URL:', window.location.href);
+      console.log('🔍 Search params:', window.location.search);
+      
+      const urlParams = new URLSearchParams(window.location.search);
+      
+      // 複数の可能なパラメータ名を試す（user_idを優先）
+      const possibleParams = ['user_id', 'discord_id', 'userId', 'discordId', 'id'];
+      let discordIdFromUrl = null;
+      let paramUsed = null;
+      
+      for (const param of possibleParams) {
+        const value = urlParams.get(param);
+        if (value) {
+          discordIdFromUrl = value;
+          paramUsed = param;
+          break;
+        }
+      }
+      
+      console.log('🔍 All URL params:', Object.fromEntries(urlParams.entries()));
+      console.log('🔍 Discord ID from URL:', discordIdFromUrl);
+      console.log('🔍 Parameter used:', paramUsed);
+      
+      if (discordIdFromUrl) {
+        setDiscordId(discordIdFromUrl);
+        console.log('✅ Discord ID set from URL:', discordIdFromUrl, 'via parameter:', paramUsed);
+      } else {
+        console.log('⚠️ No Discord ID parameter found in URL');
+        console.log('⚠️ Checked parameters:', possibleParams);
+      }
+    } catch (error) {
+      console.error('Error parsing URL parameters:', error);
     }
   }, []);
 
@@ -143,8 +149,20 @@ function NFTVerification() {
 
   // URLパラメータからDiscord IDが取得されたかどうかを判定
   const isDiscordIdFromUrl = () => {
-    const urlParams = new URLSearchParams(window.location.search);
-    return urlParams.get('discord_id') !== null;
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const possibleParams = ['user_id', 'discord_id', 'userId', 'discordId', 'id'];
+      
+      for (const param of possibleParams) {
+        if (urlParams.get(param) !== null) {
+          return true;
+        }
+      }
+      return false;
+    } catch (error) {
+      console.error('Error checking Discord ID from URL:', error);
+      return false;
+    }
   };
 
   const handleVerifyNFT = async () => {
@@ -307,21 +325,6 @@ function NFTVerification() {
           </div>
           {(() => {
             try {
-              // ウォレット初期化エラーを抑制
-              const originalConsoleError = console.error;
-              console.error = (...args) => {
-                const message = args.join(' ');
-                if (message.includes('inpage-script.js') || 
-                    message.includes('register') || 
-                    message.includes('wallet') ||
-                    message.includes('@suiet') ||
-                    message.includes('Cannot destructure')) {
-                  console.log('ConnectButton error suppressed:', message);
-                  return;
-                }
-                originalConsoleError.apply(console, args);
-              };
-
               return <ConnectButton />;
             } catch (error) {
               console.error('ConnectButton error:', error);
@@ -504,9 +507,17 @@ function AdminPage() {
   const { account, connected } = useWalletWithErrorHandling();
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [adminAddresses, setAdminAddresses] = useState<string[]>([]);
-  // const [collections, setCollections] = useState<NFTCollection[]>([]);
+  const [collections, setCollections] = useState<NFTCollection[]>([]);
   const [verifiedUsers, setVerifiedUsers] = useState<VerifiedUser[]>([]);
   const [batchProcessing, setBatchProcessing] = useState<boolean>(false);
+  const [discordRoles, setDiscordRoles] = useState<Array<{id: string, name: string}>>([]);
+  const [loadingRoles, setLoadingRoles] = useState<boolean>(false);
+
+  // discordRolesの状態をログ出力（デバッグ用）
+  useEffect(() => {
+    console.log('🔍 Discord roles state updated:', discordRoles);
+    console.log('🔍 Loading roles state:', loadingRoles);
+  }, [discordRoles, loadingRoles]);
 
   // 管理者チェック
   useEffect(() => {
@@ -576,16 +587,29 @@ function AdminPage() {
       try {
         setLoadingRoles(true);
         console.log('🔄 Fetching Discord roles...');
+        console.log('🔗 API URL:', `${API_BASE_URL}/api/discord/roles`);
+        
         const response = await fetch(`${API_BASE_URL}/api/discord/roles`);
+        console.log('📥 Discord roles API response status:', response.status);
+        
         const data = await response.json();
+        console.log('📥 Discord roles API response data:', data);
+        
         if (data.success) {
-          setDiscordRoles(data.data);
-          console.log(`✅ Loaded ${data.data.length} Discord roles`);
+          setDiscordRoles(data.data || []);
+          console.log(`✅ Loaded ${(data.data || []).length} Discord roles:`, data.data);
+          
+          if (data.warning) {
+            console.log('⚠️ API Warning:', data.warning);
+          }
         } else {
-          console.log('⚠️ No Discord roles found');
+          console.log('⚠️ Discord roles API returned success: false');
+          console.log('⚠️ Error:', data.error);
+          setDiscordRoles([]);
         }
       } catch (error) {
         console.error('❌ Failed to fetch Discord roles:', error);
+        setDiscordRoles([]);
       } finally {
         setLoadingRoles(false);
       }
@@ -676,7 +700,6 @@ function AdminPage() {
   };
 
   // コレクション管理関連のハンドラー
-  const [collections, setCollections] = useState<NFTCollection[]>([]);
   const [showAddCollectionForm, setShowAddCollectionForm] = useState<boolean>(false);
   const [newCollection, setNewCollection] = useState({
     name: '',
@@ -713,8 +736,6 @@ function AdminPage() {
     roleName: '',
     description: ''
   });
-  const [discordRoles, setDiscordRoles] = useState<Array<{id: string, name: string}>>([]);
-  const [loadingRoles, setLoadingRoles] = useState<boolean>(false);
 
   const handleEditCollection = async (collection: NFTCollection) => {
     setEditingCollection(collection);
@@ -830,21 +851,6 @@ function AdminPage() {
         <p style={{ color: 'white', marginBottom: '2rem' }}>ウォレットを接続してください</p>
         {(() => {
           try {
-            // ウォレット初期化エラーを抑制
-            const originalConsoleError = console.error;
-            console.error = (...args) => {
-              const message = args.join(' ');
-              if (message.includes('inpage-script.js') || 
-                  message.includes('register') || 
-                  message.includes('wallet') ||
-                  message.includes('@suiet') ||
-                  message.includes('Cannot destructure')) {
-                console.log('Admin ConnectButton error suppressed:', message);
-                return;
-              }
-              originalConsoleError.apply(console, args);
-            };
-
             return <ConnectButton />;
           } catch (error) {
             console.error('ConnectButton error:', error);
@@ -1189,7 +1195,10 @@ function AdminPage() {
                         <select
                           value={newCollection.roleId}
                           onChange={(e) => {
+                            console.log('🔄 Discord role selected:', e.target.value);
+                            console.log('🔍 Available discord roles:', discordRoles);
                             const selectedRole = discordRoles.find(role => role.id === e.target.value);
+                            console.log('🔍 Selected role object:', selectedRole);
                             setNewCollection(prev => ({
                               ...prev,
                               roleId: e.target.value,
@@ -1218,7 +1227,16 @@ function AdminPage() {
                             e.target.style.boxShadow = 'none';
                           }}
                         >
-                          <option value="">Discordロールを選択してください</option>
+                          <option value="">
+                            {discordRoles.length === 0 
+                              ? "Discordロールを取得中..." 
+                              : "Discordロールを選択してください"}
+                          </option>
+                          {discordRoles.length === 0 && !loadingRoles && (
+                            <option value="" disabled style={{ background: '#1f2937', color: '#ef4444' }}>
+                              ロールが取得できませんでした
+                            </option>
+                          )}
                           {discordRoles.map((role) => (
                             <option key={role.id} value={role.id} style={{ background: '#1f2937', color: 'white' }}>
                               {role.name} (ID: {role.id})
@@ -1476,7 +1494,10 @@ function AdminPage() {
                                 <select
                                   value={editForm.roleId}
                                   onChange={(e) => {
+                                    console.log('🔄 Edit form Discord role selected:', e.target.value);
+                                    console.log('🔍 Available discord roles:', discordRoles);
                                     const selectedRole = discordRoles.find(role => role.id === e.target.value);
+                                    console.log('🔍 Selected role object:', selectedRole);
                                     setEditForm(prev => ({
                                       ...prev,
                                       roleId: e.target.value,
@@ -1505,7 +1526,16 @@ function AdminPage() {
                                     e.target.style.boxShadow = 'none';
                                   }}
                                 >
-                                  <option value="">Discordロールを選択してください</option>
+                                  <option value="">
+                                    {discordRoles.length === 0 
+                                      ? "Discordロールを取得中..." 
+                                      : "Discordロールを選択してください"}
+                                  </option>
+                                  {discordRoles.length === 0 && !loadingRoles && (
+                                    <option value="" disabled style={{ background: '#1f2937', color: '#ef4444' }}>
+                                      ロールが取得できませんでした
+                                    </option>
+                                  )}
                                   {discordRoles.map((role) => (
                                     <option key={role.id} value={role.id} style={{ background: '#1f2937', color: 'white' }}>
                                       {role.name} (ID: {role.id})
@@ -1846,7 +1876,43 @@ function App() {
         padding: '2rem',
         minHeight: 'calc(100vh - 80px)'
       }}>
-        {currentPage === 'verification' ? <NFTVerification /> : <AdminPage />}
+        {(() => {
+          try {
+            return currentPage === 'verification' ? <NFTVerification /> : <AdminPage />;
+          } catch (error) {
+            console.error('Component rendering error:', error);
+            return (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                minHeight: '60vh',
+                color: 'white',
+                textAlign: 'center'
+              }}>
+                <div>
+                  <h2>コンポーネントエラー</h2>
+                  <p>ページを再読み込みしてください。</p>
+                  <button 
+                    onClick={() => window.location.reload()}
+                    style={{
+                      padding: '0.75rem 1.5rem',
+                      background: 'white',
+                      color: '#667eea',
+                      border: 'none',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontWeight: '600',
+                      marginTop: '1rem'
+                    }}
+                  >
+                    再読み込み
+                  </button>
+                </div>
+              </div>
+            );
+          }
+        })()}
       </div>
     </div>
   );

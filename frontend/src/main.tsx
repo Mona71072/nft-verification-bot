@@ -74,7 +74,10 @@ window.onerror = function(message: string | Event, source?: string, lineno?: num
 const rootElement = document.getElementById('root');
 
 if (!rootElement) {
-  throw new Error('Root element not found');
+  console.error('Root element not found, creating fallback');
+  const fallbackRoot = document.createElement('div');
+  fallbackRoot.id = 'root';
+  document.body.appendChild(fallbackRoot);
 }
 
 // WalletProviderの初期化エラーをキャッチ
@@ -92,8 +95,44 @@ const AppWithErrorBoundary = () => {
   }
 };
 
-createRoot(rootElement).render(
-  <StrictMode>
-    <AppWithErrorBoundary />
-  </StrictMode>,
-)
+// アプリケーションの初期化
+try {
+  const root = createRoot(rootElement || document.getElementById('root') || document.body);
+  root.render(
+    <StrictMode>
+      <AppWithErrorBoundary />
+    </StrictMode>
+  );
+} catch (error) {
+  console.error('Failed to render app:', error);
+  // フォールバック: シンプルなエラーメッセージを表示
+  const errorDiv = document.createElement('div');
+  errorDiv.style.cssText = `
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    font-family: system-ui, -apple-system, sans-serif;
+    text-align: center;
+    padding: 2rem;
+  `;
+  errorDiv.innerHTML = `
+    <div>
+      <h1>アプリケーションエラー</h1>
+      <p>ページを再読み込みしてください。</p>
+      <button onclick="window.location.reload()" style="
+        padding: 0.75rem 1.5rem;
+        background: white;
+        color: #667eea;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 600;
+        margin-top: 1rem;
+      ">再読み込み</button>
+    </div>
+  `;
+  document.body.appendChild(errorDiv);
+}
