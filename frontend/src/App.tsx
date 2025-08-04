@@ -637,32 +637,36 @@ function AdminPage() {
         display: 'grid', 
         gap: '2rem', 
         gridTemplateColumns: '1fr 1fr',
-        maxWidth: '1000px',
+        maxWidth: '1200px',
         margin: '0 auto'
       }}>
         {/* 管理者アドレス管理 */}
         <div style={{ 
           background: 'rgba(255, 255, 255, 0.1)', 
-          padding: '1.5rem', 
-          borderRadius: '12px',
-          backdropFilter: 'blur(10px)'
+          padding: '2rem', 
+          borderRadius: '16px',
+          backdropFilter: 'blur(20px)',
+          border: '1px solid rgba(255, 255, 255, 0.2)',
+          height: 'fit-content'
         }}>
-          <h2 style={{ fontWeight: '600', marginBottom: '1rem' }}>管理者アドレス管理</h2>
+          <h2 style={{ fontWeight: '600', marginBottom: '1.5rem', fontSize: '1.25rem' }}>管理者アドレス管理</h2>
           
-          <div style={{ marginBottom: '1rem' }}>
+          <div style={{ marginBottom: '1.5rem' }}>
             <input
               type="text"
               placeholder="新しい管理者アドレス"
               id="newAdminAddress"
               style={{
                 width: '100%',
-                padding: '0.75rem',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-                borderRadius: '8px',
+                padding: '1rem',
+                border: '1px solid rgba(255, 255, 255, 0.3)',
+                borderRadius: '12px',
                 fontSize: '0.875rem',
                 background: 'rgba(255, 255, 255, 0.1)',
                 color: 'white',
-                marginBottom: '0.5rem'
+                marginBottom: '1rem',
+                outline: 'none',
+                transition: 'all 0.2s ease'
               }}
             />
             <button
@@ -674,76 +678,97 @@ function AdminPage() {
                 }
               }}
               style={{
-                padding: '0.75rem 1.5rem',
-                background: '#10b981',
+                padding: '0.875rem 1.5rem',
+                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
                 color: 'white',
                 border: 'none',
-                borderRadius: '8px',
+                borderRadius: '12px',
                 cursor: 'pointer',
                 fontSize: '0.875rem',
-                fontWeight: '500'
+                fontWeight: '600',
+                transition: 'all 0.2s ease',
+                width: '100%'
               }}
             >
-              追加
+              管理者を追加
             </button>
           </div>
           
           <div>
-            <h3 style={{ fontWeight: '500', marginBottom: '0.5rem' }}>現在の管理者</h3>
-            {adminAddresses.map((address, index) => (
-              <div key={index} style={{ 
-                display: 'flex', 
-                justifyContent: 'space-between', 
-                alignItems: 'center',
-                padding: '0.75rem',
-                background: 'rgba(255, 255, 255, 0.05)',
-                borderRadius: '8px',
-                marginBottom: '0.5rem'
-              }}>
-                <span style={{ fontSize: '0.875rem', fontFamily: 'monospace' }}>{address}</span>
-                <button
-                  onClick={() => handleRemoveAdminAddress(address)}
-                  style={{
-                    padding: '0.5rem 1rem',
-                    background: '#ef4444',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    fontSize: '0.75rem'
-                  }}
-                >
-                  削除
-                </button>
-              </div>
-            ))}
+            <h3 style={{ fontWeight: '500', marginBottom: '1rem', fontSize: '1rem' }}>現在の管理者</h3>
+            <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+              {adminAddresses.map((address, index) => (
+                <div key={index} style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center',
+                  padding: '1rem',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  borderRadius: '12px',
+                  marginBottom: '0.75rem',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  transition: 'all 0.2s ease'
+                }}>
+                  <span style={{ 
+                    fontSize: '0.875rem', 
+                    fontFamily: 'monospace',
+                    color: 'rgba(255, 255, 255, 0.9)',
+                    wordBreak: 'break-all'
+                  }}>
+                    {address}
+                  </span>
+                  <button
+                    onClick={() => handleRemoveAdminAddress(address)}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontSize: '0.75rem',
+                      fontWeight: '500',
+                      transition: 'all 0.2s ease',
+                      marginLeft: '1rem',
+                      flexShrink: 0
+                    }}
+                  >
+                    削除
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
         {/* コレクション管理 */}
         <div style={{ 
           background: 'rgba(255, 255, 255, 0.1)', 
-          padding: '1.5rem', 
-          borderRadius: '12px',
-          backdropFilter: 'blur(10px)'
+          padding: '2rem', 
+          borderRadius: '16px',
+          backdropFilter: 'blur(20px)',
+          border: '1px solid rgba(255, 255, 255, 0.2)',
+          height: 'fit-content'
         }}>
-          <h2 style={{ fontWeight: '600', marginBottom: '1rem' }}>コレクション管理</h2>
+          <h2 style={{ fontWeight: '600', marginBottom: '1.5rem', fontSize: '1.25rem' }}>コレクション管理</h2>
           
           {/* 新しいコレクション追加 */}
-          <div style={{ marginBottom: '1.5rem' }}>
-            <h3 style={{ fontWeight: '500', marginBottom: '0.5rem' }}>新しいコレクション追加</h3>
-            <div style={{ display: 'grid', gap: '0.5rem', gridTemplateColumns: '1fr 1fr' }}>
+          <div style={{ marginBottom: '2rem' }}>
+            <h3 style={{ fontWeight: '500', marginBottom: '1rem', fontSize: '1rem' }}>新しいコレクション追加</h3>
+            <div style={{ display: 'grid', gap: '1rem', gridTemplateColumns: '1fr 1fr' }}>
               <input
                 type="text"
                 placeholder="コレクション名"
                 id="collectionName"
                 style={{
-                  padding: '0.5rem',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '6px',
+                  padding: '0.875rem',
+                  border: '1px solid rgba(255, 255, 255, 0.3)',
+                  borderRadius: '10px',
                   fontSize: '0.875rem',
                   background: 'rgba(255, 255, 255, 0.1)',
-                  color: 'white'
+                  color: 'white',
+                  outline: 'none',
+                  transition: 'all 0.2s ease'
                 }}
               />
               <input
@@ -751,12 +776,14 @@ function AdminPage() {
                 placeholder="Package ID"
                 id="packageId"
                 style={{
-                  padding: '0.5rem',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '6px',
+                  padding: '0.875rem',
+                  border: '1px solid rgba(255, 255, 255, 0.3)',
+                  borderRadius: '10px',
                   fontSize: '0.875rem',
                   background: 'rgba(255, 255, 255, 0.1)',
-                  color: 'white'
+                  color: 'white',
+                  outline: 'none',
+                  transition: 'all 0.2s ease'
                 }}
               />
               <input
@@ -764,12 +791,14 @@ function AdminPage() {
                 placeholder="Discord Role ID"
                 id="roleId"
                 style={{
-                  padding: '0.5rem',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '6px',
+                  padding: '0.875rem',
+                  border: '1px solid rgba(255, 255, 255, 0.3)',
+                  borderRadius: '10px',
                   fontSize: '0.875rem',
                   background: 'rgba(255, 255, 255, 0.1)',
-                  color: 'white'
+                  color: 'white',
+                  outline: 'none',
+                  transition: 'all 0.2s ease'
                 }}
               />
               <input
@@ -777,25 +806,29 @@ function AdminPage() {
                 placeholder="Discord Role Name"
                 id="roleName"
                 style={{
-                  padding: '0.5rem',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '6px',
+                  padding: '0.875rem',
+                  border: '1px solid rgba(255, 255, 255, 0.3)',
+                  borderRadius: '10px',
                   fontSize: '0.875rem',
                   background: 'rgba(255, 255, 255, 0.1)',
-                  color: 'white'
+                  color: 'white',
+                  outline: 'none',
+                  transition: 'all 0.2s ease'
                 }}
               />
               <input
                 type="text"
-                placeholder="説明"
+                placeholder="説明（オプション）"
                 id="description"
                 style={{
-                  padding: '0.5rem',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '6px',
+                  padding: '0.875rem',
+                  border: '1px solid rgba(255, 255, 255, 0.3)',
+                  borderRadius: '10px',
                   fontSize: '0.875rem',
                   background: 'rgba(255, 255, 255, 0.1)',
                   color: 'white',
+                  outline: 'none',
+                  transition: 'all 0.2s ease',
                   gridColumn: '1 / -1'
                 }}
               />
@@ -818,83 +851,110 @@ function AdminPage() {
                 }
               }}
               style={{
-                padding: '0.75rem 1.5rem',
-                background: '#10b981',
+                padding: '1rem 1.5rem',
+                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
                 color: 'white',
                 border: 'none',
-                borderRadius: '8px',
+                borderRadius: '12px',
                 cursor: 'pointer',
                 fontSize: '0.875rem',
-                fontWeight: '500',
-                marginTop: '0.5rem'
+                fontWeight: '600',
+                marginTop: '1rem',
+                width: '100%',
+                transition: 'all 0.2s ease'
               }}
             >
-              コレクション追加
+              コレクションを追加
             </button>
           </div>
           
           {/* コレクション一覧 */}
           <div>
-            <h3 style={{ fontWeight: '500', marginBottom: '0.5rem' }}>コレクション一覧</h3>
-            <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-              {collections.map(collection => (
-                <div key={collection.id} style={{ 
-                  padding: '0.75rem', 
-                  background: 'rgba(255, 255, 255, 0.05)', 
-                  borderRadius: '8px', 
-                  marginBottom: '0.5rem',
-                  border: '1px solid rgba(255, 255, 255, 0.1)'
+            <h3 style={{ fontWeight: '500', marginBottom: '1rem', fontSize: '1rem' }}>コレクション一覧</h3>
+            <div style={{ 
+              maxHeight: '400px', 
+              overflowY: 'auto',
+              paddingRight: '0.5rem'
+            }}>
+              {collections.length === 0 ? (
+                <div style={{
+                  padding: '2rem',
+                  textAlign: 'center',
+                  color: 'rgba(255, 255, 255, 0.6)',
+                  fontSize: '0.875rem'
                 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <h4 style={{ fontWeight: '600', marginBottom: '0.25rem' }}>
-                        {collection.name}
-                      </h4>
-                      <p style={{ fontSize: '0.75rem', marginBottom: '0.25rem' }}>
-                        Package: {collection.packageId}
-                      </p>
-                      <p style={{ fontSize: '0.75rem', marginBottom: '0.25rem' }}>
-                        Role: {collection.roleName} (ID: {collection.roleId})
-                      </p>
-                      {collection.description && (
-                        <p style={{ fontSize: '0.75rem' }}>
-                          {collection.description}
-                        </p>
-                      )}
-                    </div>
-                    <div style={{ display: 'flex', gap: '0.25rem' }}>
-                      <button
-                        onClick={() => handleEditCollection(collection)}
-                        style={{
-                          padding: '0.5rem 1rem',
-                          background: '#3b82f6',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '6px',
-                          cursor: 'pointer',
-                          fontSize: '0.75rem'
-                        }}
-                      >
-                        編集
-                      </button>
-                      <button
-                        onClick={() => handleDeleteCollection(collection.id)}
-                        style={{
-                          padding: '0.5rem 1rem',
-                          background: '#ef4444',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '6px',
-                          cursor: 'pointer',
-                          fontSize: '0.75rem'
-                        }}
-                      >
-                        削除
-                      </button>
+                  コレクションが登録されていません
+                </div>
+              ) : (
+                collections.map(collection => (
+                  <div key={collection.id} style={{ 
+                    padding: '1.25rem', 
+                    background: 'rgba(255, 255, 255, 0.05)', 
+                    borderRadius: '12px', 
+                    marginBottom: '1rem',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    transition: 'all 0.2s ease'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <h4 style={{ 
+                          fontWeight: '600', 
+                          marginBottom: '0.5rem',
+                          fontSize: '1rem',
+                          color: 'rgba(255, 255, 255, 0.95)'
+                        }}>
+                          {collection.name}
+                        </h4>
+                        <div style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '0.25rem' }}>
+                          <strong>Package:</strong> {collection.packageId}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '0.25rem' }}>
+                          <strong>Role:</strong> {collection.roleName} (ID: {collection.roleId})
+                        </div>
+                        {collection.description && (
+                          <div style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.6)', marginTop: '0.5rem' }}>
+                            {collection.description}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+                        <button
+                          onClick={() => handleEditCollection(collection)}
+                          style={{
+                            padding: '0.5rem 1rem',
+                            background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            fontSize: '0.75rem',
+                            fontWeight: '500',
+                            transition: 'all 0.2s ease'
+                          }}
+                        >
+                          編集
+                        </button>
+                        <button
+                          onClick={() => handleDeleteCollection(collection.id)}
+                          style={{
+                            padding: '0.5rem 1rem',
+                            background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            fontSize: '0.75rem',
+                            fontWeight: '500',
+                            transition: 'all 0.2s ease'
+                          }}
+                        >
+                          削除
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </div>
