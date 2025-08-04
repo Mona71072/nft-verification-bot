@@ -238,7 +238,7 @@ async function notifyDiscordBot(c: any, discordId: string, action: string, verif
     console.log('📋 Verification data:', verificationData);
     
     // レンダーのDiscord Bot API URL
-    const DISCORD_BOT_API_URL = c.env.DISCORD_BOT_API_URL || '';
+    const DISCORD_BOT_API_URL = 'https://nft-verification-bot.onrender.com';
     console.log('🔗 Discord Bot API URL:', DISCORD_BOT_API_URL);
     
     if (!DISCORD_BOT_API_URL) {
@@ -282,6 +282,48 @@ async function notifyDiscordBot(c: any, discordId: string, action: string, verif
     console.error('❌ Error with Discord Bot API:', error);
     console.error('❌ Error details:', (error as Error).message);
     console.error('❌ Error stack:', (error as Error).stack);
+    return false;
+  }
+}
+
+// 管理者アドレス管理
+const ADMIN_ADDRESSES_KEY = 'admin_addresses';
+
+// 管理者アドレス一覧を取得
+async function getAdminAddresses(c: any): Promise<string[]> {
+  try {
+    const adminData = await c.env.COLLECTION_STORE.get(ADMIN_ADDRESSES_KEY);
+    if (adminData) {
+      return JSON.parse(adminData);
+    }
+    // 初期設定の管理者アドレス
+    const defaultAdmins = ['0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d'];
+    await c.env.COLLECTION_STORE.put(ADMIN_ADDRESSES_KEY, JSON.stringify(defaultAdmins));
+    return defaultAdmins;
+  } catch (error) {
+    console.error('Error getting admin addresses:', error);
+    return [];
+  }
+}
+
+// 管理者アドレスを更新
+async function updateAdminAddresses(c: any, addresses: string[]): Promise<boolean> {
+  try {
+    await c.env.COLLECTION_STORE.put(ADMIN_ADDRESSES_KEY, JSON.stringify(addresses));
+    return true;
+  } catch (error) {
+    console.error('Error updating admin addresses:', error);
+    return false;
+  }
+}
+
+// 管理者チェック
+async function isAdmin(c: any, address: string): Promise<boolean> {
+  try {
+    const adminAddresses = await getAdminAddresses(c);
+    return adminAddresses.includes(address.toLowerCase());
+  } catch (error) {
+    console.error('Error checking admin status:', error);
     return false;
   }
 }
@@ -478,13 +520,85 @@ app.delete('/api/collections/:id', async (c) => {
   }
 });
 
+// 管理者チェックAPI
+app.get('/api/admin/check/:address', async (c) => {
+  try {
+    const address = c.req.param('address');
+    const isAdminUser = await isAdmin(c, address);
+    
+    return c.json({
+      success: true,
+      isAdmin: isAdminUser
+    });
+  } catch (error) {
+    console.error('Admin check error:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to check admin status'
+    }, 500);
+  }
+});
+
+// 管理者アドレス一覧取得API
+app.get('/api/admin/addresses', async (c) => {
+  try {
+    const addresses = await getAdminAddresses(c);
+    
+    return c.json({
+      success: true,
+      data: addresses
+    });
+  } catch (error) {
+    console.error('Get admin addresses error:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to get admin addresses'
+    }, 500);
+  }
+});
+
+// 管理者アドレス更新API
+app.post('/api/admin/addresses', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { addresses } = body;
+    
+    if (!Array.isArray(addresses)) {
+      return c.json({
+        success: false,
+        error: 'Addresses must be an array'
+      }, 400);
+    }
+    
+    const success = await updateAdminAddresses(c, addresses);
+    
+    if (success) {
+      return c.json({
+        success: true,
+        message: 'Admin addresses updated successfully'
+      });
+    } else {
+      return c.json({
+        success: false,
+        error: 'Failed to update admin addresses'
+      }, 500);
+    }
+  } catch (error) {
+    console.error('Update admin addresses error:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to update admin addresses'
+    }, 500);
+  }
+});
+
 // Discordロール取得エンドポイント
 app.get('/api/discord/roles', async (c) => {
   try {
     console.log('=== DISCORD ROLES API CALLED ===');
     
     // Discord Bot API URLを取得
-    const DISCORD_BOT_API_URL = c.env.DISCORD_BOT_API_URL || '';
+    const DISCORD_BOT_API_URL = 'https://nft-verification-bot.onrender.com';
     console.log('🔗 Discord Bot API URL:', DISCORD_BOT_API_URL);
     
     if (!DISCORD_BOT_API_URL) {

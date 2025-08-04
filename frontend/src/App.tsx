@@ -1,7 +1,6 @@
 import { ConnectButton, useWallet } from '@suiet/wallet-kit';
 import '@suiet/wallet-kit/style.css';
 import { useState, useEffect } from 'react';
-import AdminPanel from './AdminPanel';
 
 // NFTコレクション型定義
 interface NFTCollection {
@@ -31,6 +30,11 @@ function NFTVerification() {
   const [collections, setCollections] = useState<NFTCollection[]>([]);
   const [selectedCollections, setSelectedCollections] = useState<string[]>([]);
   const [checkAllCollections, setCheckAllCollections] = useState<boolean>(true);
+
+  // 管理者機能を追加
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [adminAddresses, setAdminAddresses] = useState<string[]>([]);
+  const [showAdminPanel, setShowAdminPanel] = useState<boolean>(false);
 
   // URLパラメータからDiscord IDを自動取得
   useEffect(() => {
@@ -64,6 +68,46 @@ function NFTVerification() {
     };
     
     fetchCollections();
+  }, []);
+
+  // 管理者チェック
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      if (connected && account?.address) {
+        try {
+          console.log('🔄 Checking admin status...');
+          const response = await fetch(`${API_BASE_URL}/api/admin/check/${account.address}`);
+          const data = await response.json();
+          if (data.success) {
+            setIsAdmin(data.isAdmin);
+            console.log(`✅ Admin status: ${data.isAdmin}`);
+          }
+        } catch (error) {
+          console.error('❌ Failed to check admin status:', error);
+        }
+      }
+    };
+    
+    checkAdminStatus();
+  }, [connected, account?.address]);
+
+  // 管理者アドレス取得
+  useEffect(() => {
+    const fetchAdminAddresses = async () => {
+      try {
+        console.log('🔄 Fetching admin addresses...');
+        const response = await fetch(`${API_BASE_URL}/api/admin/addresses`);
+        const data = await response.json();
+        if (data.success) {
+          setAdminAddresses(data.data);
+          console.log(`✅ Loaded ${data.data.length} admin addresses`);
+        }
+      } catch (error) {
+        console.error('❌ Failed to fetch admin addresses:', error);
+      }
+    };
+    
+    fetchAdminAddresses();
   }, []);
 
   // すべてのコレクション選択/解除
@@ -206,6 +250,43 @@ function NFTVerification() {
     }
   };
 
+  // 管理者アドレス管理
+  const handleAddAdminAddress = async (address: string) => {
+    try {
+      const newAddresses = [...adminAddresses, address];
+      const response = await fetch(`${API_BASE_URL}/api/admin/addresses`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ addresses: newAddresses })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setAdminAddresses(newAddresses);
+        console.log('✅ Admin address added successfully');
+      }
+    } catch (error) {
+      console.error('❌ Failed to add admin address:', error);
+    }
+  };
+
+  const handleRemoveAdminAddress = async (address: string) => {
+    try {
+      const newAddresses = adminAddresses.filter(addr => addr !== address);
+      const response = await fetch(`${API_BASE_URL}/api/admin/addresses`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ addresses: newAddresses })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setAdminAddresses(newAddresses);
+        console.log('✅ Admin address removed successfully');
+      }
+    } catch (error) {
+      console.error('❌ Failed to remove admin address:', error);
+    }
+  };
+
   return (
     <div style={{
       minHeight: '100vh',
@@ -231,7 +312,7 @@ function NFTVerification() {
             color: '#1a1a1a',
             marginBottom: '0.5rem'
           }}>
-            🎯 SXT NFT Verification Portal
+            SXT NFT Verification Portal
           </h1>
           <p style={{
             color: '#666',
@@ -405,6 +486,120 @@ function NFTVerification() {
           </div>
         )}
 
+        {/* Admin Panel Toggle */}
+        {isAdmin && (
+          <div style={{ marginBottom: '1.5rem' }}>
+            <button
+              onClick={() => setShowAdminPanel(!showAdminPanel)}
+              style={{
+                padding: '0.5rem 1rem',
+                background: showAdminPanel ? '#ef4444' : '#10b981',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: '500'
+              }}
+            >
+              {showAdminPanel ? '管理者パネルを閉じる' : '管理者パネルを開く'}
+            </button>
+          </div>
+        )}
+
+        {/* Admin Panel */}
+        {isAdmin && showAdminPanel && (
+          <div style={{ 
+            marginBottom: '1.5rem', 
+            padding: '1rem', 
+            border: '2px solid #e5e7eb', 
+            borderRadius: '8px',
+            background: '#f9fafb'
+          }}>
+            <h3 style={{ fontWeight: '600', color: '#1a1a1a', marginBottom: '1rem' }}>管理者パネル</h3>
+            
+            {/* 管理者アドレス管理 */}
+            <div style={{ marginBottom: '1rem' }}>
+              <h4 style={{ fontWeight: '500', color: '#374151', marginBottom: '0.5rem' }}>管理者アドレス管理</h4>
+              <div style={{ marginBottom: '0.5rem' }}>
+                <input
+                  type="text"
+                  placeholder="新しい管理者アドレス"
+                  id="newAdminAddress"
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '4px',
+                    fontSize: '0.875rem'
+                  }}
+                />
+              </div>
+              <button
+                onClick={() => {
+                  const input = document.getElementById('newAdminAddress') as HTMLInputElement;
+                  if (input && input.value.trim()) {
+                    handleAddAdminAddress(input.value.trim());
+                    input.value = '';
+                  }
+                }}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: '#3b82f6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                  marginRight: '0.5rem'
+                }}
+              >
+                追加
+              </button>
+            </div>
+            
+            {/* 管理者アドレス一覧 */}
+            <div>
+              <h4 style={{ fontWeight: '500', color: '#374151', marginBottom: '0.5rem' }}>現在の管理者</h4>
+              {adminAddresses.map((address, index) => (
+                <div key={index} style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center',
+                  padding: '0.5rem',
+                  background: 'white',
+                  borderRadius: '4px',
+                  marginBottom: '0.25rem'
+                }}>
+                  <span style={{ fontSize: '0.875rem', fontFamily: 'monospace' }}>{address}</span>
+                  <button
+                    onClick={() => handleRemoveAdminAddress(address)}
+                    style={{
+                      padding: '0.25rem 0.5rem',
+                      background: '#ef4444',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '0.75rem'
+                    }}
+                  >
+                    削除
+                  </button>
+                </div>
+              ))}
+            </div>
+            
+            {/* コレクション管理 */}
+            <div style={{ marginTop: '1rem' }}>
+              <h4 style={{ fontWeight: '500', color: '#374151', marginBottom: '0.5rem' }}>コレクション管理</h4>
+              <p style={{ fontSize: '0.875rem', color: '#666' }}>
+                コレクションの追加・編集・削除機能は管理者パネル内で利用できます。
+              </p>
+            </div>
+          </div>
+        )}
+
         <style>{`
           @keyframes spin {
             0% { transform: rotate(0deg); }
@@ -417,51 +612,7 @@ function NFTVerification() {
 }
 
 function App() {
-  const [currentPage, setCurrentPage] = useState<'verification' | 'admin'>('verification');
-
-  return (
-    <div>
-      {/* Navigation */}
-      <div style={{
-        position: 'fixed',
-        top: '1rem',
-        right: '1rem',
-        zIndex: 1000,
-        display: 'flex',
-        gap: '0.5rem'
-      }}>
-        <button
-          onClick={() => setCurrentPage('verification')}
-          style={{
-            padding: '0.5rem 1rem',
-            background: currentPage === 'verification' ? '#007bff' : '#6c757d',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer'
-          }}
-        >
-          認証ページ
-        </button>
-        <button
-          onClick={() => setCurrentPage('admin')}
-          style={{
-            padding: '0.5rem 1rem',
-            background: currentPage === 'admin' ? '#007bff' : '#6c757d',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer'
-          }}
-        >
-          管理者パネル
-        </button>
-      </div>
-
-      {/* Content */}
-      {currentPage === 'verification' ? <NFTVerification /> : <AdminPanel />}
-    </div>
-  );
+  return <NFTVerification />;
 }
 
 export default App;
