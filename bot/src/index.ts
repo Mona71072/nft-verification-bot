@@ -75,8 +75,7 @@ async function setupVerificationChannel() {
       .setDescription('SuiネットワークのNFTを保有しているユーザーにロールを付与します。\n\n下のボタンをクリックして認証を開始してください。')
       .setColor(0x57F287)
       .addFields(
-        { name: '📋 認証手順', value: '1. ボタンをクリック\n2. ウォレットで署名\n3. NFT保有確認\n4. ロール付与', inline: false },
-        { name: '🔗 認証URL', value: config.VERIFICATION_URL, inline: false }
+        { name: '📋 認証手順', value: '1. ボタンをクリック\n2. ウォレットで署名\n3. NFT保有確認\n4. ロール付与', inline: false }
       )
       .setTimestamp()
       .setFooter({ text: 'NFT Verification Bot' });
@@ -112,12 +111,16 @@ async function handleVerifyNFT(interaction: ButtonInteraction) {
   try {
     console.log(`🔍 NFT verification requested by ${interaction.user.tag} (${interaction.user.id})`);
     
+    // ユーザーIDを含むパーソナライズされた認証URLを生成
+    const baseUrl = config.VERIFICATION_URL.replace(/\/$/, ''); // 末尾のスラッシュを削除
+    const personalizedUrl = `${baseUrl}?user_id=${interaction.user.id}`;
+    
     const embed = new EmbedBuilder()
       .setTitle('🎫 NFT認証')
-      .setDescription('認証を開始します。\n\n以下のURLにアクセスして、ウォレットで署名を行ってください。')
+      .setDescription('認証を開始します。')
       .setColor(0x57F287)
       .addFields(
-        { name: '🔗 認証URL', value: config.VERIFICATION_URL, inline: false },
+        { name: '🔗 認証URL', value: personalizedUrl, inline: false },
         { name: '⚠️ 注意', value: 'ウォレットの署名は安全です。NFTの所有権のみを確認し、資産の移動は行われません。', inline: false }
       )
       .setTimestamp()
