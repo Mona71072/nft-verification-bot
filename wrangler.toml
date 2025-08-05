@@ -2,6 +2,22 @@ name = "nft-verification-production"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"
 
+# 環境変数
+[vars]
+DISCORD_BOT_API_URL = "https://nft-verification-bot.onrender.com"
+SUI_NETWORK = "mainnet"
+# Claynosaurz Popkinsコレクション
+NFT_COLLECTION_ID = "0xb908f3c6fea6865d32e2048c520cdfe3b5c5bbcebb658117c41bad70f52b7ccc::popkins_nft::Popkins"
+
+# KVバインディング
+[[kv_namespaces]]
+binding = "NONCE_STORE"
+id = "dfd1a07f0e704320bd5324fc3102f3ba"
+
+[[kv_namespaces]]
+binding = "COLLECTION_STORE"
+id = "73186a10a62946718119aa112e87dba9"
+
 [env.production]
 name = "nft-verification-production"
 
