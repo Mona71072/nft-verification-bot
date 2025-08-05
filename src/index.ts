@@ -489,6 +489,9 @@ app.get('/api/collections', async (c) => {
     try {
       console.log('🔄 Fetching Discord roles to update collection role names...');
       const discordBotUrl = c.env.DISCORD_BOT_API_URL || 'https://nft-verification-bot.onrender.com';
+      console.log(`🔗 Discord Bot URL: ${discordBotUrl}`);
+      console.log(`🔗 Environment DISCORD_BOT_API_URL: ${c.env.DISCORD_BOT_API_URL}`);
+      
       const response = await fetch(`${discordBotUrl}/api/roles`, {
         method: 'GET',
         headers: {
@@ -498,10 +501,12 @@ app.get('/api/collections', async (c) => {
         }
       });
       
+      console.log(`📡 Response status: ${response.status} ${response.statusText}`);
       if (response.ok) {
         const rolesData = await response.json() as any;
         const roles = rolesData.data || rolesData.roles || [];
         console.log(`✅ Fetched ${roles.length} Discord roles`);
+        console.log(`📋 Roles data:`, JSON.stringify(roles.slice(0, 3))); // 最初の3つのロールのみ表示
         
         // コレクションのroleNameを実際のDiscordロール名で更新
         const updatedCollections = collections.map((collection: NFTCollection) => {
