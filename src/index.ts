@@ -660,6 +660,10 @@ app.put('/api/collections/:id', async (c) => {
     console.log('Request body:', body);
     
     // KVストアの存在確認とフォールバック処理
+    console.log('🔍 Checking KV store availability...');
+    console.log('🔍 c.env keys:', Object.keys(c.env));
+    console.log('🔍 c.env.COLLECTION_STORE:', typeof c.env.COLLECTION_STORE);
+    
     if (!c.env.COLLECTION_STORE) {
       console.error('❌ COLLECTION_STORE is not available');
       return c.json({
