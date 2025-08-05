@@ -174,6 +174,35 @@ export async function grantRoleToUser(discordId: string): Promise<boolean> {
   }
 }
 
+// 認証済みユーザーかどうかをチェックする関数
+async function isVerifiedUser(discordId: string): Promise<boolean> {
+  try {
+    // KVストアから認証済みユーザー一覧を取得
+    const verifiedUsersResponse = await fetch(`${config.API_BASE_URL}/api/admin/verified-users`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (verifiedUsersResponse.ok) {
+      const result = await verifiedUsersResponse.json() as any;
+      if (result.success && result.data) {
+        // 指定されたDiscord IDが認証済みユーザーリストに存在するかチェック
+        const isVerified = result.data.some((user: any) => user.discordId === discordId);
+        console.log(`🔍 Checking verified user status for ${discordId}: ${isVerified}`);
+        return isVerified;
+      }
+    }
+    
+    console.log(`⚠️ Could not fetch verified users from KV store`);
+    return false;
+  } catch (error) {
+    console.error('❌ Error checking verified user status:', error);
+    return false;
+  }
+}
+
 // 複数ロール付与関数（APIから呼び出される）
 export async function grantMultipleRolesToUser(discordId: string, roles: Array<{roleId: string, roleName: string}>): Promise<boolean> {
   try {
@@ -210,10 +239,19 @@ export async function grantMultipleRolesToUser(discordId: string, roles: Array<{
       let title = '認証完了';
       let description = '';
       
+      // 認証済みユーザーかどうかをチェック
+      const isVerified = await isVerifiedUser(discordId);
+      
       if (grantedRoles.length > 0) {
-        title = '認証完了';
-        embed.setColor(0x57F287);
-        description = `NFT認証が完了しました。\n\n以下のコレクションでNFTが確認されました:\n\n${grantedRoles.map(role => `• ${role.roleName}`).join('\n')}\n\n対応するロールが付与されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。`;
+        if (isVerified) {
+          title = '認証更新完了';
+          embed.setColor(0x57F287);
+          description = `NFT認証の更新が完了しました。\n\n以下のコレクションでNFTが確認されました:\n\n${grantedRoles.map(role => `• ${role.roleName}`).join('\n')}\n\n対応するロールが更新されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。`;
+        } else {
+          title = '認証完了';
+          embed.setColor(0x57F287);
+          description = `NFT認証が完了しました。\n\n以下のコレクションでNFTが確認されました:\n\n${grantedRoles.map(role => `• ${role.roleName}`).join('\n')}\n\n対応するロールが付与されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。`;
+        }
       }
 
       if (failedRoles.length > 0) {
@@ -259,13 +297,31 @@ export async function sendVerificationFailedMessage(discordId: string, verificat
         const failed = results.filter((r: any) => !r.hasNft);
 
         if (successful.length > 0 && failed.length === 0) {
-          title = '認証完了';
-          embed.setColor(0x57F287);
-          description = `NFT認証が完了しました。\n\n以下のコレクションでNFTが確認されました:\n\n${successful.map((result: any) => `• ${result.collectionName}`).join('\n')}\n\n対応するロールが付与されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。`;
+          // 認証済みユーザーかどうかをチェック
+          const isVerified = await isVerifiedUser(discordId);
+          
+          if (isVerified) {
+            title = '認証更新完了';
+            embed.setColor(0x57F287);
+            description = `NFT認証の更新が完了しました。\n\n以下のコレクションでNFTが確認されました:\n\n${successful.map((result: any) => `• ${result.collectionName}`).join('\n')}\n\n対応するロールが更新されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。`;
+          } else {
+            title = '認証完了';
+            embed.setColor(0x57F287);
+            description = `NFT認証が完了しました。\n\n以下のコレクションでNFTが確認されました:\n\n${successful.map((result: any) => `• ${result.collectionName}`).join('\n')}\n\n対応するロールが付与されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。`;
+          }
         } else if (successful.length > 0 && failed.length > 0) {
-          title = '認証完了（一部成功）';
-          embed.setColor(0xFAA61A);
-          description = `NFT認証が完了しました。\n\n✅ **認証成功:**\n${successful.map((result: any) => `• ${result.collectionName}`).join('\n')}\n\n❌ **認証失敗:**\n${failed.map((result: any) => `• ${result.collectionName}`).join('\n')}\n\n認証に成功したコレクションのロールが付与されました。`;
+          // 認証済みユーザーかどうかをチェック
+          const isVerified = await isVerifiedUser(discordId);
+          
+          if (isVerified) {
+            title = '認証更新完了（一部成功）';
+            embed.setColor(0xFAA61A);
+            description = `NFT認証の更新が完了しました。\n\n✅ **更新成功:**\n${successful.map((result: any) => `• ${result.collectionName}`).join('\n')}\n\n❌ **更新失敗:**\n${failed.map((result: any) => `• ${result.collectionName}`).join('\n')}\n\n認証に成功したコレクションのロールが更新されました。`;
+          } else {
+            title = '認証完了（一部成功）';
+            embed.setColor(0xFAA61A);
+            description = `NFT認証が完了しました。\n\n✅ **認証成功:**\n${successful.map((result: any) => `• ${result.collectionName}`).join('\n')}\n\n❌ **認証失敗:**\n${failed.map((result: any) => `• ${result.collectionName}`).join('\n')}\n\n認証に成功したコレクションのロールが付与されました。`;
+          }
         } else {
           title = '認証失敗';
           embed.setColor(0xED4245);

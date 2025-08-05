@@ -274,84 +274,77 @@ async function hasTargetNft(address: string, collectionId?: string): Promise<boo
                   return true;
                 }
                 
-                // Kioskオブジェクトの場合、そのKioskが所有するNFTをチェック
-                if (objDetail.result?.data?.type === '0x2::kiosk::Kiosk') {
-                  console.log(`🔍 Found Kiosk: ${obj.data.objectId}, checking for NFTs...`);
+                // PersonalKioskCapオブジェクトの場合、そのKioskが所有するNFTをチェック
+                if (objDetail.result?.data?.type === '0x0cb4bcc0560340eb1a1b929cabe56b33fc6449820ec8c1980d69bb98b649b802::personal_kiosk::PersonalKioskCap') {
+                  console.log(`🔍 Found PersonalKioskCap: ${obj.data.objectId}, checking for Kiosk...`);
                   
-                  // Kioskの所有者を確認
-                  const kioskOwner = objDetail.result?.data?.content?.fields?.owner;
-                  if (kioskOwner === address) {
-                    console.log(`✅ Kiosk owned by target address: ${address}`);
+                  try {
+                    // PersonalKioskCapの内容を確認
+                    const capContent = objDetail.result?.data?.content?.fields;
+                    console.log(`📋 PersonalKioskCap content:`, JSON.stringify(capContent, null, 2));
                     
-                    // Kioskが所有するアイテム数を確認
-                    const itemCount = objDetail.result?.data?.content?.fields?.item_count;
-                    if (itemCount && parseInt(itemCount) > 0) {
-                      console.log(`✅ Kiosk has ${itemCount} items, checking for ${collectionId}...`);
-                      
-                      // Kiosk内のアイテムを検索
-                      try {
-                        // Kioskのアイテムを取得するAPIを呼び出し
-                        const kioskItemsResponse = await fetch(`${suiRpcUrl}`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            jsonrpc: '2.0',
-                            id: 4,
-                            method: 'suix_getDynamicFields',
-                            params: [
-                              obj.data.objectId,
-                              null,
-                              null,
-                              null
-                            ]
-                          })
-                        });
-                        
-                        const kioskItemsData = await kioskItemsResponse.json() as any;
-                        console.log(`📥 Kiosk items response:`, JSON.stringify(kioskItemsData, null, 2));
-                        
-                        if (kioskItemsData.result && kioskItemsData.result.data) {
-                          // Kiosk内のアイテムをチェック
-                          for (const item of kioskItemsData.result.data) {
-                            try {
-                              const itemDetailResponse = await fetch(`${suiRpcUrl}`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                  jsonrpc: '2.0',
-                                  id: 5,
-                                  method: 'sui_getObject',
-                                  params: [
-                                    item.objectId,
-                                    {
-                                      showType: true,
-                                      showContent: true,
-                                      showOwner: true
-                                    }
-                                  ]
-                                })
-                              });
-                              
-                              const itemDetail = await itemDetailResponse.json() as any;
-                              console.log(`🔍 Kiosk item ${item.objectId} type:`, itemDetail.result?.data?.type);
-                              
-                              if (itemDetail.result?.data?.type === collectionId) {
-                                console.log(`✅ Found NFT in Kiosk: ${item.objectId} is a ${collectionId} NFT`);
-                                return true;
-                              }
-                            } catch (itemError) {
-                              console.log(`⚠️ Error checking Kiosk item ${item.objectId}:`, itemError);
-                              continue;
-                            }
+                    // PersonalKioskCapからKioskのIDを直接取得
+                    const kioskId = capContent.cap.fields.for;
+                    console.log(`🔍 Kiosk ID from PersonalKioskCap: ${kioskId}`);
+                    
+                    // Kiosk内のアイテムを検索
+                    const kioskItemsResponse = await fetch(`${suiRpcUrl}`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        jsonrpc: '2.0',
+                        id: 6,
+                        method: 'suix_getDynamicFields',
+                        params: [
+                          kioskId,
+                          null,
+                          null,
+                          null
+                        ]
+                      })
+                    });
+                    
+                    const kioskItemsData = await kioskItemsResponse.json() as any;
+                    console.log(`📥 Kiosk items response:`, JSON.stringify(kioskItemsData, null, 2));
+                    
+                    if (kioskItemsData.result && kioskItemsData.result.data) {
+                      // Kiosk内のアイテムをチェック
+                      for (const item of kioskItemsData.result.data) {
+                        try {
+                          // アイテムの詳細を取得
+                          const itemDetailResponse = await fetch(`${suiRpcUrl}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              jsonrpc: '2.0',
+                              id: 7,
+                              method: 'sui_getObject',
+                              params: [
+                                item.objectId,
+                                {
+                                  showType: true,
+                                  showContent: true,
+                                  showOwner: true
+                                }
+                              ]
+                            })
+                          });
+                          
+                          const itemDetail = await itemDetailResponse.json() as any;
+                          console.log(`🔍 Kiosk item ${item.objectId} type:`, itemDetail.result?.data?.type);
+                          
+                          if (itemDetail.result?.data?.type === collectionId) {
+                            console.log(`✅ Found NFT in Kiosk: ${item.objectId} is a ${collectionId} NFT`);
+                            return true;
                           }
+                        } catch (itemError) {
+                          console.log(`⚠️ Error checking Kiosk item ${item.objectId}:`, itemError);
+                          continue;
                         }
-                      } catch (kioskError) {
-                        console.log(`⚠️ Error checking Kiosk items:`, kioskError);
                       }
-                      
-                      console.log(`✅ Kiosk ownership confirmed for address ${address}`);
-                      return true;
                     }
+                  } catch (capError) {
+                    console.log(`⚠️ Error checking PersonalKioskCap:`, capError);
                   }
                 }
               } catch (objError) {
@@ -614,7 +607,7 @@ app.get('/api/collections', async (c) => {
     let collections = [];
     if (c.env.COLLECTION_STORE) {
       try {
-        const collectionsData = await c.env.COLLECTION_STORE.get('collections');
+    const collectionsData = await c.env.COLLECTION_STORE.get('collections');
         collections = collectionsData ? JSON.parse(collectionsData) : [];
         console.log(`📋 Retrieved ${collections.length} collections from KV store`);
       } catch (kvError) {
@@ -687,10 +680,10 @@ app.get('/api/collections', async (c) => {
       } else {
         console.log(`⚠️ Failed to fetch Discord roles: ${response.status} ${response.statusText}`);
         // Discord APIが失敗した場合は元のコレクションを返す
-        return c.json({
-          success: true,
-          data: collections
-        });
+    return c.json({
+      success: true,
+      data: collections
+    });
       }
     } catch (discordError) {
       console.error('❌ Error fetching Discord roles:', discordError);
@@ -764,7 +757,7 @@ app.post('/api/collections', async (c) => {
     // 既存コレクションを取得
     let collections = [];
     try {
-      const existingData = await c.env.COLLECTION_STORE.get('collections');
+    const existingData = await c.env.COLLECTION_STORE.get('collections');
       collections = existingData ? JSON.parse(existingData) : [];
       console.log(`📋 Retrieved ${collections.length} collections from KV store`);
     } catch (kvError) {
@@ -821,7 +814,7 @@ app.put('/api/collections/:id', async (c) => {
     
     let collections = [];
     try {
-      const existingData = await c.env.COLLECTION_STORE.get('collections');
+    const existingData = await c.env.COLLECTION_STORE.get('collections');
       collections = existingData ? JSON.parse(existingData) : [];
       console.log(`📋 Retrieved ${collections.length} collections from KV store`);
     } catch (kvError) {
@@ -1138,8 +1131,8 @@ app.get('/api/discord/roles', async (c) => {
         const timeoutId = setTimeout(() => controller.abort(), 15000); // 15秒タイムアウト
         
         response = await fetch(`${DISCORD_BOT_API_URL}/api/roles`, {
-          method: 'GET',
-          headers: {
+      method: 'GET',
+      headers: {
             'Content-Type': 'application/json',
             'User-Agent': 'NFT-Verification-Worker/1.0',
             'Accept': 'application/json'
@@ -1365,16 +1358,7 @@ app.post('/api/verify', async (c) => {
       }, 400);
     }
 
-    // Discordロール付与（成功時）
-    const roleGranted = await notifyDiscordBot(c, discordId, 'grant_roles', notificationData);
-    if (!roleGranted) {
-      console.log('⚠️ Discord notification failed, but verification succeeded');
-    }
-
-    // 使用済みナンスを削除
-    await c.env.NONCE_STORE.delete(nonce);
-
-    // 認証済みユーザーとして保存
+    // 認証済みユーザーとして保存（先に保存）
     await addVerifiedUser(c, {
       discordId: discordId,
       address: address,
@@ -1384,6 +1368,15 @@ app.post('/api/verify', async (c) => {
       verifiedAt: new Date().toISOString(),
       lastChecked: new Date().toISOString()
     });
+
+    // 使用済みナンスを削除
+    await c.env.NONCE_STORE.delete(nonce);
+
+    // Discordロール付与（保存後に通知）
+    const roleGranted = await notifyDiscordBot(c, discordId, 'grant_roles', notificationData);
+    if (!roleGranted) {
+      console.log('⚠️ Discord notification failed, but verification succeeded');
+    }
 
     console.log(`✅ Verification successful for ${address} (Discord: ${discordId})`);
     console.log(`✅ Granted roles: ${grantedRoles.map(r => r.roleName).join(', ')}`);
@@ -1423,7 +1416,36 @@ app.post('/api/admin/batch-check', async (c) => {
         console.log(`🔍 Checking user ${user.discordId} for collection ${user.collectionId}`);
         
         // NFT保有状況をチェック
-        const hasNft = await hasTargetNft(user.address, user.collectionId);
+        // user.collectionIdはコレクションIDの配列なので、実際のpackageIdを取得する必要がある
+        let hasNft = false;
+        
+        if (user.collectionId.includes(',')) {
+          // 複数コレクションの場合
+          const collectionIds = user.collectionId.split(',');
+          for (const collectionId of collectionIds) {
+            // コレクションIDからpackageIdを取得
+            const collectionsData = await c.env.COLLECTION_STORE.get('collections');
+            const collections = collectionsData ? JSON.parse(collectionsData) : [];
+            const collection = collections.find((col: any) => col.id === collectionId);
+            
+            if (collection && collection.packageId) {
+              const hasNftInCollection = await hasTargetNft(user.address, collection.packageId);
+              if (hasNftInCollection) {
+                hasNft = true;
+                break;
+              }
+            }
+          }
+        } else {
+          // 単一コレクションの場合
+          const collectionsData = await c.env.COLLECTION_STORE.get('collections');
+          const collections = collectionsData ? JSON.parse(collectionsData) : [];
+          const collection = collections.find((col: any) => col.id === user.collectionId);
+          
+          if (collection && collection.packageId) {
+            hasNft = await hasTargetNft(user.address, collection.packageId);
+          }
+        }
         
         if (!hasNft) {
           console.log(`❌ User ${user.discordId} no longer has NFT, revoking role`);
@@ -1623,7 +1645,36 @@ async function executeBatchCheck(c: Context<{ Bindings: Env }>): Promise<BatchSt
         console.log(`🔍 Checking user ${user.discordId} for collection ${user.collectionId}`);
         
         // NFT保有状況をチェック
-        const hasNft = await hasTargetNft(user.address, user.collectionId);
+        // user.collectionIdはコレクションIDの配列なので、実際のpackageIdを取得する必要がある
+        let hasNft = false;
+        
+        if (user.collectionId.includes(',')) {
+          // 複数コレクションの場合
+          const collectionIds = user.collectionId.split(',');
+          for (const collectionId of collectionIds) {
+            // コレクションIDからpackageIdを取得
+            const collectionsData = await c.env.COLLECTION_STORE.get('collections');
+            const collections = collectionsData ? JSON.parse(collectionsData) : [];
+            const collection = collections.find((col: any) => col.id === collectionId);
+            
+            if (collection && collection.packageId) {
+              const hasNftInCollection = await hasTargetNft(user.address, collection.packageId);
+              if (hasNftInCollection) {
+                hasNft = true;
+                break;
+              }
+            }
+          }
+        } else {
+          // 単一コレクションの場合
+          const collectionsData = await c.env.COLLECTION_STORE.get('collections');
+          const collections = collectionsData ? JSON.parse(collectionsData) : [];
+          const collection = collections.find((col: any) => col.id === user.collectionId);
+          
+          if (collection && collection.packageId) {
+            hasNft = await hasTargetNft(user.address, collection.packageId);
+          }
+        }
         
         if (!hasNft) {
           console.log(`❌ User ${user.discordId} no longer has NFT, revoking role`);
