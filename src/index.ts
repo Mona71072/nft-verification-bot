@@ -463,6 +463,15 @@ app.get('/api/collections', async (c) => {
   try {
     console.log('=== COLLECTIONS API CALLED ===');
     
+    // KVストアの存在確認
+    if (!c.env.COLLECTION_STORE) {
+      console.error('❌ COLLECTION_STORE is not available');
+      return c.json({
+        success: false,
+        error: 'Storage service is not available'
+      }, 503);
+    }
+    
     const collectionsData = await c.env.COLLECTION_STORE.get('collections');
     const collections = collectionsData ? JSON.parse(collectionsData) : [];
     
@@ -582,6 +591,15 @@ app.post('/api/collections', async (c) => {
       }, 400);
     }
     
+    // KVストアの存在確認
+    if (!c.env.COLLECTION_STORE) {
+      console.error('❌ COLLECTION_STORE is not available');
+      return c.json({
+        success: false,
+        error: 'Storage service is not available'
+      }, 503);
+    }
+    
     const newCollection: NFTCollection = {
       id: Date.now().toString(),
       name,
@@ -627,6 +645,15 @@ app.put('/api/collections/:id', async (c) => {
     console.log(`=== UPDATE COLLECTION API CALLED ===`);
     console.log(`Collection ID: ${collectionId}`);
     console.log('Request body:', body);
+    
+    // KVストアの存在確認
+    if (!c.env.COLLECTION_STORE) {
+      console.error('❌ COLLECTION_STORE is not available');
+      return c.json({
+        success: false,
+        error: 'Storage service is not available'
+      }, 503);
+    }
     
     const existingData = await c.env.COLLECTION_STORE.get('collections');
     const collections = existingData ? JSON.parse(existingData) : [];
