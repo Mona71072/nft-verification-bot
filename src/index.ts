@@ -183,9 +183,8 @@ async function hasTargetNft(address: string, collectionId?: string): Promise<boo
       try {
         // Sui RPC APIを使用してNFT保有を確認
         const suiRpcUrl = 'https://fullnode.mainnet.sui.io:443';
-        const packageId = collectionId.split('::')[0];
         
-        console.log(`Checking Popkins ownership for address: ${address}, package: ${packageId}`);
+        console.log(`Checking NFT ownership for address: ${address}, collection: ${collectionId}`);
         
         const response = await fetch(`${suiRpcUrl}`, {
           method: 'POST',
@@ -198,7 +197,7 @@ async function hasTargetNft(address: string, collectionId?: string): Promise<boo
               address,
               {
                 filter: {
-                  Package: packageId
+                  StructType: collectionId
                 }
               },
               null,
@@ -209,12 +208,14 @@ async function hasTargetNft(address: string, collectionId?: string): Promise<boo
         });
         
         const data = await response.json() as any;
+        console.log(`📥 Sui API response:`, JSON.stringify(data, null, 2));
+        
         const hasNft = data.result && data.result.data && data.result.data.length > 0;
         
         if (hasNft) {
-          console.log(`✅ Popkins found: ${data.result.data.length} NFTs for address ${address}`);
+          console.log(`✅ NFTs found: ${data.result.data.length} NFTs for address ${address} in collection ${collectionId}`);
         } else {
-          console.log(`❌ No Popkins found for address ${address}`);
+          console.log(`❌ No NFTs found for address ${address} in collection ${collectionId}`);
         }
         
         return Boolean(hasNft);
