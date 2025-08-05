@@ -485,10 +485,57 @@ app.get('/api/collections', async (c) => {
       console.log('✅ Added default collection');
     }
     
-    return c.json({
-      success: true,
-      data: collections
-    });
+    // Discordロール情報を取得して、コレクションのroleNameを更新
+    try {
+      console.log('🔄 Fetching Discord roles to update collection role names...');
+      const discordBotUrl = c.env.DISCORD_BOT_API_URL || 'https://nft-verification-bot.onrender.com';
+      const response = await fetch(`${discordBotUrl}/api/roles`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'NFT-Verification-API/1.0',
+          'Accept': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const rolesData = await response.json() as any;
+        const roles = rolesData.data || rolesData.roles || [];
+        console.log(`✅ Fetched ${roles.length} Discord roles`);
+        
+        // コレクションのroleNameを実際のDiscordロール名で更新
+        const updatedCollections = collections.map((collection: NFTCollection) => {
+          const matchingRole = roles.find((role: any) => role.id === collection.roleId);
+          if (matchingRole) {
+            console.log(`🔄 Updating role name for collection ${collection.name}: ${collection.roleName} → ${matchingRole.name}`);
+            return {
+              ...collection,
+              roleName: matchingRole.name
+            };
+          }
+          return collection;
+        });
+        
+        return c.json({
+          success: true,
+          data: updatedCollections
+        });
+      } else {
+        console.log(`⚠️ Failed to fetch Discord roles: ${response.status} ${response.statusText}`);
+        // Discord APIが失敗した場合は元のコレクションを返す
+        return c.json({
+          success: true,
+          data: collections
+        });
+      }
+    } catch (discordError) {
+      console.error('❌ Error fetching Discord roles:', discordError);
+      // Discord APIが失敗した場合は元のコレクションを返す
+      return c.json({
+        success: true,
+        data: collections
+      });
+    }
   } catch (error) {
     console.error('Collections fetch error:', error);
     
