@@ -177,6 +177,9 @@ export async function grantRoleToUser(discordId: string): Promise<boolean> {
 // 認証済みユーザーかどうかをチェックする関数
 async function isVerifiedUser(discordId: string): Promise<boolean> {
   try {
+    console.log(`🔍 Starting verification check for Discord ID: ${discordId}`);
+    console.log(`🔗 API URL: ${config.API_BASE_URL}/api/admin/verified-users`);
+    
     // KVストアから認証済みユーザー一覧を取得
     const verifiedUsersResponse = await fetch(`${config.API_BASE_URL}/api/admin/verified-users`, {
       method: 'GET',
@@ -185,14 +188,26 @@ async function isVerifiedUser(discordId: string): Promise<boolean> {
       }
     });
     
+    console.log(`📡 Response status: ${verifiedUsersResponse.status} ${verifiedUsersResponse.statusText}`);
+    
     if (verifiedUsersResponse.ok) {
       const result = await verifiedUsersResponse.json() as any;
+      console.log(`📋 API Response:`, JSON.stringify(result, null, 2));
+      
       if (result.success && result.data) {
+        console.log(`📊 Found ${result.data.length} verified users in KV store`);
+        console.log(`👥 Verified users:`, result.data.map((user: any) => `${user.discordId} (${user.address})`));
+        
         // 指定されたDiscord IDが認証済みユーザーリストに存在するかチェック
         const isVerified = result.data.some((user: any) => user.discordId === discordId);
-        console.log(`🔍 Checking verified user status for ${discordId}: ${isVerified}`);
+        console.log(`✅ Verification result for ${discordId}: ${isVerified}`);
         return isVerified;
+      } else {
+        console.log(`❌ API response not successful or no data`);
       }
+    } else {
+      const errorText = await verifiedUsersResponse.text();
+      console.log(`❌ API error response: ${errorText}`);
     }
     
     console.log(`⚠️ Could not fetch verified users from KV store`);
@@ -240,14 +255,18 @@ export async function grantMultipleRolesToUser(discordId: string, roles: Array<{
       let description = '';
       
       // 認証済みユーザーかどうかをチェック
+      console.log(`🔍 Checking if user ${discordId} is already verified...`);
       const isVerified = await isVerifiedUser(discordId);
+      console.log(`📋 Verification check result for ${discordId}: ${isVerified}`);
       
       if (grantedRoles.length > 0) {
         if (isVerified) {
+          console.log(`🔄 User ${discordId} is already verified, sending update message`);
           title = '認証更新完了';
           embed.setColor(0x57F287);
           description = `NFT認証の更新が完了しました。\n\n以下のコレクションでNFTが確認されました:\n\n${grantedRoles.map(role => `• ${role.roleName}`).join('\n')}\n\n対応するロールが更新されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。`;
         } else {
+          console.log(`🆕 User ${discordId} is new, sending completion message`);
           title = '認証完了';
           embed.setColor(0x57F287);
           description = `NFT認証が完了しました。\n\n以下のコレクションでNFTが確認されました:\n\n${grantedRoles.map(role => `• ${role.roleName}`).join('\n')}\n\n対応するロールが付与されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。`;
