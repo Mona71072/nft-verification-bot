@@ -1513,6 +1513,75 @@ app.get('/api/admin/verified-users', async (c) => {
   }
 });
 
+// デバッグ用: 認証済みユーザー一覧を詳細表示
+app.get('/api/admin/debug/verified-users', async (c) => {
+  try {
+    const users = await getVerifiedUsers(c);
+    
+    console.log('🔍 Debug: Verified users in KV store:');
+    users.forEach((user, index) => {
+      console.log(`${index + 1}. Discord ID: ${user.discordId}`);
+      console.log(`   Address: ${user.address}`);
+      console.log(`   Collection ID: ${user.collectionId}`);
+      console.log(`   Role: ${user.roleName} (${user.roleId})`);
+      console.log(`   Verified At: ${user.verifiedAt}`);
+      console.log(`   Last Checked: ${user.lastChecked}`);
+      console.log('---');
+    });
+    
+    return c.json({
+      success: true,
+      data: users,
+      count: users.length,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error getting verified users for debug:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to get verified users for debug'
+    }, 500);
+  }
+});
+
+// デバッグ用: 特定のDiscord IDでユーザーを検索
+app.get('/api/admin/debug/user/:discordId', async (c) => {
+  try {
+    const discordId = c.req.param('discordId');
+    const users = await getVerifiedUsers(c);
+    
+    const user = users.find(u => u.discordId === discordId);
+    
+    if (user) {
+      console.log(`🔍 Debug: Found user for Discord ID ${discordId}:`);
+      console.log(`   Address: ${user.address}`);
+      console.log(`   Collection ID: ${user.collectionId}`);
+      console.log(`   Role: ${user.roleName} (${user.roleId})`);
+      console.log(`   Verified At: ${user.verifiedAt}`);
+      console.log(`   Last Checked: ${user.lastChecked}`);
+      
+      return c.json({
+        success: true,
+        found: true,
+        data: user
+      });
+    } else {
+      console.log(`🔍 Debug: User not found for Discord ID ${discordId}`);
+      return c.json({
+        success: true,
+        found: false,
+        message: `User with Discord ID ${discordId} not found in verified users`
+      });
+    }
+  } catch (error) {
+    console.error('Error searching for user:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to search for user'
+    }, 500);
+  }
+});
+
 // バッチ処理の設定
 interface BatchConfig {
   enabled: boolean;
