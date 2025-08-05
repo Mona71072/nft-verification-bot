@@ -59,6 +59,23 @@ function NFTVerification() {
   const [selectedCollections, setSelectedCollections] = useState<string[]>([]);
   const [checkAllCollections, setCheckAllCollections] = useState<boolean>(true);
 
+  // 認証済みユーザーかどうかをチェックする関数
+  const checkIfUserIsVerified = async (discordId: string): Promise<boolean> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/admin/verified-users`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.data) {
+          return data.data.some((user: VerifiedUser) => user.discordId === discordId);
+        }
+      }
+      return false;
+    } catch (error) {
+      console.error('Error checking verified user status:', error);
+      return false;
+    }
+  };
+
   // URLパラメータからDiscord IDを自動取得
   useEffect(() => {
     try {
@@ -259,10 +276,20 @@ function NFTVerification() {
       console.log('Verification response:', data);
 
       if (data.success) {
-        setVerificationResult({
-          success: true,
-          message: `認証が完了しました！ロール "${data.data?.roleName || 'NFT Holder'}" がアカウントに割り当てられました。`
-        });
+        // 認証済みユーザーかどうかをチェック
+        const isAlreadyVerified = await checkIfUserIsVerified(discordId);
+        
+        if (isAlreadyVerified) {
+          setVerificationResult({
+            success: true,
+            message: `認証の更新が完了しました！ロール "${data.data?.roleName || 'NFT Holder'}" が更新されました。`
+          });
+        } else {
+          setVerificationResult({
+            success: true,
+            message: `認証が完了しました！ロール "${data.data?.roleName || 'NFT Holder'}" がアカウントに割り当てられました。`
+          });
+        }
       } else {
         setVerificationResult({
           success: false,
