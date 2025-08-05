@@ -186,29 +186,8 @@ async function hasTargetNft(address: string, collectionId?: string): Promise<boo
         
         console.log(`Checking NFT ownership for address: ${address}, collection: ${collectionId}`);
         
-        // まず、アドレスが保有するすべてのオブジェクトを取得
-        console.log(`🔍 Getting all owned objects for address: ${address}`);
-        const allObjectsResponse = await fetch(`${suiRpcUrl}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            jsonrpc: '2.0',
-            id: 1,
-            method: 'suix_getOwnedObjects',
-            params: [address, null, null, null, true]
-          })
-        });
-        
-        const allObjectsData = await allObjectsResponse.json() as any;
-        console.log(`📊 Total objects owned: ${allObjectsData.result?.data?.length || 0}`);
-        
-        if (allObjectsData.result?.data) {
-          console.log(`📋 Object types:`, allObjectsData.result.data.map((obj: any) => obj.data?.type || 'null'));
-        }
-        
-        // 特定のコレクションのNFTを検索
-        console.log(`🔍 Searching for NFTs with type: ${collectionId}`);
-        const response = await fetch(`${suiRpcUrl}`, {
+        // 方法1: 直接所有されているNFTを確認
+        const directResponse = await fetch(`${suiRpcUrl}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -229,54 +208,82 @@ async function hasTargetNft(address: string, collectionId?: string): Promise<boo
           })
         });
         
-        const data = await response.json() as any;
-        console.log(`📥 Sui API response for specific collection:`, JSON.stringify(data, null, 2));
+        const directData = await directResponse.json() as any;
+        console.log(`📥 Direct ownership Sui API response:`, JSON.stringify(directData, null, 2));
         
-        let hasNft = data.result && data.result.data && data.result.data.length > 0;
+        const hasDirectNft = directData.result && directData.result.data && directData.result.data.length > 0;
         
-        if (hasNft) {
-          console.log(`✅ NFTs found: ${data.result.data.length} NFTs for address ${address} in collection ${collectionId}`);
-        } else {
-          console.log(`❌ No NFTs found for address ${address} in collection ${collectionId}`);
-          
-          // パッケージIDでフィルタリングも試してみる
-          const packageId = collectionId.split('::')[0];
-          console.log(`🔍 Trying package filter with packageId: ${packageId}`);
-          
-          const packageResponse = await fetch(`${suiRpcUrl}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              jsonrpc: '2.0',
-              id: 1,
-              method: 'suix_getOwnedObjects',
-              params: [
-                address,
-                {
-                  filter: {
-                    Package: packageId
-                  }
-                },
-                null,
-                null,
-                true
-              ]
-            })
-          });
-          
-          const packageData = await packageResponse.json() as any;
-          console.log(`📥 Package filter response:`, JSON.stringify(packageData, null, 2));
-          
-          hasNft = packageData.result && packageData.result.data && packageData.result.data.length > 0;
-          
-          if (hasNft) {
-            console.log(`✅ NFTs found with package filter: ${packageData.result.data.length} NFTs for address ${address} in package ${packageId}`);
-          } else {
-            console.log(`❌ No NFTs found with package filter for address ${address} in package ${packageId}`);
+        if (hasDirectNft) {
+          console.log(`✅ Direct NFTs found: ${directData.result.data.length} NFTs for address ${address} in collection ${collectionId}`);
+          return true;
+        }
+        
+        // 方法2: 間接的に所有されているNFTを確認（オブジェクトを介して管理されている場合）
+        console.log(`🔍 Checking indirect ownership for address: ${address}`);
+        
+        // アドレスが所有しているすべてのオブジェクトを取得
+        const allObjectsResponse = await fetch(`${suiRpcUrl}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 2,
+            method: 'suix_getOwnedObjects',
+            params: [
+              address,
+              null,
+              null,
+              null,
+              true
+            ]
+          })
+        });
+        
+        const allObjectsData = await allObjectsResponse.json() as any;
+        console.log(`📥 All objects response:`, JSON.stringify(allObjectsData, null, 2));
+        
+        if (allObjectsData.result && allObjectsData.result.data) {
+          // 各オブジェクトの詳細を確認して、間接的に所有されているNFTを検索
+          for (const obj of allObjectsData.result.data) {
+            if (obj.data && obj.data.objectId) {
+              try {
+                const objDetailResponse = await fetch(`${suiRpcUrl}`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: 3,
+                    method: 'sui_getObject',
+                    params: [
+                      obj.data.objectId,
+                      {
+                        showType: true,
+                        showContent: true,
+                        showOwner: true
+                      }
+                    ]
+                  })
+                });
+                
+                const objDetail = await objDetailResponse.json() as any;
+                console.log(`🔍 Object ${obj.data.objectId} type:`, objDetail.result?.data?.type);
+                
+                // オブジェクトが指定されたコレクションのNFTを所有しているかチェック
+                if (objDetail.result?.data?.type === collectionId) {
+                  console.log(`✅ Indirect NFT found: ${obj.data.objectId} is a ${collectionId} NFT`);
+                  return true;
+                }
+              } catch (objError) {
+                console.log(`⚠️ Error checking object ${obj.data.objectId}:`, objError);
+                continue;
+              }
+            }
           }
         }
         
-        return Boolean(hasNft);
+        console.log(`❌ No NFTs found for address ${address} in collection ${collectionId}`);
+        return false;
+        
       } catch (apiError) {
         console.error('❌ Sui API error:', apiError);
         console.log('🔄 NFT check failed due to API error - returning false');
