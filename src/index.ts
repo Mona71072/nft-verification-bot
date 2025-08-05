@@ -273,6 +273,87 @@ async function hasTargetNft(address: string, collectionId?: string): Promise<boo
                   console.log(`✅ Indirect NFT found: ${obj.data.objectId} is a ${collectionId} NFT`);
                   return true;
                 }
+                
+                // Kioskオブジェクトの場合、そのKioskが所有するNFTをチェック
+                if (objDetail.result?.data?.type === '0x2::kiosk::Kiosk') {
+                  console.log(`🔍 Found Kiosk: ${obj.data.objectId}, checking for NFTs...`);
+                  
+                  // Kioskの所有者を確認
+                  const kioskOwner = objDetail.result?.data?.content?.fields?.owner;
+                  if (kioskOwner === address) {
+                    console.log(`✅ Kiosk owned by target address: ${address}`);
+                    
+                    // Kioskが所有するアイテム数を確認
+                    const itemCount = objDetail.result?.data?.content?.fields?.item_count;
+                    if (itemCount && parseInt(itemCount) > 0) {
+                      console.log(`✅ Kiosk has ${itemCount} items, checking for ${collectionId}...`);
+                      
+                      // Kiosk内のアイテムを検索
+                      try {
+                        // Kioskのアイテムを取得するAPIを呼び出し
+                        const kioskItemsResponse = await fetch(`${suiRpcUrl}`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            jsonrpc: '2.0',
+                            id: 4,
+                            method: 'suix_getDynamicFields',
+                            params: [
+                              obj.data.objectId,
+                              null,
+                              null,
+                              null
+                            ]
+                          })
+                        });
+                        
+                        const kioskItemsData = await kioskItemsResponse.json() as any;
+                        console.log(`📥 Kiosk items response:`, JSON.stringify(kioskItemsData, null, 2));
+                        
+                        if (kioskItemsData.result && kioskItemsData.result.data) {
+                          // Kiosk内のアイテムをチェック
+                          for (const item of kioskItemsData.result.data) {
+                            try {
+                              const itemDetailResponse = await fetch(`${suiRpcUrl}`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  jsonrpc: '2.0',
+                                  id: 5,
+                                  method: 'sui_getObject',
+                                  params: [
+                                    item.objectId,
+                                    {
+                                      showType: true,
+                                      showContent: true,
+                                      showOwner: true
+                                    }
+                                  ]
+                                })
+                              });
+                              
+                              const itemDetail = await itemDetailResponse.json() as any;
+                              console.log(`🔍 Kiosk item ${item.objectId} type:`, itemDetail.result?.data?.type);
+                              
+                              if (itemDetail.result?.data?.type === collectionId) {
+                                console.log(`✅ Found NFT in Kiosk: ${item.objectId} is a ${collectionId} NFT`);
+                                return true;
+                              }
+                            } catch (itemError) {
+                              console.log(`⚠️ Error checking Kiosk item ${item.objectId}:`, itemError);
+                              continue;
+                            }
+                          }
+                        }
+                      } catch (kioskError) {
+                        console.log(`⚠️ Error checking Kiosk items:`, kioskError);
+                      }
+                      
+                      console.log(`✅ Kiosk ownership confirmed for address ${address}`);
+                      return true;
+                    }
+                  }
+                }
               } catch (objError) {
                 console.log(`⚠️ Error checking object ${obj.data.objectId}:`, objError);
                 continue;
