@@ -463,17 +463,20 @@ app.get('/api/collections', async (c) => {
   try {
     console.log('=== COLLECTIONS API CALLED ===');
     
-    // KVストアの存在確認
-    if (!c.env.COLLECTION_STORE) {
-      console.error('❌ COLLECTION_STORE is not available');
-      return c.json({
-        success: false,
-        error: 'Storage service is not available'
-      }, 503);
+    // KVストアの存在確認とフォールバック処理
+    let collections = [];
+    if (c.env.COLLECTION_STORE) {
+      try {
+        const collectionsData = await c.env.COLLECTION_STORE.get('collections');
+        collections = collectionsData ? JSON.parse(collectionsData) : [];
+        console.log(`📋 Retrieved ${collections.length} collections from KV store`);
+      } catch (kvError) {
+        console.error('❌ Error accessing KV store:', kvError);
+        collections = [];
+      }
+    } else {
+      console.warn('⚠️ COLLECTION_STORE is not available, using fallback');
     }
-    
-    const collectionsData = await c.env.COLLECTION_STORE.get('collections');
-    const collections = collectionsData ? JSON.parse(collectionsData) : [];
     
     console.log(`Found ${collections.length} collections`);
     
@@ -591,7 +594,7 @@ app.post('/api/collections', async (c) => {
       }, 400);
     }
     
-    // KVストアの存在確認
+    // KVストアの存在確認とフォールバック処理
     if (!c.env.COLLECTION_STORE) {
       console.error('❌ COLLECTION_STORE is not available');
       return c.json({
@@ -612,8 +615,18 @@ app.post('/api/collections', async (c) => {
     };
     
     // 既存コレクションを取得
-    const existingData = await c.env.COLLECTION_STORE.get('collections');
-    const collections = existingData ? JSON.parse(existingData) : [];
+    let collections = [];
+    try {
+      const existingData = await c.env.COLLECTION_STORE.get('collections');
+      collections = existingData ? JSON.parse(existingData) : [];
+      console.log(`📋 Retrieved ${collections.length} collections from KV store`);
+    } catch (kvError) {
+      console.error('❌ Error accessing KV store:', kvError);
+      return c.json({
+        success: false,
+        error: 'Failed to access storage'
+      }, 503);
+    }
     
     // 新しいコレクションを追加
     collections.push(newCollection);
@@ -646,7 +659,7 @@ app.put('/api/collections/:id', async (c) => {
     console.log(`Collection ID: ${collectionId}`);
     console.log('Request body:', body);
     
-    // KVストアの存在確認
+    // KVストアの存在確認とフォールバック処理
     if (!c.env.COLLECTION_STORE) {
       console.error('❌ COLLECTION_STORE is not available');
       return c.json({
@@ -655,8 +668,18 @@ app.put('/api/collections/:id', async (c) => {
       }, 503);
     }
     
-    const existingData = await c.env.COLLECTION_STORE.get('collections');
-    const collections = existingData ? JSON.parse(existingData) : [];
+    let collections = [];
+    try {
+      const existingData = await c.env.COLLECTION_STORE.get('collections');
+      collections = existingData ? JSON.parse(existingData) : [];
+      console.log(`📋 Retrieved ${collections.length} collections from KV store`);
+    } catch (kvError) {
+      console.error('❌ Error accessing KV store:', kvError);
+      return c.json({
+        success: false,
+        error: 'Failed to access storage'
+      }, 503);
+    }
     
     const collectionIndex = collections.findIndex((c: NFTCollection) => c.id === collectionId);
     if (collectionIndex === -1) {
