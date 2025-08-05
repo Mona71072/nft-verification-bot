@@ -178,10 +178,11 @@ export async function grantRoleToUser(discordId: string): Promise<boolean> {
 async function isVerifiedUser(discordId: string): Promise<boolean> {
   try {
     console.log(`🔍 Starting verification check for Discord ID: ${discordId}`);
-    console.log(`🔗 API URL: ${config.API_BASE_URL}/api/admin/verified-users`);
+    const apiUrl = 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
+    console.log(`🔗 API URL: ${apiUrl}/api/admin/verified-users`);
     
     // KVストアから認証済みユーザー一覧を取得
-    const verifiedUsersResponse = await fetch(`${config.API_BASE_URL}/api/admin/verified-users`, {
+    const verifiedUsersResponse = await fetch(`${apiUrl}/api/admin/verified-users`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json'
