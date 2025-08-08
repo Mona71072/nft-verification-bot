@@ -45,7 +45,6 @@ function AdminPanel() {
   const [collections, setCollections] = useState<NFTCollection[]>([]);
   const [discordRoles, setDiscordRoles] = useState<DiscordRole[]>([]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [adminToken, setAdminToken] = useState<string | null>(null);
   const [address, setAddress] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
@@ -313,7 +312,7 @@ function AdminPanel() {
         setLoading(false);
         return;
       }
-      setAdminToken(verifyData.data.token);
+      // トークンはApp側の実装を使用（ここでは保存しない）
       setIsAuthenticated(true);
     } catch (e) {
       setMessage('認証処理でエラーが発生しました');

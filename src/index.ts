@@ -202,7 +202,7 @@ function fromBase64(base64: string): Uint8Array {
   return arr;
 }
 
-async function verifySignedMessage(signatureData: any, expectedMessageBytes: Uint8Array): Promise<boolean> {
+  async function verifySignedMessage(signatureData: any, expectedMessageBytes: Uint8Array): Promise<boolean> {
   try {
     // SuietのsignPersonalMessageは bytes=Uint8Array を署名対象にする
     // ここでは最低限の整合性検証（将来的に公開鍵検証を追加）
@@ -238,11 +238,31 @@ async function verifySignedMessage(signatureData: any, expectedMessageBytes: Uin
       pubBytes = pk?.length === 33 ? pk.slice(1) : pk;
     }
 
-    if (rawSig.length === 64 && pubBytes) {
-      // 純粋な64byte署名 + 32byte公開鍵
+    // ケース1: 純粋な64byte署名（publicKeyは別途提供される必要あり）
+    if (rawSig.length === 64) {
+      if (!pubBytes) {
+        console.error('64-byte signature provided but publicKey is missing');
+        return false;
+      }
       sigBytes = rawSig;
-    } else if (rawSig.length >= 1 + 64 + 32) {
-      // SerializedSignature 形式
+    }
+
+    // ケース2: scheme(1)+signature(64) の65byte（publicKeyは別途提供される必要あり）
+    if (!sigBytes && rawSig.length === 65) {
+      const scheme = rawSig[0];
+      if (scheme !== 0x00) {
+        console.error(`Unsupported signature scheme for 65-byte sig: ${scheme}`);
+        return false;
+      }
+      if (!pubBytes) {
+        console.error('65-byte (scheme+sig) provided but publicKey is missing');
+        return false;
+      }
+      sigBytes = rawSig.slice(1, 65);
+    }
+
+    // ケース3: SerializedSignature (scheme(1)+signature(64)+publicKey(32) = 97byte)
+    if (!sigBytes && rawSig.length >= 1 + 64 + 32) {
       const scheme = rawSig[0];
       // 0x00: Ed25519 / 0x01: Secp256k1 / 0x02: Secp256r1
       if (scheme !== 0x00) {
@@ -251,8 +271,7 @@ async function verifySignedMessage(signatureData: any, expectedMessageBytes: Uin
       }
       sigBytes = rawSig.slice(1, 65);
       const extractedPub = rawSig.slice(65);
-      // body.publicKey 未提供なら抽出した公開鍵を使う
-      if (!pubBytes) pubBytes = extractedPub;
+      if (!pubBytes || pubBytes.length !== 32) pubBytes = extractedPub;
     }
 
     if (!sigBytes || !pubBytes || pubBytes.length !== 32) {
