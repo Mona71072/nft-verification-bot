@@ -788,9 +788,10 @@ function AdminPage() {
     const fetchVerifiedUsers = async () => {
       try {
         console.log('🔄 Fetching verified users...');
-        const response = await fetch(`${API_BASE_URL}/api/admin/verified-users`, {
-          headers: adminToken ? { 'Authorization': `Bearer ${adminToken}` } : undefined
-        });
+        const headers: Record<string, string> = { 'Accept': 'application/json' };
+        if (adminToken) headers['Authorization'] = `Bearer ${adminToken}`;
+        if (connected && account?.address) headers['X-Admin-Address'] = account.address;
+        const response = await fetch(`${API_BASE_URL}/api/admin/verified-users`, { headers });
         if (response.status === 401) {
           setNeedsAdminAuth(true);
           setVerifiedUsers([]);
@@ -976,11 +977,6 @@ function AdminPage() {
 
   // バッチ処理実行
   const handleBatchCheck = async () => {
-    if (!adminToken) {
-      alert('バッチ実行には管理者ログインが必要です。先に「管理者ログイン」を実行してください。');
-      setNeedsAdminAuth(true);
-      return;
-    }
     if (!confirm('バッチ処理を実行しますか？\n\nこの処理は時間がかかる場合があります。')) {
       return;
     }
@@ -988,10 +984,10 @@ function AdminPage() {
     setBatchProcessing(true);
     try {
       console.log('🔄 Starting batch check...');
-      const response = await fetch(`${API_BASE_URL}/api/admin/batch-check`, {
-        method: 'POST',
-        headers: adminToken ? { 'Authorization': `Bearer ${adminToken}` } : undefined
-      });
+      const headers: Record<string, string> = { 'Accept': 'application/json' };
+      if (adminToken) headers['Authorization'] = `Bearer ${adminToken}`;
+      if (connected && account?.address) headers['X-Admin-Address'] = account.address;
+      const response = await fetch(`${API_BASE_URL}/api/admin/batch-check`, { method: 'POST', headers });
       const data = await response.json();
       
       if (data.success) {
@@ -999,9 +995,10 @@ function AdminPage() {
         alert(`バッチ処理が完了しました！\n\n処理結果:\n• 総ユーザー数: ${summary.totalUsers}\n• 処理済み: ${summary.processed}\n• ロール剥奪: ${summary.revoked}\n• エラー: ${summary.errors}`);
         
         // 認証済みユーザー一覧を更新
-        const usersResponse = await fetch(`${API_BASE_URL}/api/admin/verified-users`, {
-          headers: adminToken ? { 'Authorization': `Bearer ${adminToken}` } : undefined
-        });
+        const usersHeaders: Record<string, string> = { 'Accept': 'application/json' };
+        if (adminToken) usersHeaders['Authorization'] = `Bearer ${adminToken}`;
+        if (connected && account?.address) usersHeaders['X-Admin-Address'] = account.address;
+        const usersResponse = await fetch(`${API_BASE_URL}/api/admin/verified-users`, { headers: usersHeaders });
         const usersData = await usersResponse.json();
         if (usersData.success) {
           setVerifiedUsers(usersData.data);
