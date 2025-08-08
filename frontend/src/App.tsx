@@ -1034,6 +1034,20 @@ function AdminPage() {
             );
           }
         })()}
+        <button
+          onClick={handleAdminLogin}
+          style={{
+            marginTop: '1rem',
+            padding: '0.75rem 1rem',
+            background: '#3b82f6',
+            color: 'white',
+            border: 'none',
+            borderRadius: 8,
+            cursor: 'pointer'
+          }}
+        >
+          管理者ログイン
+        </button>
       </div>
     );
   }
@@ -1068,6 +1082,29 @@ function AdminPage() {
 
   return (
     <div style={{ color: 'white' }}>
+      {needsAdminAuth && (
+        <div style={{
+          background: '#FEF3C7',
+          border: '1px solid #F59E0B',
+          color: '#92400E',
+          padding: '0.75rem',
+          borderRadius: 8,
+          margin: '0 0 1rem 0',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
+        }}>
+          <span>管理者の再ログインが必要です。トークンの有効期限が切れた可能性があります。</span>
+          <button onClick={handleAdminLogin} style={{
+            padding: '0.5rem 0.75rem',
+            background: '#3B82F6',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 6,
+            cursor: 'pointer'
+          }}>再ログイン</button>
+        </div>
+      )}
       <style>
         {`
           @keyframes spin {
