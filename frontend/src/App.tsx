@@ -689,6 +689,17 @@ function AdminPage() {
       setAdminToken(verifyJson.data.token);
       try { localStorage.setItem('SXT_ADMIN_TOKEN', verifyJson.data.token); } catch {}
       alert('管理者としてログインしました。');
+      setNeedsAdminAuth(false);
+      // 直後に認証済みユーザーをフェッチ
+      try {
+        const usersResponse = await fetch(`${API_BASE_URL}/api/admin/verified-users`, {
+          headers: { 'Authorization': `Bearer ${verifyJson.data.token}` }
+        });
+        if (usersResponse.ok) {
+          const usersData = await usersResponse.json();
+          if (usersData.success) setVerifiedUsers(usersData.data);
+        }
+      } catch {}
     } catch (e) {
       alert('管理者ログイン中にエラーが発生しました。');
     }
@@ -951,6 +962,11 @@ function AdminPage() {
 
   // バッチ処理実行
   const handleBatchCheck = async () => {
+    if (!adminToken) {
+      alert('バッチ実行には管理者ログインが必要です。先に「管理者ログイン」を実行してください。');
+      setNeedsAdminAuth(true);
+      return;
+    }
     if (!confirm('バッチ処理を実行しますか？\n\nこの処理は時間がかかる場合があります。')) {
       return;
     }
