@@ -202,6 +202,26 @@ function fromBase64(base64: string): Uint8Array {
   return arr;
 }
 
+function toUint8Array(input: any): Uint8Array | null {
+  try {
+    if (!input) return null;
+    if (input instanceof Uint8Array) return input;
+    if (Array.isArray(input)) return new Uint8Array(input);
+    if (typeof input === 'string') return fromBase64(input);
+    if (typeof input === 'object') {
+      // 数値キーを昇順で取り出してUint8Arrayへ（JSON化されたTypedArray対策）
+      const keys = Object.keys(input).filter(k => /^\d+$/.test(k)).sort((a, b) => Number(a) - Number(b));
+      if (keys.length > 0) {
+        const values = keys.map(k => input[k] as number);
+        return new Uint8Array(values);
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
   async function verifySignedMessage(signatureData: any, expectedMessageBytes: Uint8Array): Promise<boolean> {
   try {
     // SuietのsignPersonalMessageは bytes=Uint8Array を署名対象にする
@@ -214,7 +234,11 @@ function fromBase64(base64: string): Uint8Array {
     }
 
     // 受信bytesとサーバー側で再構築した expectedMessageBytes を厳密一致
-    const received = typeof bytes === 'string' ? fromBase64(bytes) : bytes;
+    const received = toUint8Array(bytes);
+    if (!received) {
+      console.error('Invalid bytes payload');
+      return false;
+    }
     const same = received.length === expectedMessageBytes.length && received.every((b, i) => b === expectedMessageBytes[i]);
     if (!same) {
       console.error('Message bytes mismatch');
@@ -222,7 +246,7 @@ function fromBase64(base64: string): Uint8Array {
     }
 
     // 署名・公開鍵の抽出（SuiのSerializedSignature対応: [scheme(1)][signature(64)][pubkey(32)])
-    const rawSig = typeof signature === 'string' ? fromBase64(signature) : signature;
+    const rawSig = toUint8Array(signature);
     if (!rawSig || !(rawSig instanceof Uint8Array)) {
       console.error('Invalid signature format');
       return false;
@@ -233,9 +257,11 @@ function fromBase64(base64: string): Uint8Array {
 
     // 優先: body.publicKey を利用（32 or 33bytes想定）
     if (publicKey) {
-      const pk = typeof publicKey === 'string' ? fromBase64(publicKey) : publicKey;
-      // 先頭1バイトがスキームの場合(33bytes) → 取り除く
-      pubBytes = pk?.length === 33 ? pk.slice(1) : pk;
+      const pk = toUint8Array(publicKey);
+      if (pk) {
+        // 先頭1バイトがスキームの場合(33bytes) → 取り除く
+        pubBytes = pk.length === 33 ? pk.slice(1) : pk;
+      }
     }
 
     // ケース1: 純粋な64byte署名（publicKeyは別途提供される必要あり）
