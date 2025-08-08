@@ -164,24 +164,47 @@ async function verifySignedMessage(signatureData: any, expectedMessageBytes: Uin
       return false;
     }
 
-    // 署名・公開鍵フォーマット
-    const signatureBytes = typeof signature === 'string' ? fromBase64(signature) : signature;
-    if (!signatureBytes || !(signatureBytes instanceof Uint8Array)) {
+    // 署名・公開鍵の抽出（SuiのSerializedSignature対応: [scheme(1)][signature(64)][pubkey(32)])
+    const rawSig = typeof signature === 'string' ? fromBase64(signature) : signature;
+    if (!rawSig || !(rawSig instanceof Uint8Array)) {
       console.error('Invalid signature format');
       return false;
     }
 
-    const publicKeyBytes = publicKey
-      ? (typeof publicKey === 'string' ? fromBase64(publicKey) : publicKey)
-      : null;
+    let sigBytes: Uint8Array | null = null;
+    let pubBytes: Uint8Array | null = null;
 
-    if (!publicKeyBytes) {
-      console.error('Missing publicKey for signature verification');
+    // 優先: body.publicKey を利用（32 or 33bytes想定）
+    if (publicKey) {
+      const pk = typeof publicKey === 'string' ? fromBase64(publicKey) : publicKey;
+      // 先頭1バイトがスキームの場合(33bytes) → 取り除く
+      pubBytes = pk?.length === 33 ? pk.slice(1) : pk;
+    }
+
+    if (rawSig.length === 64 && pubBytes) {
+      // 純粋な64byte署名 + 32byte公開鍵
+      sigBytes = rawSig;
+    } else if (rawSig.length >= 1 + 64 + 32) {
+      // SerializedSignature 形式
+      const scheme = rawSig[0];
+      // 0x00: Ed25519 / 0x01: Secp256k1 / 0x02: Secp256r1
+      if (scheme !== 0x00) {
+        console.error(`Unsupported signature scheme: ${scheme}`);
+        return false;
+      }
+      sigBytes = rawSig.slice(1, 65);
+      const extractedPub = rawSig.slice(65);
+      // body.publicKey 未提供なら抽出した公開鍵を使う
+      if (!pubBytes) pubBytes = extractedPub;
+    }
+
+    if (!sigBytes || !pubBytes || pubBytes.length !== 32) {
+      console.error('Failed to extract signature/publicKey for Ed25519 verification');
       return false;
     }
 
     // Ed25519 署名検証
-    const ok = await ed25519.verify(signatureBytes, expectedMessageBytes, publicKeyBytes);
+    const ok = await ed25519.verify(sigBytes, expectedMessageBytes, pubBytes);
     if (!ok) console.error('Ed25519 verification failed');
     return ok;
   } catch (error) {
@@ -1350,6 +1373,17 @@ app.post('/api/verify', async (c) => {
     const signatureData = { signature, bytes, publicKey: body.publicKey };
     const isValidSignature = await verifySignedMessage(signatureData, expectedBytes);
     if (!isValidSignature) {
+      try {
+        // 署名不正でもユーザーにDMで通知
+        await notifyDiscordBot(c, discordId, 'verification_failed', {
+          address,
+          discordId,
+          reason: 'Invalid signature',
+          timestamp: new Date().toISOString()
+        });
+      } catch (e) {
+        console.log('⚠️ Failed to notify Discord bot for invalid signature:', e);
+      }
       return c.json({
         success: false,
         error: 'Invalid signature'

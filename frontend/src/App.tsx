@@ -259,7 +259,7 @@ function NFTVerification() {
       const requestBody = {
         signature: signatureResult.signature,
         bytes: signatureResult.bytes || messageBytes, // Suietが返すbytesを優先
-        publicKey: signatureResult.publicKey, // Ed25519 検証用
+        publicKey: (signatureResult as any)?.publicKey ?? (account as any)?.publicKey, // Ed25519 検証用（存在すれば送信）
         address: account.address,
         discordId: discordId.trim(),
         nonce: nonce,
