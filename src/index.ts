@@ -279,21 +279,29 @@ function generateRandomToken(length = 48): string {
 }
 
 // Admin用Bearerトークン検証
-async function verifyAdminToken(c: Context<{ Bindings: Env }>): Promise<{ ok: boolean; address?: string }> {
+type AdminTokenStatus =
+  | { ok: true; address: string }
+  | { ok: false; reason: 'missing_header' | 'bad_format' | 'missing_token' | 'not_found' | 'expired' | 'not_admin' | 'invalid_payload' };
+
+async function verifyAdminToken(c: Context<{ Bindings: Env }>): Promise<AdminTokenStatus> {
   try {
     const auth = c.req.header('Authorization') || '';
-    if (!auth.startsWith('Bearer ')) return { ok: false };
+    if (!auth) return { ok: false, reason: 'missing_header' };
+    if (!auth.startsWith('Bearer ')) return { ok: false, reason: 'bad_format' };
     const token = auth.slice('Bearer '.length).trim();
-    if (!token) return { ok: false };
+    if (!token) return { ok: false, reason: 'missing_token' };
     const stored = await c.env.COLLECTION_STORE.get(ADMIN_TOKEN_PREFIX + token);
-    if (!stored) return { ok: false };
-    const { address, expiresAt } = JSON.parse(stored);
-    if (!address || (expiresAt && Date.now() > expiresAt)) return { ok: false };
+    if (!stored) return { ok: false, reason: 'not_found' };
+    let payload: any;
+    try { payload = JSON.parse(stored); } catch { return { ok: false, reason: 'invalid_payload' }; }
+    const { address, expiresAt } = payload || {};
+    if (!address) return { ok: false, reason: 'invalid_payload' };
+    if (expiresAt && Date.now() > expiresAt) return { ok: false, reason: 'expired' };
     const isAdminUser = await isAdmin(c, address);
-    if (!isAdminUser) return { ok: false };
+    if (!isAdminUser) return { ok: false, reason: 'not_admin' };
     return { ok: true, address };
   } catch {
-    return { ok: false };
+    return { ok: false, reason: 'invalid_payload' };
   }
 }
 
@@ -1739,7 +1747,7 @@ app.post('/api/admin/batch-check', async (c) => {
   try {
     // Adminトークン検証
     const auth = await verifyAdminToken(c);
-    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized' }, 401);
+    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized', reason: (auth as any).reason }, 401);
     console.log('🔄 Starting batch check process...');
     
     const verifiedUsers = await getVerifiedUsers(c);
@@ -1856,6 +1864,8 @@ app.post('/api/admin/batch-check', async (c) => {
 // 認証済みユーザー一覧取得API
 app.get('/api/admin/verified-users', async (c) => {
   try {
+    const auth = await verifyAdminToken(c);
+    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized', reason: (auth as any).reason }, 401);
     const users = await getVerifiedUsers(c);
     
     return c.json({
@@ -1892,7 +1902,7 @@ app.get('/api/verified-users-public', async (c) => {
 app.get('/api/admin/debug/verified-users', async (c) => {
   try {
     const auth = await verifyAdminToken(c);
-    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized' }, 401);
+    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized', reason: (auth as any).reason }, 401);
     const users = await getVerifiedUsers(c);
     
     console.log('🔍 Debug: Verified users in KV store:');
@@ -1925,7 +1935,7 @@ app.get('/api/admin/debug/verified-users', async (c) => {
 app.get('/api/admin/debug/user/:discordId', async (c) => {
   try {
     const auth = await verifyAdminToken(c);
-    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized' }, 401);
+    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized', reason: (auth as any).reason }, 401);
     const discordId = c.req.param('discordId');
     const users = await getVerifiedUsers(c);
     
@@ -2235,7 +2245,7 @@ app.post('/api/admin/batch-execute', async (c) => {
 app.get('/api/admin/batch-config', async (c) => {
   try {
     const auth = await verifyAdminToken(c);
-    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized' }, 401);
+    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized', reason: (auth as any).reason }, 401);
     const config = await getBatchConfig(c);
     const stats = await getBatchStats(c);
     
@@ -2259,7 +2269,7 @@ app.get('/api/admin/batch-config', async (c) => {
 app.put('/api/admin/batch-config', async (c) => {
   try {
     const auth = await verifyAdminToken(c);
-    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized' }, 401);
+    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized', reason: (auth as any).reason }, 401);
     const body = await c.req.json();
     const { enabled, interval, maxUsersPerBatch, retryAttempts } = body;
     
@@ -2295,7 +2305,7 @@ app.put('/api/admin/batch-config', async (c) => {
 app.get('/api/admin/batch-stats', async (c) => {
   try {
     const auth = await verifyAdminToken(c);
-    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized' }, 401);
+    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized', reason: (auth as any).reason }, 401);
     const stats = await getBatchStats(c);
     
     return c.json({
@@ -2315,7 +2325,7 @@ app.get('/api/admin/batch-stats', async (c) => {
 app.get('/api/admin/batch-schedule', async (c) => {
   try {
     const auth = await verifyAdminToken(c);
-    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized' }, 401);
+    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized', reason: (auth as any).reason }, 401);
     const config = await getBatchConfig(c);
     const now = new Date();
     const nextRun = new Date(config.nextRun);
