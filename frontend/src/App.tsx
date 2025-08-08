@@ -47,6 +47,8 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verificat
 
 function NFTVerification() {
   const { account, connected, signPersonalMessage } = useWalletWithErrorHandling();
+  const [showFullAddress, setShowFullAddress] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [discordId, setDiscordId] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationResult, setVerificationResult] = useState<{
@@ -381,9 +383,65 @@ function NFTVerification() {
               borderRadius: '8px',
               border: '1px solid #e5e7eb'
             }}>
-              <p style={{ fontSize: '0.875rem', color: '#666' }}>
-                接続済み: <span style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>{account.address}</span>
-              </p>
+              <div style={{
+                display: 'flex',
+                gap: '0.5rem',
+                alignItems: 'center',
+                flexWrap: 'wrap'
+              }}>
+                <span style={{ fontSize: '0.875rem', color: '#666' }}>接続済み:</span>
+                <span
+                  title={account.address}
+                  style={{
+                    fontFamily: 'monospace',
+                    fontSize: '0.8rem',
+                    maxWidth: '100%',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  {showFullAddress
+                    ? account.address
+                    : `${account.address.slice(0, 6)}...${account.address.slice(-4)}`}
+                </span>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(account.address);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 1500);
+                      } catch {}
+                    }}
+                    style={{
+                      padding: '0.25rem 0.5rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '6px',
+                      background: '#fff',
+                      color: '#374151',
+                      fontSize: '0.75rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {copied ? 'コピー済み' : 'コピー'}
+                  </button>
+                  <button
+                    onClick={() => setShowFullAddress(v => !v)}
+                    style={{
+                      padding: '0.25rem 0.5rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '6px',
+                      background: '#fff',
+                      color: '#374151',
+                      fontSize: '0.75rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {showFullAddress ? '省略表示' : '全表示'}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -535,8 +593,11 @@ function NFTVerification() {
 
 // AdminPageコンポーネント
 function AdminPage() {
-  const { account, connected } = useWalletWithErrorHandling();
+  const { account, connected, signPersonalMessage } = useWalletWithErrorHandling();
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [adminToken, setAdminToken] = useState<string | null>(() => {
+    try { return localStorage.getItem('SXT_ADMIN_TOKEN'); } catch { return null; }
+  });
   const [adminAddresses, setAdminAddresses] = useState<string[]>([]);
   const [collections, setCollections] = useState<NFTCollection[]>([]);
   const [verifiedUsers, setVerifiedUsers] = useState<VerifiedUser[]>([]);
@@ -589,6 +650,53 @@ function AdminPage() {
     
     fetchAdminAddresses();
   }, []);
+
+  // 管理者ログイン（署名）
+  const handleAdminLogin = async () => {
+    try {
+      if (!connected || !account?.address || !signPersonalMessage) {
+        alert('ウォレット接続と署名が必要です。');
+        return;
+      }
+      // 1) ナンス取得
+      const nonceResp = await fetch(`${API_BASE_URL}/api/admin/login-nonce`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address: account.address })
+      });
+      const nonceJson = await nonceResp.json();
+      if (!nonceJson.success) { alert(nonceJson.error || 'ナンス取得に失敗しました'); return; }
+      const nonce = nonceJson.data.nonce;
+      const timestamp = new Date().toISOString();
+      const authMessage = `SXT Admin Login\naddress=${account.address}\nnonce=${nonce}\ntimestamp=${timestamp}`;
+      const bytes = new TextEncoder().encode(authMessage);
+      // 2) 署名
+      const sig = await signPersonalMessage({ message: bytes });
+      // 3) 検証 → トークン
+      const verifyResp = await fetch(`${API_BASE_URL}/api/admin/login-verify`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          address: account.address,
+          signature: sig.signature,
+          bytes: sig.bytes || bytes,
+          publicKey: (sig as any)?.publicKey,
+          authMessage,
+          nonce
+        })
+      });
+      const verifyJson = await verifyResp.json();
+      if (!verifyJson.success) { alert(verifyJson.error || '管理者ログインに失敗しました'); return; }
+      setAdminToken(verifyJson.data.token);
+      try { localStorage.setItem('SXT_ADMIN_TOKEN', verifyJson.data.token); } catch {}
+      alert('管理者としてログインしました。');
+    } catch (e) {
+      alert('管理者ログイン中にエラーが発生しました。');
+    }
+  };
+
+  const handleAdminLogout = () => {
+    setAdminToken(null);
+    try { localStorage.removeItem('SXT_ADMIN_TOKEN'); } catch {}
+  };
 
   // コレクション取得
   useEffect(() => {
@@ -654,7 +762,9 @@ function AdminPage() {
     const fetchVerifiedUsers = async () => {
       try {
         console.log('🔄 Fetching verified users...');
-        const response = await fetch(`${API_BASE_URL}/api/admin/verified-users`);
+        const response = await fetch(`${API_BASE_URL}/api/admin/verified-users`, {
+          headers: adminToken ? { 'Authorization': `Bearer ${adminToken}` } : undefined
+        });
         const data = await response.json();
         if (data.success) {
           setVerifiedUsers(data.data);
@@ -843,7 +953,8 @@ function AdminPage() {
     try {
       console.log('🔄 Starting batch check...');
       const response = await fetch(`${API_BASE_URL}/api/admin/batch-check`, {
-        method: 'POST'
+        method: 'POST',
+        headers: adminToken ? { 'Authorization': `Bearer ${adminToken}` } : undefined
       });
       const data = await response.json();
       
@@ -852,7 +963,9 @@ function AdminPage() {
         alert(`バッチ処理が完了しました！\n\n処理結果:\n• 総ユーザー数: ${summary.totalUsers}\n• 処理済み: ${summary.processed}\n• ロール剥奪: ${summary.revoked}\n• エラー: ${summary.errors}`);
         
         // 認証済みユーザー一覧を更新
-        const usersResponse = await fetch(`${API_BASE_URL}/api/admin/verified-users`);
+        const usersResponse = await fetch(`${API_BASE_URL}/api/admin/verified-users`, {
+          headers: adminToken ? { 'Authorization': `Bearer ${adminToken}` } : undefined
+        });
         const usersData = await usersResponse.json();
         if (usersData.success) {
           setVerifiedUsers(usersData.data);
@@ -1832,16 +1945,43 @@ function AdminPage() {
 }
 
 function App() {
+  const { account, connected } = useWalletWithErrorHandling();
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [currentPage, setCurrentPage] = useState<'verification' | 'admin'>('verification');
+
+  // 管理者チェック（ヘッダー表示制御用）
+  useEffect(() => {
+    const checkAdmin = async () => {
+      try {
+        if (connected && account?.address) {
+          const resp = await fetch(`${API_BASE_URL}/api/admin/check/${account.address}`);
+          const data = await resp.json();
+          setIsAdmin(Boolean(data?.success && data?.isAdmin));
+        } else {
+          setIsAdmin(false);
+        }
+      } catch (e) {
+        setIsAdmin(false);
+      }
+    };
+    checkAdmin();
+  }, [connected, account?.address]);
+
+  // 非管理者が管理画面を開けないように制御
+  useEffect(() => {
+    if (currentPage === 'admin' && !isAdmin) {
+      setCurrentPage('verification');
+    }
+  }, [currentPage, isAdmin]);
 
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
-      {/* Navigation Bar */}
+      {/* コンパクトヘッダー（モバイル最適化） */}
       <nav style={{
         background: 'rgba(255, 255, 255, 0.95)',
-        backdropFilter: 'blur(10px)',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.2)',
-        padding: '1rem 2rem',
+        backdropFilter: 'blur(8px)',
+        borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
+        padding: '0.5rem 1rem',
         position: 'sticky',
         top: 0,
         zIndex: 1000
@@ -1853,50 +1993,31 @@ function App() {
           justifyContent: 'space-between',
           alignItems: 'center'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
-            <h1 style={{ 
-              fontSize: '1.5rem', 
-              fontWeight: '700', 
-              color: '#1a1a1a',
-              margin: 0
-            }}>
-              NFT Verification
-            </h1>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button
-                onClick={() => setCurrentPage('verification')}
-                style={{
-                  padding: '0.75rem 1.5rem',
-                  background: currentPage === 'verification' ? '#3b82f6' : 'transparent',
-                  color: currentPage === 'verification' ? 'white' : '#6b7280',
-                  border: currentPage === 'verification' ? 'none' : '1px solid #d1d5db',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '0.875rem',
-                  fontWeight: '500',
-                  transition: 'all 0.2s ease'
-                }}
-              >
-                認証ページ
-              </button>
-              <button
-                onClick={() => setCurrentPage('admin')}
-                style={{
-                  padding: '0.75rem 1.5rem',
-                  background: currentPage === 'admin' ? '#3b82f6' : 'transparent',
-                  color: currentPage === 'admin' ? 'white' : '#6b7280',
-                  border: currentPage === 'admin' ? 'none' : '1px solid #d1d5db',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '0.875rem',
-                  fontWeight: '500',
-                  transition: 'all 0.2s ease'
-                }}
-              >
-                管理者パネル
-              </button>
-            </div>
-          </div>
+          <h1 style={{
+            fontSize: '1.125rem',
+            fontWeight: 700,
+            color: '#1a1a1a',
+            margin: 0
+          }}>
+            NFT Verification
+          </h1>
+          {isAdmin && (
+            <button
+              onClick={() => setCurrentPage(currentPage === 'admin' ? 'verification' : 'admin')}
+              style={{
+                padding: '0.5rem 0.75rem',
+                background: currentPage === 'admin' ? '#3b82f6' : 'transparent',
+                color: currentPage === 'admin' ? 'white' : '#374151',
+                border: currentPage === 'admin' ? 'none' : '1px solid #d1d5db',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '0.75rem',
+                fontWeight: 600
+              }}
+            >
+              {currentPage === 'admin' ? '認証ページへ' : '管理者パネル'}
+            </button>
+          )}
         </div>
       </nav>
 
@@ -1904,8 +2025,8 @@ function App() {
       <div style={{ 
         maxWidth: '1200px', 
         margin: '0 auto', 
-        padding: '2rem',
-        minHeight: 'calc(100vh - 80px)'
+        padding: '1rem',
+        minHeight: 'calc(100vh - 56px)'
       }}>
         {(() => {
           try {

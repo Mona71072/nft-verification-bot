@@ -45,7 +45,8 @@ function AdminPanel() {
   const [collections, setCollections] = useState<NFTCollection[]>([]);
   const [discordRoles, setDiscordRoles] = useState<DiscordRole[]>([]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [password, setPassword] = useState('');
+  const [adminToken, setAdminToken] = useState<string | null>(null);
+  const [address, setAddress] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [editingCollection, setEditingCollection] = useState<NFTCollection | null>(null);
@@ -270,13 +271,54 @@ function AdminPanel() {
     setBatchLoading(false);
   };
 
-  const handleAuth = () => {
-    // 簡単な認証（実際の運用ではより安全な認証が必要）
-    if (password === 'admin123') {
-      setIsAuthenticated(true);
+  // 署名式ログイン
+  const handleAuth = async () => {
+    try {
+      setLoading(true);
       setMessage('');
-    } else {
-      setMessage('パスワードが正しくありません');
+      // ウォレット接続中のApp側で行う想定だが、ここではアドレスを入力式に
+      if (!address) {
+        setMessage('管理者ウォレットアドレスを入力してください');
+        setLoading(false);
+        return;
+      }
+      // 1) ナンス取得
+      const nonceResp = await fetch(`${API_BASE_URL}/api/admin/login-nonce`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address })
+      });
+      const nonceData = await nonceResp.json();
+      if (!nonceData.success) {
+        setMessage(nonceData.error || 'ナンス取得に失敗しました');
+        setLoading(false);
+        return;
+      }
+      const nonce = nonceData.data.nonce;
+      const timestamp = new Date().toISOString();
+      const authMessage = `SXT Admin Login\naddress=${address}\nnonce=${nonce}\ntimestamp=${timestamp}`;
+      // 2) ここで本来はウォレット署名を行い signature/bytes/publicKey を得る
+      // デモ用にbytes=authMessage, signature/ publicKey をダミー（本運用ではApp.tsxから引き回し）
+      const bytes = new TextEncoder().encode(authMessage);
+      const signature = btoa('dummy');
+      // 3) 検証要求
+      const verifyResp = await fetch(`${API_BASE_URL}/api/admin/login-verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address, signature, bytes, authMessage, nonce })
+      });
+      const verifyData = await verifyResp.json();
+      if (!verifyData.success) {
+        setMessage(verifyData.error || 'ログイン検証に失敗しました');
+        setLoading(false);
+        return;
+      }
+      setAdminToken(verifyData.data.token);
+      setIsAuthenticated(true);
+    } catch (e) {
+      setMessage('認証処理でエラーが発生しました');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -298,10 +340,10 @@ function AdminPanel() {
       }}>
         <h2 style={{ marginBottom: '1rem' }}>管理者認証</h2>
         <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="管理者パスワード"
+          type="text"
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+          placeholder="管理者ウォレットアドレス"
           style={{ 
             padding: '0.5rem', 
             margin: '1rem',

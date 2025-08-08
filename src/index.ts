@@ -127,6 +127,63 @@ app.post('/api/nonce', async (c) => {
   }
 });
 
+// ========================
+// 管理者署名ログイン API
+// ========================
+// 1) 管理者ログイン用のナンス発行
+app.post('/api/admin/login-nonce', async (c) => {
+  try {
+    const { address } = await c.req.json();
+    if (!address) return c.json({ success: false, error: 'address is required' }, 400);
+    // 管理者でなければ拒否
+    if (!(await isAdmin(c, address))) {
+      return c.json({ success: false, error: 'not admin' }, 403);
+    }
+    const nonce = generateRandomToken(24);
+    const key = ADMIN_LOGIN_NONCE_PREFIX + nonce;
+    const expiresAt = Date.now() + 5 * 60 * 1000;
+    await c.env.COLLECTION_STORE.put(key, JSON.stringify({ address, expiresAt }), { expirationTtl: 300 });
+    return c.json({ success: true, data: { nonce, expiresAt } });
+  } catch (e) {
+    return c.json({ success: false, error: 'failed to issue admin login nonce' }, 500);
+  }
+});
+
+// 2) ナンスに対する署名を検証し、短期トークンを発行
+app.post('/api/admin/login-verify', async (c) => {
+  try {
+    const { address, signature, bytes, authMessage, nonce, publicKey } = await c.req.json();
+    if (!address || !signature || !bytes || !authMessage || !nonce) {
+      return c.json({ success: false, error: 'missing params' }, 400);
+    }
+    const stored = await c.env.COLLECTION_STORE.get(ADMIN_LOGIN_NONCE_PREFIX + nonce);
+    if (!stored) return c.json({ success: false, error: 'invalid or expired nonce' }, 400);
+    const { address: storedAddress, expiresAt } = JSON.parse(stored);
+    if (storedAddress.toLowerCase() !== String(address).toLowerCase() || Date.now() > expiresAt) {
+      return c.json({ success: false, error: 'invalid or expired nonce' }, 400);
+    }
+    // メッセージ検証
+    const expected = new TextEncoder().encode(authMessage);
+    const ok = await verifySignedMessage({ signature, bytes, publicKey }, expected);
+    if (!ok) return c.json({ success: false, error: 'invalid signature' }, 400);
+    // 管理者再確認
+    if (!(await isAdmin(c, address))) return c.json({ success: false, error: 'not admin' }, 403);
+
+    // トークン発行（24時間）
+    const token = generateRandomToken(48);
+    const tokenKey = ADMIN_TOKEN_PREFIX + token;
+    const tokenExpiresAt = Date.now() + 24 * 60 * 60 * 1000;
+    await c.env.COLLECTION_STORE.put(tokenKey, JSON.stringify({ address, expiresAt: tokenExpiresAt }), { expirationTtl: 24 * 60 * 60 });
+
+    // 使い終わったナンスは削除
+    await c.env.COLLECTION_STORE.delete(ADMIN_LOGIN_NONCE_PREFIX + nonce);
+
+    return c.json({ success: true, data: { token, expiresAt: tokenExpiresAt } });
+  } catch (e) {
+    return c.json({ success: false, error: 'admin login verify failed' }, 500);
+  }
+});
+
 
 
 // ================
@@ -210,6 +267,33 @@ async function verifySignedMessage(signatureData: any, expectedMessageBytes: Uin
   } catch (error) {
     console.error('Signature verification error:', error);
     return false;
+  }
+}
+
+// ランダムトークン生成（英数字）
+function generateRandomToken(length = 48): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let out = '';
+  for (let i = 0; i < length; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+}
+
+// Admin用Bearerトークン検証
+async function verifyAdminToken(c: Context<{ Bindings: Env }>): Promise<{ ok: boolean; address?: string }> {
+  try {
+    const auth = c.req.header('Authorization') || '';
+    if (!auth.startsWith('Bearer ')) return { ok: false };
+    const token = auth.slice('Bearer '.length).trim();
+    if (!token) return { ok: false };
+    const stored = await c.env.COLLECTION_STORE.get(ADMIN_TOKEN_PREFIX + token);
+    if (!stored) return { ok: false };
+    const { address, expiresAt } = JSON.parse(stored);
+    if (!address || (expiresAt && Date.now() > expiresAt)) return { ok: false };
+    const isAdminUser = await isAdmin(c, address);
+    if (!isAdminUser) return { ok: false };
+    return { ok: true, address };
+  } catch {
+    return { ok: false };
   }
 }
 
@@ -477,6 +561,20 @@ async function notifyDiscordBot(c: Context<{ Bindings: Env }>, discordId: string
     console.log(`🔄 Discord Bot API: ${action} for user ${discordId}`);
     console.log('📋 Verification data:', verificationData);
     
+    // 短時間の重複送信防止（同一ユーザー×同一アクションを抑止）
+    try {
+      const dedupeKey = `notify_dedupe:${action}:${discordId}`;
+      const existed = await c.env.COLLECTION_STORE.get(dedupeKey);
+      if (existed) {
+        console.log(`⏭️ Skip duplicated notification: ${dedupeKey}`);
+        return true; // 既に直近で送信済みとみなす
+      }
+      // 60秒のTTLでマーク
+      await c.env.COLLECTION_STORE.put(dedupeKey, '1', { expirationTtl: 60 });
+    } catch (dedupeErr) {
+      console.log('⚠️ Dedupe marking failed (non-fatal):', dedupeErr);
+    }
+
     // Discord Bot API URL（環境変数優先、なければ既定値）
     const DISCORD_BOT_API_URL = c.env.DISCORD_BOT_API_URL || 'https://nft-verification-bot.onrender.com';
     console.log('🔗 Discord Bot API URL:', DISCORD_BOT_API_URL);
@@ -528,6 +626,9 @@ async function notifyDiscordBot(c: Context<{ Bindings: Env }>, discordId: string
 
 // 認証済みユーザー管理
 const VERIFIED_USERS_KEY = 'verified_users';
+// 管理者ログイン用KVキー接頭辞
+const ADMIN_LOGIN_NONCE_PREFIX = 'admin_login_nonce:'; // TTL 5分
+const ADMIN_TOKEN_PREFIX = 'admin_token:'; // TTL 24時間
 
 interface VerifiedUser {
   discordId: string;
@@ -1353,6 +1454,62 @@ app.post('/api/verify', async (c) => {
       }, 400);
     }
 
+    // 既存認証ユーザーの先行救済（KVベースで即時ロール再付与）
+    try {
+      const existingUsers = await getVerifiedUsers(c);
+      const existing = existingUsers.find((u) =>
+        u.discordId === discordId && (u.address || '').toLowerCase() === (address || '').toLowerCase()
+      );
+
+      if (existing) {
+        const collectionsData = await c.env.COLLECTION_STORE.get('collections');
+        const allCollections: NFTCollection[] = collectionsData ? JSON.parse(collectionsData) : [];
+        const savedCollectionIds = (existing.collectionId || '').split(',').filter(Boolean);
+        const regrantRoles = savedCollectionIds
+          .map((cid) => allCollections.find((col) => col.id === cid))
+          .filter((col): col is NFTCollection => Boolean(col))
+          .map((col) => ({ roleId: col.roleId, roleName: col.roleName }));
+
+        if (regrantRoles.length > 0) {
+          const regrantData = {
+            address,
+            discordId,
+            collectionIds: savedCollectionIds,
+            grantedRoles: regrantRoles,
+            reason: '既存の認証者としてロールを再付与しました。',
+            timestamp: new Date().toISOString()
+          };
+
+          await notifyDiscordBot(c, discordId, 'grant_roles', regrantData);
+
+          // lastChecked の更新
+          await addVerifiedUser(c, {
+            discordId,
+            address,
+            collectionId: existing.collectionId,
+            roleId: regrantRoles[0].roleId,
+            roleName: regrantRoles[0].roleName,
+            verifiedAt: existing.verifiedAt,
+            lastChecked: new Date().toISOString()
+          });
+
+          // 使用済みナンスを削除
+          await c.env.NONCE_STORE.delete(nonce);
+
+          return c.json({
+            success: true,
+            data: {
+              grantedRoles: regrantRoles,
+              verificationResults: [],
+              message: '既存の認証を検出しました。ロールを再付与しました。'
+            }
+          });
+        }
+      }
+    } catch (e) {
+      console.log('⚠️ Early regrant check failed:', e);
+    }
+
     // 署名検証（@suiet/wallet-kit形式 + メッセージ整合性）
     console.log('=== SIGNATURE VERIFICATION ===');
     console.log('Request body:', body);
@@ -1469,22 +1626,20 @@ app.post('/api/verify', async (c) => {
       try {
         const existingUsers = await getVerifiedUsers(c);
         const existingForThisAddress = existingUsers.find((u) =>
-          u.discordId === discordId &&
-          (u.address || '').toLowerCase() === (address || '').toLowerCase() &&
-          // 対象コレクションのいずれかに一致
-          (u.collectionId || '')
-            .split(',')
-            .some((cid) => targetCollections.some((col) => col.id === cid))
+          u.discordId === discordId && (u.address || '').toLowerCase() === (address || '').toLowerCase()
         );
 
         if (existingForThisAddress) {
-          // 既存ユーザーに対して、対象コレクションに基づきロールを再構築
-          const existingCollectionIds = (existingForThisAddress.collectionId || '')
+          // KVに保存されているコレクションIDを基準に、現在のコレクション一覧からロールを復元
+          const savedCollectionIds = (existingForThisAddress.collectionId || '')
             .split(',')
-            .filter((cid) => cid && targetCollections.some((col) => col.id === cid));
+            .filter((cid) => cid && cid.trim().length > 0);
 
-          const regrantRoles = existingCollectionIds
-            .map((cid) => targetCollections.find((col) => col.id === cid))
+          const collectionsData = await c.env.COLLECTION_STORE.get('collections');
+          const allCollections: NFTCollection[] = collectionsData ? JSON.parse(collectionsData) : [];
+
+          const regrantRoles = savedCollectionIds
+            .map((cid) => allCollections.find((col) => col.id === cid))
             .filter((col): col is NFTCollection => Boolean(col))
             .map((col) => ({ roleId: col.roleId, roleName: col.roleName }));
 
@@ -1492,16 +1647,16 @@ app.post('/api/verify', async (c) => {
             const regrantData = {
               address,
               discordId,
-              collectionIds: existingCollectionIds,
-              verificationResults: verificationResults,
+              collectionIds: savedCollectionIds,
+              verificationResults,
               grantedRoles: regrantRoles,
-              reason: 'Already verified user detected. Re-granting roles.',
+              reason: '既存の認証を検出しました。ロールを再付与します。',
               timestamp: new Date().toISOString()
             };
 
             await notifyDiscordBot(c, discordId, 'grant_roles', regrantData);
 
-            // lastCheckedの更新
+            // lastChecked の更新（verifiedAtは維持）
             await addVerifiedUser(c, {
               discordId,
               address,
@@ -1582,6 +1737,9 @@ app.post('/api/verify', async (c) => {
 // バッチ処理API
 app.post('/api/admin/batch-check', async (c) => {
   try {
+    // Adminトークン検証
+    const auth = await verifyAdminToken(c);
+    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized' }, 401);
     console.log('🔄 Starting batch check process...');
     
     const verifiedUsers = await getVerifiedUsers(c);
@@ -1698,6 +1856,8 @@ app.post('/api/admin/batch-check', async (c) => {
 // 認証済みユーザー一覧取得API
 app.get('/api/admin/verified-users', async (c) => {
   try {
+    const auth = await verifyAdminToken(c);
+    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized' }, 401);
     const users = await getVerifiedUsers(c);
     
     return c.json({
@@ -1716,6 +1876,8 @@ app.get('/api/admin/verified-users', async (c) => {
 // デバッグ用: 認証済みユーザー一覧を詳細表示
 app.get('/api/admin/debug/verified-users', async (c) => {
   try {
+    const auth = await verifyAdminToken(c);
+    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized' }, 401);
     const users = await getVerifiedUsers(c);
     
     console.log('🔍 Debug: Verified users in KV store:');
@@ -1747,6 +1909,8 @@ app.get('/api/admin/debug/verified-users', async (c) => {
 // デバッグ用: 特定のDiscord IDでユーザーを検索
 app.get('/api/admin/debug/user/:discordId', async (c) => {
   try {
+    const auth = await verifyAdminToken(c);
+    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized' }, 401);
     const discordId = c.req.param('discordId');
     const users = await getVerifiedUsers(c);
     
@@ -2055,6 +2219,8 @@ app.post('/api/admin/batch-execute', async (c) => {
 // バッチ処理設定取得API
 app.get('/api/admin/batch-config', async (c) => {
   try {
+    const auth = await verifyAdminToken(c);
+    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized' }, 401);
     const config = await getBatchConfig(c);
     const stats = await getBatchStats(c);
     
@@ -2077,6 +2243,8 @@ app.get('/api/admin/batch-config', async (c) => {
 // バッチ処理設定更新API
 app.put('/api/admin/batch-config', async (c) => {
   try {
+    const auth = await verifyAdminToken(c);
+    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized' }, 401);
     const body = await c.req.json();
     const { enabled, interval, maxUsersPerBatch, retryAttempts } = body;
     
@@ -2111,6 +2279,8 @@ app.put('/api/admin/batch-config', async (c) => {
 // バッチ処理統計取得API
 app.get('/api/admin/batch-stats', async (c) => {
   try {
+    const auth = await verifyAdminToken(c);
+    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized' }, 401);
     const stats = await getBatchStats(c);
     
     return c.json({
@@ -2129,6 +2299,8 @@ app.get('/api/admin/batch-stats', async (c) => {
 // バッチ処理実行スケジュール確認API
 app.get('/api/admin/batch-schedule', async (c) => {
   try {
+    const auth = await verifyAdminToken(c);
+    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized' }, 401);
     const config = await getBatchConfig(c);
     const now = new Date();
     const nextRun = new Date(config.nextRun);
