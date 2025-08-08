@@ -1465,6 +1465,68 @@ app.post('/api/verify', async (c) => {
 
     // NFTが見つからない場合
     if (grantedRoles.length === 0) {
+      // 既存認証ユーザーかを確認し、該当する場合はロール再付与を試みる
+      try {
+        const existingUsers = await getVerifiedUsers(c);
+        const existingForThisAddress = existingUsers.find((u) =>
+          u.discordId === discordId &&
+          (u.address || '').toLowerCase() === (address || '').toLowerCase() &&
+          // 対象コレクションのいずれかに一致
+          (u.collectionId || '')
+            .split(',')
+            .some((cid) => targetCollections.some((col) => col.id === cid))
+        );
+
+        if (existingForThisAddress) {
+          // 既存ユーザーに対して、対象コレクションに基づきロールを再構築
+          const existingCollectionIds = (existingForThisAddress.collectionId || '')
+            .split(',')
+            .filter((cid) => cid && targetCollections.some((col) => col.id === cid));
+
+          const regrantRoles = existingCollectionIds
+            .map((cid) => targetCollections.find((col) => col.id === cid))
+            .filter((col): col is NFTCollection => Boolean(col))
+            .map((col) => ({ roleId: col.roleId, roleName: col.roleName }));
+
+          if (regrantRoles.length > 0) {
+            const regrantData = {
+              address,
+              discordId,
+              collectionIds: existingCollectionIds,
+              verificationResults: verificationResults,
+              grantedRoles: regrantRoles,
+              reason: 'Already verified user detected. Re-granting roles.',
+              timestamp: new Date().toISOString()
+            };
+
+            await notifyDiscordBot(c, discordId, 'grant_roles', regrantData);
+
+            // lastCheckedの更新
+            await addVerifiedUser(c, {
+              discordId,
+              address,
+              collectionId: existingForThisAddress.collectionId,
+              roleId: regrantRoles[0].roleId,
+              roleName: regrantRoles[0].roleName,
+              verifiedAt: existingForThisAddress.verifiedAt,
+              lastChecked: new Date().toISOString()
+            });
+
+            return c.json({
+              success: true,
+              data: {
+                grantedRoles: regrantRoles,
+                verificationResults,
+                message: '既存の認証を検出しました。ロールを再付与しました。'
+              }
+            });
+          }
+        }
+      } catch (e) {
+        console.log('⚠️ Already-verified fallback handling failed:', e);
+      }
+
+      // 通常の失敗通知
       await notifyDiscordBot(c, discordId, 'verification_failed', {
         ...notificationData,
         reason: 'No NFTs found in any selected collections'
@@ -1583,6 +1645,26 @@ app.post('/api/admin/batch-check', async (c) => {
           }
         } else {
           console.log(`✅ User ${user.discordId} still has NFT`);
+          // 所有している場合でも、万一ロールが外れていた時のため再付与を試みる
+          // user.collectionIdはIDのCSVの可能性があるため、それに対応
+          const collectionsData = await c.env.COLLECTION_STORE.get('collections');
+          const allCollections = collectionsData ? JSON.parse(collectionsData) : [];
+          const regrantCollectionIds = user.collectionId.split(',').filter(Boolean);
+          const regrantRoles = regrantCollectionIds
+            .map((cid) => allCollections.find((col: any) => col.id === cid))
+            .filter((col: any) => col && col.roleId)
+            .map((col: any) => ({ roleId: col.roleId, roleName: col.roleName }));
+
+          if (regrantRoles.length > 0) {
+            await notifyDiscordBot(c, user.discordId, 'grant_roles', {
+              address: user.address,
+              discordId: user.discordId,
+              collectionIds: regrantCollectionIds,
+              grantedRoles: regrantRoles,
+              reason: 'Ensuring roles are granted for verified user',
+              timestamp: new Date().toISOString()
+            });
+          }
         }
         
         processedCount++;
@@ -1881,6 +1963,25 @@ async function executeBatchCheck(c: Context<{ Bindings: Env }>): Promise<BatchSt
           }
         } else {
           console.log(`✅ User ${user.discordId} still has NFT`);
+          // 所有している場合でも、万一ロールが外れていた時のため再付与を試みる
+          const collectionsData = await c.env.COLLECTION_STORE.get('collections');
+          const allCollections = collectionsData ? JSON.parse(collectionsData) : [];
+          const regrantCollectionIds = user.collectionId.split(',').filter(Boolean);
+          const regrantRoles = regrantCollectionIds
+            .map((cid) => allCollections.find((col: any) => col.id === cid))
+            .filter((col: any) => col && col.roleId)
+            .map((col: any) => ({ roleId: col.roleId, roleName: col.roleName }));
+
+          if (regrantRoles.length > 0) {
+            await notifyDiscordBot(c, user.discordId, 'grant_roles', {
+              address: user.address,
+              discordId: user.discordId,
+              collectionIds: regrantCollectionIds,
+              grantedRoles: regrantRoles,
+              reason: 'Ensuring roles are granted for verified user',
+              timestamp: new Date().toISOString()
+            });
+          }
         }
         
         processedCount++;
