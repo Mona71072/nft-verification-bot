@@ -1,4 +1,5 @@
 import { Hono, Context } from 'hono';
+import * as ed25519 from '@noble/ed25519';
 
 // NFTコレクション型定義
 interface NFTCollection {
@@ -38,7 +39,6 @@ app.use('*', async (c, next) => {
   c.header('Access-Control-Allow-Origin', '*');
   c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
   c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
-  c.header('Access-Control-Allow-Credentials', 'true');
   c.header('Access-Control-Max-Age', '86400');
   c.header('Vary', 'Origin');
   
@@ -51,7 +51,6 @@ app.use('*', async (c, next) => {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS, PUT, DELETE',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Accept, Origin',
-        'Access-Control-Allow-Credentials': 'true',
         'Access-Control-Max-Age': '86400',
         'Vary': 'Origin'
       }
@@ -130,29 +129,61 @@ app.post('/api/nonce', async (c) => {
 
 
 
-// 署名検証関数（@suiet/wallet-kit対応）
-function verifySignedMessage(signatureData: any): boolean {
+// ================
+// 署名検証ヘルパー
+// ================
+// Suietの signPersonalMessage の返値フォーマット例:
+// {
+//   signature: Base64 or Uint8Array,
+//   bytes: Uint8Array (署名対象),
+//   publicKey?: Base64 or Uint8Array
+// }
+function fromBase64(base64: string): Uint8Array {
+  const bin = atob(base64);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return arr;
+}
+
+async function verifySignedMessage(signatureData: any, expectedMessageBytes: Uint8Array): Promise<boolean> {
   try {
-    console.log('Verifying signature with @suiet/wallet-kit format...');
-    console.log('Signature data received:', signatureData);
-    
-    const { signature, bytes } = signatureData;
-    
-    if (!signature) {
-      console.error('Missing signature field');
+    // SuietのsignPersonalMessageは bytes=Uint8Array を署名対象にする
+    // ここでは最低限の整合性検証（将来的に公開鍵検証を追加）
+    const { signature, bytes, publicKey } = signatureData ?? {};
+
+    if (!signature || !bytes) {
+      console.error('Missing signature or bytes');
       return false;
     }
 
-    // 開発用: 署名が存在し、適切な形式であれば有効とする
-    if (signature && signature.length > 50) {  // Base64署名の長さチェック
-      console.log('Development mode: Signature verification passed');
-      console.log('Signature length:', signature.length);
-      console.log('Has bytes:', !!bytes);
-      return true;
+    // 受信bytesとサーバー側で再構築した expectedMessageBytes を厳密一致
+    const received = typeof bytes === 'string' ? fromBase64(bytes) : bytes;
+    const same = received.length === expectedMessageBytes.length && received.every((b, i) => b === expectedMessageBytes[i]);
+    if (!same) {
+      console.error('Message bytes mismatch');
+      return false;
     }
 
-    console.log('Signature verification failed: invalid signature format');
-    return false;
+    // 署名・公開鍵フォーマット
+    const signatureBytes = typeof signature === 'string' ? fromBase64(signature) : signature;
+    if (!signatureBytes || !(signatureBytes instanceof Uint8Array)) {
+      console.error('Invalid signature format');
+      return false;
+    }
+
+    const publicKeyBytes = publicKey
+      ? (typeof publicKey === 'string' ? fromBase64(publicKey) : publicKey)
+      : null;
+
+    if (!publicKeyBytes) {
+      console.error('Missing publicKey for signature verification');
+      return false;
+    }
+
+    // Ed25519 署名検証
+    const ok = await ed25519.verify(signatureBytes, expectedMessageBytes, publicKeyBytes);
+    if (!ok) console.error('Ed25519 verification failed');
+    return ok;
   } catch (error) {
     console.error('Signature verification error:', error);
     return false;
@@ -167,6 +198,25 @@ function validateNonce(nonce: string, storedNonceData: any): boolean {
   } catch (error) {
     console.error('Nonce validation error:', error);
     return false;
+  }
+}
+
+// ================
+// Sui RPC ヘルパー
+// ================
+async function rpcCall<T = any>(rpcUrl: string, body: any, timeoutMs = 15000): Promise<T> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(rpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+    return await res.json() as T;
+  } finally {
+    clearTimeout(id);
   }
 }
 
@@ -185,6 +235,32 @@ async function hasTargetNft(address: string, collectionId?: string): Promise<boo
         const suiRpcUrl = 'https://fullnode.mainnet.sui.io:443';
         
         console.log(`Checking NFT ownership for address: ${address}, collection: ${collectionId}`);
+        // 先に軽量な直接所有チェック（ページネーション + タイムアウト + 早期終了）
+        try {
+          let directCursor: any = null;
+          for (let page = 0; page < 5; page++) {
+            const directData = await rpcCall<any>(suiRpcUrl, {
+              jsonrpc: '2.0',
+              id: 100,
+              method: 'suix_getOwnedObjects',
+              params: [
+                address,
+                { filter: { StructType: collectionId }, options: { showType: true } },
+                directCursor,
+                50
+              ]
+            }, 15000);
+            const dataArr = directData.result?.data ?? [];
+            if (dataArr.length > 0) {
+              console.log(`✅ Direct NFTs found (fast path): ${dataArr.length} for ${address} in ${collectionId}`);
+              return true;
+            }
+            directCursor = directData.result?.nextCursor ?? null;
+            if (!directCursor) break;
+          }
+        } catch (fastErr) {
+          console.log('Fast direct ownership check failed, falling back:', fastErr);
+        }
         
         // 方法1: 直接所有されているNFTを確認
         const directResponse = await fetch(`${suiRpcUrl}`, {
@@ -378,8 +454,8 @@ async function notifyDiscordBot(c: Context<{ Bindings: Env }>, discordId: string
     console.log(`🔄 Discord Bot API: ${action} for user ${discordId}`);
     console.log('📋 Verification data:', verificationData);
     
-    // レンダーのDiscord Bot API URL
-    const DISCORD_BOT_API_URL = 'https://nft-verification-bot.onrender.com';
+    // Discord Bot API URL（環境変数優先、なければ既定値）
+    const DISCORD_BOT_API_URL = c.env.DISCORD_BOT_API_URL || 'https://nft-verification-bot.onrender.com';
     console.log('🔗 Discord Bot API URL:', DISCORD_BOT_API_URL);
     
     if (!DISCORD_BOT_API_URL) {
@@ -589,7 +665,7 @@ async function isAdmin(c: Context<{ Bindings: Env }>, address: string): Promise<
     console.log(`🔍 Checking admin status for address: ${address}`);
     console.log(`🔍 Normalized address: ${normalizedAddress}`);
     console.log(`🔍 Available admin addresses: ${adminAddresses.join(', ')}`);
-    const isAdminUser = adminAddresses.includes(normalizedAddress);
+    const isAdminUser = adminAddresses.some((a: string) => a.toLowerCase() === normalizedAddress);
     console.log(`🔍 Is admin: ${isAdminUser}`);
     return isAdminUser;
   } catch (error) {
@@ -1223,7 +1299,7 @@ app.get('/api/discord/roles', async (c) => {
 app.post('/api/verify', async (c) => {
   try {
     const body = await c.req.json();
-    const { signature, address, discordId, nonce, message, collectionIds } = body;
+    const { signature, address, discordId, nonce, authMessage, bytes, collectionIds } = body;
 
     // 必須パラメータチェック
     if (!signature || !address || !discordId || !nonce) {
@@ -1254,17 +1330,25 @@ app.post('/api/verify', async (c) => {
       }, 400);
     }
 
-    // 署名検証（@suiet/wallet-kit形式）
+    // 署名検証（@suiet/wallet-kit形式 + メッセージ整合性）
     console.log('=== SIGNATURE VERIFICATION ===');
     console.log('Request body:', body);
-    
-    const signatureData = {
-      signature: signature,
-      bytes: body.bytes || body.messageBytes,
-      authMessage: body.authMessage
-    };
-    
-    const isValidSignature = verifySignedMessage(signatureData);
+
+    // サーバーで期待するメッセージを再構築
+    // authMessage には address/discordId/nonce/timestamp を含める前提（フロントも同様に修正）
+    if (!authMessage || typeof authMessage !== 'string') {
+      return c.json({ success: false, error: 'Invalid authMessage' }, 400);
+    }
+
+    // 最低限、必要キーの含有をチェック
+    const mustIncludes = [address, discordId, nonce].every(v => authMessage.includes(String(v)));
+    if (!mustIncludes) {
+      return c.json({ success: false, error: 'authMessage mismatch' }, 400);
+    }
+
+    const expectedBytes = new TextEncoder().encode(authMessage);
+    const signatureData = { signature, bytes, publicKey: body.publicKey };
+    const isValidSignature = await verifySignedMessage(signatureData, expectedBytes);
     if (!isValidSignature) {
       return c.json({
         success: false,
@@ -1362,7 +1446,7 @@ app.post('/api/verify', async (c) => {
     await addVerifiedUser(c, {
       discordId: discordId,
       address: address,
-      collectionId: collectionIds.join(','), // 複数コレクションの場合はカンマ区切りで保存
+      collectionId: Array.isArray(collectionIds) ? collectionIds.join(',') : 'default',
       roleId: grantedRoles[0].roleId, // 最初に付与されたロールIDを保存
       roleName: grantedRoles[0].roleName, // 最初に付与されたロール名を保存
       verifiedAt: new Date().toISOString(),
@@ -1938,4 +2022,15 @@ app.get('/api/admin/batch-schedule', async (c) => {
 });
 
 
-export default app; 
+export default {
+  fetch: app.fetch,
+  scheduled: async (event: ScheduledEvent, env: Env, ctx: ExecutionContext) => {
+    try {
+      const c = { env } as unknown as Context<{ Bindings: Env }>;
+      const stats = await executeBatchCheck(c);
+      console.log('✅ Scheduled batch executed:', stats);
+    } catch (e) {
+      console.error('❌ Scheduled handler error:', e);
+    }
+  }
+};

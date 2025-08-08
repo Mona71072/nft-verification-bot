@@ -35,3 +35,7 @@ id = "dfd1a07f0e704320bd5324fc3102f3ba"
 [[env.production.kv_namespaces]]
 binding = "COLLECTION_STORE"
 id = "73186a10a62946718119aa112e87dba9" 
+
+# Cron Schedules（バッチ自動実行）
+[triggers]
+crons = ["0 * * * *"] # 毎時 0 分

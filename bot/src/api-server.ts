@@ -21,16 +21,7 @@ const PORT = config.PORT;
 app.use(express.json());
 
 // ヘルスチェックエンドポイント
-app.get('/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'ok', 
-    timestamp: new Date().toISOString(),
-    service: 'nft-verification-bot',
-    environment: process.env.NODE_ENV || 'development',
-    uptime: process.uptime(),
-    memory: process.memoryUsage()
-  });
-});
+// /health は下部で定義済みのため重複回避
 
 // CORS設定
 app.use((req, res, next) => {

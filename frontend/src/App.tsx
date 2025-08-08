@@ -234,8 +234,9 @@ function NFTVerification() {
       const nonce = nonceData.data.nonce;
       console.log('Nonce received:', nonce);
 
-      // 2. 署名メッセージの生成
-      const authMessage = `Sign in to SXT NFT Verification at ${new Date().toISOString()}`;
+      // 2. 署名メッセージの生成（サーバー側と合致する安全なフォーマット）
+      const timestamp = new Date().toISOString();
+      const authMessage = `SXT NFT Verification\naddress=${account.address}\ndiscordId=${discordId.trim()}\nnonce=${nonce}\ntimestamp=${timestamp}`;
       console.log('Auth message:', authMessage);
 
       // 3. メッセージを署名
@@ -244,8 +245,9 @@ function NFTVerification() {
         throw new Error('署名機能が利用できません。ウォレットが署名をサポートしているか確認してください。');
       }
       
+      const messageBytes = new TextEncoder().encode(authMessage);
       const signatureResult = await signPersonalMessage({
-        message: new TextEncoder().encode(authMessage)
+        message: messageBytes
       }).catch(error => {
         console.error('Signature error:', error);
         throw new Error('署名に失敗しました。ウォレットで署名を承認してください。');
@@ -256,12 +258,14 @@ function NFTVerification() {
       // 4. バックエンドに送信
       const requestBody = {
         signature: signatureResult.signature,
+        bytes: signatureResult.bytes || messageBytes, // Suietが返すbytesを優先
+        publicKey: signatureResult.publicKey, // Ed25519 検証用
         address: account.address,
         discordId: discordId.trim(),
         nonce: nonce,
         authMessage: authMessage,
         walletType: 'Generic',
-        collectionIds: selectedCollections // 選択されたコレクションIDを追加
+        collectionIds: selectedCollections
       };
 
       console.log('Sending verification request:', requestBody);
