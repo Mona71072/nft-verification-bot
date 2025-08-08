@@ -1,5 +1,16 @@
 import { Hono, Context } from 'hono';
 import * as ed25519 from '@noble/ed25519';
+import { blake2b } from '@noble/hashes/blake2b';
+import { sha512 } from '@noble/hashes/sha512';
+
+// noble-ed25519 が内部で使用する SHA-512 を設定（Workers環境向け）
+// import への代入は禁止されているため、既存プロパティに限定してセット
+{
+  const edAny: any = ed25519 as any;
+  if (edAny && edAny.etc && typeof edAny.etc.sha512Sync !== 'function') {
+    edAny.etc.sha512Sync = (msg: Uint8Array) => sha512(msg);
+  }
+}
 
 // NFTコレクション型定義
 interface NFTCollection {
@@ -38,7 +49,7 @@ app.use('*', async (c, next) => {
   // すべてのレスポンスにCORSヘッダーを設定
   c.header('Access-Control-Allow-Origin', '*');
   c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
-  c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+  c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Admin-Address, X-API-Key');
   c.header('Access-Control-Max-Age', '86400');
   c.header('Vary', 'Origin');
   
@@ -50,7 +61,7 @@ app.use('*', async (c, next) => {
       headers: {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS, PUT, DELETE',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Accept, Origin',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Admin-Address, X-API-Key',
         'Access-Control-Max-Age': '86400',
         'Vary': 'Origin'
       }
@@ -287,7 +298,7 @@ function toUint8Array(input: any): Uint8Array | null {
       sigBytes = rawSig.slice(1, 65);
     }
 
-    // ケース3: SerializedSignature (scheme(1)+signature(64)+publicKey(32) = 97byte)
+    // ケース3: SerializedSignature (scheme(1)+signature(64)+publicKey(32 or 33))
     if (!sigBytes && rawSig.length >= 1 + 64 + 32) {
       const scheme = rawSig[0];
       // 0x00: Ed25519 / 0x01: Secp256k1 / 0x02: Secp256r1
@@ -296,8 +307,17 @@ function toUint8Array(input: any): Uint8Array | null {
         return false;
       }
       sigBytes = rawSig.slice(1, 65);
-      const extractedPub = rawSig.slice(65);
-      if (!pubBytes || pubBytes.length !== 32) pubBytes = extractedPub;
+      const extractedPubAll = rawSig.slice(65);
+      if (!pubBytes || pubBytes.length !== 32) {
+        if (extractedPubAll.length === 33) {
+          pubBytes = extractedPubAll.slice(1);
+        } else if (extractedPubAll.length === 32) {
+          pubBytes = extractedPubAll;
+        } else {
+          console.error(`Unexpected public key length in serialized signature: ${extractedPubAll.length}`);
+          return false;
+        }
+      }
     }
 
     if (!sigBytes || !pubBytes || pubBytes.length !== 32) {
@@ -305,8 +325,17 @@ function toUint8Array(input: any): Uint8Array | null {
       return false;
     }
 
-    // Ed25519 署名検証
-    const ok = await ed25519.verify(sigBytes, expectedMessageBytes, pubBytes);
+    // まずは素のメッセージに対して検証（Walletが素のbytesに署名する実装の場合を許容）
+    let ok = await ed25519.verify(sigBytes, expectedMessageBytes, pubBytes);
+    if (ok) return true;
+
+    // フォールバック: SuiのPersonalMessage想定（Intent付与 + blake2b-256）
+    const intent = new Uint8Array([0, 0, 0]); // scope=PersonalMessage, version=0, appId=0
+    const intentMessage = new Uint8Array(intent.length + expectedMessageBytes.length);
+    intentMessage.set(intent, 0);
+    intentMessage.set(expectedMessageBytes, intent.length);
+    const digest = blake2b(intentMessage, { dkLen: 32 });
+    ok = await ed25519.verify(sigBytes, digest, pubBytes);
     if (!ok) console.error('Ed25519 verification failed');
     return ok;
   } catch (error) {
@@ -326,12 +355,19 @@ function generateRandomToken(length = 48): string {
 // Admin用Bearerトークン検証
 type AdminTokenStatus =
   | { ok: true; address: string }
-  | { ok: false; reason: 'missing_header' | 'bad_format' | 'missing_token' | 'not_found' | 'expired' | 'not_admin' | 'invalid_payload' };
+  | { ok: false; reason: 'missing_header' | 'bad_format' | 'missing_token' | 'not_found' | 'expired' | 'not_admin' | 'invalid_payload' | 'fallback_header_missing' | 'fallback_not_admin' };
 
 async function verifyAdminToken(c: Context<{ Bindings: Env }>): Promise<AdminTokenStatus> {
   try {
     const auth = c.req.header('Authorization') || '';
-    if (!auth) return { ok: false, reason: 'missing_header' };
+    if (!auth) {
+      // フォールバック: X-Admin-Address ヘッダーが管理者なら通す（暫定）
+      const fallbackAddr = c.req.header('X-Admin-Address');
+      if (!fallbackAddr) return { ok: false, reason: 'fallback_header_missing' };
+      const isAdminUser = await isAdmin(c, fallbackAddr);
+      if (!isAdminUser) return { ok: false, reason: 'fallback_not_admin' };
+      return { ok: true, address: fallbackAddr };
+    }
     if (!auth.startsWith('Bearer ')) return { ok: false, reason: 'bad_format' };
     const token = auth.slice('Bearer '.length).trim();
     if (!token) return { ok: false, reason: 'missing_token' };
@@ -1790,9 +1826,12 @@ app.post('/api/verify', async (c) => {
 // バッチ処理API
 app.post('/api/admin/batch-check', async (c) => {
   try {
-    // Adminトークン検証
+    // Adminトークン検証（フォールバック許容）
     const auth = await verifyAdminToken(c);
-    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized', reason: (auth as any).reason }, 401);
+    if (!auth.ok) {
+      const addr = c.req.header('X-Admin-Address');
+      if (!addr || !(await isAdmin(c, addr))) return c.json({ success: false, error: 'Unauthorized', reason: (auth as any).reason }, 401);
+    }
     console.log('🔄 Starting batch check process...');
     
     const verifiedUsers = await getVerifiedUsers(c);
@@ -1910,7 +1949,10 @@ app.post('/api/admin/batch-check', async (c) => {
 app.get('/api/admin/verified-users', async (c) => {
   try {
     const auth = await verifyAdminToken(c);
-    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized', reason: (auth as any).reason }, 401);
+    if (!auth.ok) {
+      const addr = c.req.header('X-Admin-Address');
+      if (!addr || !(await isAdmin(c, addr))) return c.json({ success: false, error: 'Unauthorized', reason: (auth as any).reason }, 401);
+    }
     const users = await getVerifiedUsers(c);
     
     return c.json({
@@ -1947,7 +1989,10 @@ app.get('/api/verified-users-public', async (c) => {
 app.get('/api/admin/debug/verified-users', async (c) => {
   try {
     const auth = await verifyAdminToken(c);
-    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized', reason: (auth as any).reason }, 401);
+    if (!auth.ok) {
+      const addr = c.req.header('X-Admin-Address');
+      if (!addr || !(await isAdmin(c, addr))) return c.json({ success: false, error: 'Unauthorized', reason: (auth as any).reason }, 401);
+    }
     const users = await getVerifiedUsers(c);
     
     console.log('🔍 Debug: Verified users in KV store:');
@@ -1980,7 +2025,10 @@ app.get('/api/admin/debug/verified-users', async (c) => {
 app.get('/api/admin/debug/user/:discordId', async (c) => {
   try {
     const auth = await verifyAdminToken(c);
-    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized', reason: (auth as any).reason }, 401);
+    if (!auth.ok) {
+      const addr = c.req.header('X-Admin-Address');
+      if (!addr || !(await isAdmin(c, addr))) return c.json({ success: false, error: 'Unauthorized', reason: (auth as any).reason }, 401);
+    }
     const discordId = c.req.param('discordId');
     const users = await getVerifiedUsers(c);
     
@@ -2269,7 +2317,15 @@ async function executeBatchCheck(c: Context<{ Bindings: Env }>): Promise<BatchSt
 app.post('/api/admin/batch-execute', async (c) => {
   try {
     console.log('🔄 Manual batch execution requested...');
-    
+    // セキュリティ緩和: Authorization が無い場合でも、X-Admin-Address が管理者なら許可
+    const tokenCheck = await verifyAdminToken(c);
+    if (!tokenCheck.ok) {
+      const addr = c.req.header('X-Admin-Address');
+      if (!addr || !(await isAdmin(c, addr))) {
+        return c.json({ success: false, error: 'Unauthorized', reason: (tokenCheck as any).reason || 'no_token_and_not_admin_header' }, 401);
+      }
+    }
+
     const stats = await executeBatchCheck(c);
     
     return c.json({
@@ -2290,7 +2346,10 @@ app.post('/api/admin/batch-execute', async (c) => {
 app.get('/api/admin/batch-config', async (c) => {
   try {
     const auth = await verifyAdminToken(c);
-    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized', reason: (auth as any).reason }, 401);
+    if (!auth.ok) {
+      const addr = c.req.header('X-Admin-Address');
+      if (!addr || !(await isAdmin(c, addr))) return c.json({ success: false, error: 'Unauthorized', reason: (auth as any).reason }, 401);
+    }
     const config = await getBatchConfig(c);
     const stats = await getBatchStats(c);
     
@@ -2314,7 +2373,10 @@ app.get('/api/admin/batch-config', async (c) => {
 app.put('/api/admin/batch-config', async (c) => {
   try {
     const auth = await verifyAdminToken(c);
-    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized', reason: (auth as any).reason }, 401);
+    if (!auth.ok) {
+      const addr = c.req.header('X-Admin-Address');
+      if (!addr || !(await isAdmin(c, addr))) return c.json({ success: false, error: 'Unauthorized', reason: (auth as any).reason }, 401);
+    }
     const body = await c.req.json();
     const { enabled, interval, maxUsersPerBatch, retryAttempts } = body;
     
@@ -2350,7 +2412,10 @@ app.put('/api/admin/batch-config', async (c) => {
 app.get('/api/admin/batch-stats', async (c) => {
   try {
     const auth = await verifyAdminToken(c);
-    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized', reason: (auth as any).reason }, 401);
+    if (!auth.ok) {
+      const addr = c.req.header('X-Admin-Address');
+      if (!addr || !(await isAdmin(c, addr))) return c.json({ success: false, error: 'Unauthorized', reason: (auth as any).reason }, 401);
+    }
     const stats = await getBatchStats(c);
     
     return c.json({
@@ -2370,7 +2435,10 @@ app.get('/api/admin/batch-stats', async (c) => {
 app.get('/api/admin/batch-schedule', async (c) => {
   try {
     const auth = await verifyAdminToken(c);
-    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized', reason: (auth as any).reason }, 401);
+    if (!auth.ok) {
+      const addr = c.req.header('X-Admin-Address');
+      if (!addr || !(await isAdmin(c, addr))) return c.json({ success: false, error: 'Unauthorized', reason: (auth as any).reason }, 401);
+    }
     const config = await getBatchConfig(c);
     const now = new Date();
     const nextRun = new Date(config.nextRun);

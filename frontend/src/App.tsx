@@ -661,7 +661,7 @@ function AdminPage() {
       }
       // 1) ナンス取得
       const nonceResp = await fetch(`${API_BASE_URL}/api/admin/login-nonce`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify({ address: account.address })
       });
       const nonceJson = await nonceResp.json();
@@ -673,18 +673,35 @@ function AdminPage() {
       // 2) 署名
       const sig = await signPersonalMessage({ message: bytes });
       // 3) 検証 → トークン
+      const toBase64 = (value: any) => {
+        try {
+          if (!value) return undefined;
+          if (typeof value === 'string') return value; // 既にBase64の場合
+          const u8 = value instanceof Uint8Array ? value : new Uint8Array(Array.isArray(value) ? value : Object.keys(value).filter(k => /^\d+$/.test(k)).sort((a,b)=>Number(a)-Number(b)).map(k => value[k] as number));
+          let binary = '';
+          for (let i = 0; i < u8.length; i++) binary += String.fromCharCode(u8[i]);
+          return btoa(binary);
+        } catch { return undefined; }
+      };
+
+      const bytesForServer = typeof (sig as any)?.bytes === 'string' ? (sig as any).bytes : toBase64((sig as any)?.bytes || bytes);
+      let pkForServer: any = (sig as any)?.publicKey ?? (account as any)?.publicKey;
+      pkForServer = typeof pkForServer === 'string' ? pkForServer : toBase64(pkForServer);
+
       const verifyResp = await fetch(`${API_BASE_URL}/api/admin/login-verify`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify({
           address: account.address,
-          signature: sig.signature,
-          bytes: sig.bytes || bytes,
-          publicKey: (sig as any)?.publicKey ?? (account as any)?.publicKey,
+          signature: (sig as any).signature,
+          bytes: bytesForServer,
+          publicKey: pkForServer,
           authMessage,
           nonce
         })
       });
       const verifyJson = await verifyResp.json();
+      console.log('🔐 login-verify status:', verifyResp.status, verifyResp.statusText);
+      console.log('🔐 login-verify response:', verifyJson);
       if (!verifyJson.success) { alert(verifyJson.error || '管理者ログインに失敗しました'); return; }
       setAdminToken(verifyJson.data.token);
       try { localStorage.setItem('SXT_ADMIN_TOKEN', verifyJson.data.token); } catch {}
