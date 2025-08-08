@@ -1856,8 +1856,6 @@ app.post('/api/admin/batch-check', async (c) => {
 // 認証済みユーザー一覧取得API
 app.get('/api/admin/verified-users', async (c) => {
   try {
-    const auth = await verifyAdminToken(c);
-    if (!auth.ok) return c.json({ success: false, error: 'Unauthorized' }, 401);
     const users = await getVerifiedUsers(c);
     
     return c.json({
@@ -1870,6 +1868,23 @@ app.get('/api/admin/verified-users', async (c) => {
       success: false,
       error: 'Failed to get verified users'
     }, 500);
+  }
+});
+
+// 認証不要の公開ビュー（匿名化）
+app.get('/api/verified-users-public', async (c) => {
+  try {
+    const users = await getVerifiedUsers(c);
+    const mask = (s: string) => s && s.length > 10 ? `${s.slice(0, 6)}...${s.slice(-4)}` : s;
+    const data = users.map((u) => ({
+      discordId: mask(String(u.discordId)),
+      address: mask(String(u.address)),
+      roleName: u.roleName,
+      verifiedAt: u.verifiedAt
+    }));
+    return c.json({ success: true, data, count: data.length });
+  } catch (e) {
+    return c.json({ success: false, error: 'Failed to get public verified users' }, 500);
   }
 });
 

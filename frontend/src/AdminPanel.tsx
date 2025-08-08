@@ -45,7 +45,7 @@ function AdminPanel() {
   const [collections, setCollections] = useState<NFTCollection[]>([]);
   const [discordRoles, setDiscordRoles] = useState<DiscordRole[]>([]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [adminToken, setAdminToken] = useState<string | null>(null);
+  const [, setAdminToken] = useState<string | null>(null);
   const [address, setAddress] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');

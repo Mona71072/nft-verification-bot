@@ -598,6 +598,7 @@ function AdminPage() {
   const [adminToken, setAdminToken] = useState<string | null>(() => {
     try { return localStorage.getItem('SXT_ADMIN_TOKEN'); } catch { return null; }
   });
+  const [needsAdminAuth, setNeedsAdminAuth] = useState<boolean>(false);
   const [adminAddresses, setAdminAddresses] = useState<string[]>([]);
   const [collections, setCollections] = useState<NFTCollection[]>([]);
   const [verifiedUsers, setVerifiedUsers] = useState<VerifiedUser[]>([]);
@@ -765,6 +766,11 @@ function AdminPage() {
         const response = await fetch(`${API_BASE_URL}/api/admin/verified-users`, {
           headers: adminToken ? { 'Authorization': `Bearer ${adminToken}` } : undefined
         });
+        if (response.status === 401) {
+          setNeedsAdminAuth(true);
+          setVerifiedUsers([]);
+          return;
+        }
         const data = await response.json();
         if (data.success) {
           setVerifiedUsers(data.data);
