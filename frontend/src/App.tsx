@@ -679,7 +679,7 @@ function AdminPage() {
           address: account.address,
           signature: sig.signature,
           bytes: sig.bytes || bytes,
-          publicKey: (sig as any)?.publicKey,
+          publicKey: (sig as any)?.publicKey ?? (account as any)?.publicKey,
           authMessage,
           nonce
         })
@@ -705,10 +705,7 @@ function AdminPage() {
     }
   };
 
-  const handleAdminLogout = () => {
-    setAdminToken(null);
-    try { localStorage.removeItem('SXT_ADMIN_TOKEN'); } catch {}
-  };
+  // logout 機能は未使用のため一時的に無効化（警告抑制）
 
   // コレクション取得
   useEffect(() => {
