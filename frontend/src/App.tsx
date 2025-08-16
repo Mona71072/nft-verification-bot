@@ -3,11 +3,12 @@ import { ConnectButton } from '@suiet/wallet-kit';
 import '@suiet/wallet-kit/style.css';
 import { useWalletWithErrorHandling } from './hooks/useWallet';
 import { NFTVerification } from './components/NFTVerification';
+import AdminPanel from './AdminPanel';
 
 // APIベースURLの設定（本番環境用）
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
 
-// AdminPageコンポーネント（簡略版）
+// AdminPageコンポーネント（AdminPanelを使用）
 function AdminPage() {
   const { account, connected } = useWalletWithErrorHandling();
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
@@ -66,14 +67,8 @@ function AdminPage() {
     );
   }
 
-  return (
-    <div style={{ color: 'white', padding: '2rem' }}>
-      <h1 style={{ fontSize: '2rem', fontWeight: '700', marginBottom: '2rem', textAlign: 'center' }}>
-        管理者パネル
-      </h1>
-      <p style={{ textAlign: 'center' }}>管理者機能は開発中です。</p>
-    </div>
-  );
+  // 管理者権限がある場合はAdminPanelを表示
+  return <AdminPanel />;
 }
 
 function App() {
