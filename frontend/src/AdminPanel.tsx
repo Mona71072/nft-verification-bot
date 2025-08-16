@@ -62,6 +62,16 @@ function AdminPanel() {
     description: ''
   });
 
+  // 管理者認証ヘッダーを生成
+  const getAuthHeaders = () => {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    try {
+      const addr = localStorage.getItem('currentWalletAddress');
+      if (addr) headers['X-Admin-Address'] = addr;
+    } catch {}
+    return headers;
+  };
+
   const fetchCollections = async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/collections`);
@@ -119,7 +129,7 @@ function AdminPanel() {
     try {
       const response = await fetch(`${API_BASE_URL}/api/collections`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify(newCollection)
       });
 
@@ -143,7 +153,8 @@ function AdminPanel() {
     setLoading(true);
     try {
       const response = await fetch(`${API_BASE_URL}/api/collections/${id}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: getAuthHeaders()
       });
 
       const data = await response.json();
@@ -188,7 +199,7 @@ function AdminPanel() {
     try {
       const response = await fetch(`${API_BASE_URL}/api/collections/${editingCollection.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify(newCollection)
       });
 
@@ -210,7 +221,9 @@ function AdminPanel() {
   // バッチ処理設定取得
   const fetchBatchConfig = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/admin/batch-config`);
+      const response = await fetch(`${API_BASE_URL}/api/admin/batch-config`, {
+        headers: getAuthHeaders()
+      });
       const data = await response.json();
       if (data.success) {
         setBatchConfig(data.data.config);
@@ -229,7 +242,7 @@ function AdminPanel() {
     try {
       const response = await fetch(`${API_BASE_URL}/api/admin/batch-execute`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: getAuthHeaders()
       });
 
       const data = await response.json();
@@ -251,7 +264,7 @@ function AdminPanel() {
     try {
       const response = await fetch(`${API_BASE_URL}/api/admin/batch-config`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify(config)
       });
 

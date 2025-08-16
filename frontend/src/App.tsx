@@ -81,14 +81,25 @@ function App() {
     const checkAdmin = async () => {
       try {
         if (connected && account?.address) {
+          // AdminPanel から参照できるように現在のアドレスを保存
+          try {
+            localStorage.setItem('currentWalletAddress', account.address);
+          } catch {}
           const resp = await fetch(`${API_BASE_URL}/api/admin/check/${account.address}`);
           const data = await resp.json();
           setIsAdmin(Boolean(data?.success && data?.isAdmin));
         } else {
           setIsAdmin(false);
+          // 未接続時はクリア
+          try {
+            localStorage.removeItem('currentWalletAddress');
+          } catch {}
         }
       } catch (e) {
         setIsAdmin(false);
+        try {
+          localStorage.removeItem('currentWalletAddress');
+        } catch {}
       }
     };
     checkAdmin();
