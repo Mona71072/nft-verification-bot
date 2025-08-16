@@ -43,7 +43,11 @@ interface BatchStats {
 type DmMode = 'all' | 'new_and_revoke' | 'update_and_revoke' | 'revoke_only' | 'none';
 interface DmTemplate { title: string; description: string; color?: number }
 interface DmTemplates { successNew: DmTemplate; successUpdate: DmTemplate; failed: DmTemplate; revoked: DmTemplate }
-interface DmSettings { mode: DmMode; templates: DmTemplates }
+interface DmSettings { 
+  mode: DmMode; // 通常認証時のDM通知モード
+  batchMode: DmMode; // バッチ処理時のDM通知モード
+  templates: DmTemplates 
+}
 
 interface VerifiedUser {
   discordId: string;
@@ -68,7 +72,7 @@ function AdminPanel() {
   const [batchConfig, setBatchConfig] = useState<BatchConfig | null>(null);
   const [batchStats, setBatchStats] = useState<BatchStats | null>(null);
   const [batchLoading, setBatchLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'collections' | 'batch' | 'users' | 'admins'>('collections');
+  const [activeTab, setActiveTab] = useState<'collections' | 'batch' | 'users' | 'admins' | 'dm-settings'>('collections');
 
   // 認証済みユーザー関連の状態
   const [verifiedUsers, setVerifiedUsers] = useState<VerifiedUser[]>([]);
@@ -136,9 +140,40 @@ function AdminPanel() {
     try {
       const res = await fetch(`${API_BASE_URL}/api/admin/dm-settings`, { headers: getAuthHeaders() });
       const data = await res.json();
-      if (data.success) setDmSettings(data.data);
+      if (data.success) {
+        setDmSettings(data.data);
+        // テンプレートが空の場合は初期化を試行
+        if (!data.data.templates || 
+            !data.data.templates.successNew?.title || 
+            !data.data.templates.successUpdate?.title || 
+            !data.data.templates.failed?.title || 
+            !data.data.templates.revoked?.title) {
+          console.log('⚠️ DM templates are empty, attempting to initialize...');
+          await initializeDmSettings();
+        }
+      }
     } catch (e) {
       console.error('❌ Failed to fetch DM settings', e);
+    }
+  };
+
+  // DM通知設定の初期化
+  const initializeDmSettings = async () => {
+    try {
+      console.log('🔄 Initializing DM settings...');
+      const res = await fetch(`${API_BASE_URL}/api/admin/dm-settings/initialize`, {
+        method: 'POST',
+        headers: getAuthHeaders()
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDmSettings(data.data);
+        console.log('✅ DM settings initialized successfully');
+      } else {
+        console.error('❌ Failed to initialize DM settings:', data.error);
+      }
+    } catch (e) {
+      console.error('❌ Failed to initialize DM settings', e);
     }
   };
 
@@ -510,6 +545,8 @@ function AdminPanel() {
       fetchVerifiedUsers();
     } else if (activeTab === 'admins') {
       fetchAdminAddresses();
+    } else if (activeTab === 'dm-settings') {
+      fetchDmSettings();
     }
   }, [activeTab]);
 
@@ -577,6 +614,19 @@ function AdminPanel() {
           }}
         >
           管理者管理
+        </button>
+        <button
+          onClick={() => setActiveTab('dm-settings')}
+          style={{
+            padding: '0.5rem 1rem',
+            background: activeTab === 'dm-settings' ? '#007bff' : '#f8f9fa',
+            color: activeTab === 'dm-settings' ? 'white' : '#333',
+            border: '1px solid #ccc',
+            borderRadius: '4px',
+            cursor: 'pointer'
+          }}
+        >
+          DM通知設定
         </button>
       </div>
 
@@ -1028,114 +1078,7 @@ function AdminPanel() {
             )}
           </div>
 
-          {/* DM通知設定 */}
-          <div style={{ 
-            marginBottom: '2rem', 
-            padding: '1rem', 
-            border: '1px solid #ccc',
-            borderRadius: '8px'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h4>DM通知設定</h4>
-              {!dmEditing && (
-                <button
-                  onClick={() => { if (dmSettings) { setEditingDm({ ...dmSettings }); setDmEditing(true); } }}
-                  style={{ padding: '0.5rem 1rem', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-                >設定を編集</button>
-              )}
-            </div>
 
-            {dmSettings && !dmEditing && (
-              <div style={{ background: '#f8f9fa', padding: '1rem', borderRadius: '8px' }}>
-                <div style={{ marginBottom: '0.75rem' }}><strong>モード:</strong> {dmSettings.mode}</div>
-                <div style={{ display: 'grid', gap: '0.5rem' }}>
-                  <div>
-                    <strong>新規認証:</strong>
-                    <div style={{ background: '#fff', border: '1px solid #e9ecef', padding: '0.5rem', borderRadius: '4px' }}>
-                      <div><strong>タイトル:</strong> {dmSettings.templates.successNew.title}</div>
-                      <div style={{ whiteSpace: 'pre-wrap', marginTop: '0.25rem' }}><strong>本文:</strong> {dmSettings.templates.successNew.description}</div>
-                    </div>
-                  </div>
-                  <div>
-                    <strong>認証更新:</strong>
-                    <div style={{ background: '#fff', border: '1px solid #e9ecef', padding: '0.5rem', borderRadius: '4px' }}>
-                      <div><strong>タイトル:</strong> {dmSettings.templates.successUpdate.title}</div>
-                      <div style={{ whiteSpace: 'pre-wrap', marginTop: '0.25rem' }}><strong>本文:</strong> {dmSettings.templates.successUpdate.description}</div>
-                    </div>
-                  </div>
-                  <div>
-                    <strong>認証失敗:</strong>
-                    <div style={{ background: '#fff', border: '1px solid #e9ecef', padding: '0.5rem', borderRadius: '4px' }}>
-                      <div><strong>タイトル:</strong> {dmSettings.templates.failed.title}</div>
-                      <div style={{ whiteSpace: 'pre-wrap', marginTop: '0.25rem' }}><strong>本文:</strong> {dmSettings.templates.failed.description}</div>
-                    </div>
-                  </div>
-                  <div>
-                    <strong>ロール剥奪:</strong>
-                    <div style={{ background: '#fff', border: '1px solid #e9ecef', padding: '0.5rem', borderRadius: '4px' }}>
-                      <div><strong>タイトル:</strong> {dmSettings.templates.revoked.title}</div>
-                      <div style={{ whiteSpace: 'pre-wrap', marginTop: '0.25rem' }}><strong>本文:</strong> {dmSettings.templates.revoked.description}</div>
-                    </div>
-                  </div>
-                </div>
-                <small style={{ color: '#6c757d' }}>利用可能な変数: {`{discordId} {roles} {collections} {reason} {timestamp}`}</small>
-              </div>
-            )}
-
-            {dmEditing && editingDm && (
-              <div style={{ background: '#fff3cd', padding: '1rem', borderRadius: '8px', border: '1px solid #ffeaa7' }}>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label>モード: </label>
-                  <select
-                    value={editingDm.mode}
-                    onChange={(e) => setEditingDm({ ...editingDm, mode: e.target.value as DmMode })}
-                    style={{ marginLeft: '0.5rem' }}
-                  >
-                    <option value="all">常に送る（新規/更新/失敗/剥奪）</option>
-                    <option value="new_and_revoke">新規認証と剥奪のみ</option>
-                    <option value="update_and_revoke">更新認証と剥奪のみ</option>
-                    <option value="revoke_only">剥奪のみ</option>
-                    <option value="none">送らない</option>
-                  </select>
-                </div>
-                <div style={{ display: 'grid', gap: '0.75rem' }}>
-                  <div>
-                    <label>新規認証テンプレート</label>
-                    <div style={{ display: 'grid', gap: '0.5rem' }}>
-                      <input placeholder="タイトル" value={editingDm.templates.successNew.title} onChange={(e) => setEditingDm({ ...editingDm, templates: { ...editingDm.templates, successNew: { ...editingDm.templates.successNew, title: e.target.value } } })} style={{ padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px' }} />
-                      <textarea placeholder="本文" value={editingDm.templates.successNew.description} onChange={(e) => setEditingDm({ ...editingDm, templates: { ...editingDm.templates, successNew: { ...editingDm.templates.successNew, description: e.target.value } } })} style={{ width: '100%', minHeight: '80px', padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px' }} />
-                    </div>
-                  </div>
-                  <div>
-                    <label>認証更新テンプレート</label>
-                    <div style={{ display: 'grid', gap: '0.5rem' }}>
-                      <input placeholder="タイトル" value={editingDm.templates.successUpdate.title} onChange={(e) => setEditingDm({ ...editingDm, templates: { ...editingDm.templates, successUpdate: { ...editingDm.templates.successUpdate, title: e.target.value } } })} style={{ padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px' }} />
-                      <textarea placeholder="本文" value={editingDm.templates.successUpdate.description} onChange={(e) => setEditingDm({ ...editingDm, templates: { ...editingDm.templates, successUpdate: { ...editingDm.templates.successUpdate, description: e.target.value } } })} style={{ width: '100%', minHeight: '80px', padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px' }} />
-                    </div>
-                  </div>
-                  <div>
-                    <label>認証失敗テンプレート</label>
-                    <div style={{ display: 'grid', gap: '0.5rem' }}>
-                      <input placeholder="タイトル" value={editingDm.templates.failed.title} onChange={(e) => setEditingDm({ ...editingDm, templates: { ...editingDm.templates, failed: { ...editingDm.templates.failed, title: e.target.value } } })} style={{ padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px' }} />
-                      <textarea placeholder="本文" value={editingDm.templates.failed.description} onChange={(e) => setEditingDm({ ...editingDm, templates: { ...editingDm.templates, failed: { ...editingDm.templates.failed, description: e.target.value } } })} style={{ width: '100%', minHeight: '80px', padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px' }} />
-                    </div>
-                  </div>
-                  <div>
-                    <label>ロール剥奪テンプレート</label>
-                    <div style={{ display: 'grid', gap: '0.5rem' }}>
-                      <input placeholder="タイトル" value={editingDm.templates.revoked.title} onChange={(e) => setEditingDm({ ...editingDm, templates: { ...editingDm.templates, revoked: { ...editingDm.templates.revoked, title: e.target.value } } })} style={{ padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px' }} />
-                      <textarea placeholder="本文" value={editingDm.templates.revoked.description} onChange={(e) => setEditingDm({ ...editingDm, templates: { ...editingDm.templates, revoked: { ...editingDm.templates.revoked, description: e.target.value } } })} style={{ width: '100%', minHeight: '80px', padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px' }} />
-                    </div>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
-                  <button onClick={saveDmSettings} style={{ padding: '0.5rem 1rem', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px' }}>{'保存'}</button>
-                  <button onClick={() => { setDmEditing(false); setEditingDm(null); }} style={{ padding: '0.5rem 1rem', background: '#6c757d', color: 'white', border: 'none', borderRadius: '4px' }}>{'キャンセル'}</button>
-                </div>
-                <small style={{ color: '#6c757d' }}>利用可能な変数: {`{discordId} {roles} {collections} {reason} {timestamp}`}</small>
-              </div>
-            )}
-          </div>
         </div>
       )}
 
@@ -1382,6 +1325,294 @@ function AdminPanel() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {activeTab === 'dm-settings' && (
+        <div>
+          <h3>DM通知設定</h3>
+          
+          {dmSettings ? (
+            <div>
+              {/* 現在の設定表示 */}
+              {!dmEditing ? (
+                <div style={{ 
+                  marginBottom: '2rem', 
+                  padding: '1rem', 
+                  border: '1px solid #ccc',
+                  borderRadius: '8px'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    <h4>現在の設定</h4>
+                    <button
+                      onClick={() => {
+                        setEditingDm({ ...dmSettings });
+                        setDmEditing(true);
+                      }}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        background: '#007bff',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      編集
+                    </button>
+                  </div>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                    <div>
+                      <strong>通常認証時のDM通知モード:</strong> {
+                        dmSettings.mode === 'all' ? '全ての通知' :
+                        dmSettings.mode === 'new_and_revoke' ? '新規認証とロール削除のみ' :
+                        dmSettings.mode === 'update_and_revoke' ? '認証更新とロール削除のみ' :
+                        dmSettings.mode === 'revoke_only' ? 'ロール削除のみ' :
+                        '通知なし'
+                      }
+                    </div>
+                    <div>
+                      <strong>バッチ処理時のDM通知モード:</strong> {
+                        dmSettings.batchMode === 'all' ? '全ての通知' :
+                        dmSettings.batchMode === 'new_and_revoke' ? '新規認証とロール削除のみ' :
+                        dmSettings.batchMode === 'update_and_revoke' ? '認証更新とロール削除のみ' :
+                        dmSettings.batchMode === 'revoke_only' ? 'ロール削除のみ' :
+                        '通知なし'
+                      }
+                    </div>
+                  </div>
+                  
+                  <div style={{ display: 'grid', gap: '1rem' }}>
+                    <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
+                      <h5>🎉 新規認証</h5>
+                      <div><strong>タイトル:</strong> {dmSettings.templates.successNew.title}</div>
+                      <div><strong>内容:</strong> {dmSettings.templates.successNew.description}</div>
+                    </div>
+                    <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
+                      <h5>🔄 認証更新</h5>
+                      <div><strong>タイトル:</strong> {dmSettings.templates.successUpdate.title}</div>
+                      <div><strong>内容:</strong> {dmSettings.templates.successUpdate.description}</div>
+                    </div>
+                    <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
+                      <h5>❌ 認証失敗</h5>
+                      <div><strong>タイトル:</strong> {dmSettings.templates.failed.title}</div>
+                      <div><strong>内容:</strong> {dmSettings.templates.failed.description}</div>
+                    </div>
+                    <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
+                      <h5>🚫 ロール削除</h5>
+                      <div><strong>タイトル:</strong> {dmSettings.templates.revoked.title}</div>
+                      <div><strong>内容:</strong> {dmSettings.templates.revoked.description}</div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* 編集モード */
+                <div style={{ 
+                  marginBottom: '2rem', 
+                  padding: '1rem', 
+                  border: '1px solid #ccc',
+                  borderRadius: '8px'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    <h4>設定を編集</h4>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button
+                        onClick={saveDmSettings}
+                        style={{
+                          padding: '0.5rem 1rem',
+                          background: '#28a745',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        保存
+                      </button>
+                      <button
+                        onClick={() => {
+                          setDmEditing(false);
+                          setEditingDm(null);
+                        }}
+                        style={{
+                          padding: '0.5rem 1rem',
+                          background: '#6c757d',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        キャンセル
+                      </button>
+                    </div>
+                  </div>
+                  
+                  {editingDm && (
+                    <div style={{ display: 'grid', gap: '1rem' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                            通常認証時のDM通知モード
+                          </label>
+                          <select
+                            value={editingDm.mode}
+                            onChange={(e) => setEditingDm({ ...editingDm, mode: e.target.value as DmMode })}
+                            style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', width: '100%' }}
+                          >
+                            <option value="all">全ての通知</option>
+                            <option value="new_and_revoke">新規認証とロール削除のみ</option>
+                            <option value="update_and_revoke">認証更新とロール削除のみ</option>
+                            <option value="revoke_only">ロール削除のみ</option>
+                            <option value="none">通知なし</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                            バッチ処理時のDM通知モード
+                          </label>
+                          <select
+                            value={editingDm.batchMode}
+                            onChange={(e) => setEditingDm({ ...editingDm, batchMode: e.target.value as DmMode })}
+                            style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', width: '100%' }}
+                          >
+                            <option value="all">全ての通知</option>
+                            <option value="new_and_revoke">新規認証とロール削除のみ</option>
+                            <option value="update_and_revoke">認証更新とロール削除のみ</option>
+                            <option value="revoke_only">ロール削除のみ</option>
+                            <option value="none">通知なし</option>
+                          </select>
+                        </div>
+                      </div>
+                      
+                      <div style={{ display: 'grid', gap: '1rem' }}>
+                        <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
+                          <h5>🎉 新規認証</h5>
+                          <input
+                            type="text"
+                            placeholder="タイトル"
+                            value={editingDm.templates.successNew.title}
+                            onChange={(e) => setEditingDm({
+                              ...editingDm,
+                              templates: {
+                                ...editingDm.templates,
+                                successNew: { ...editingDm.templates.successNew, title: e.target.value }
+                              }
+                            })}
+                            style={{ width: '100%', padding: '0.5rem', marginBottom: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                          />
+                          <textarea
+                            placeholder="内容"
+                            value={editingDm.templates.successNew.description}
+                            onChange={(e) => setEditingDm({
+                              ...editingDm,
+                              templates: {
+                                ...editingDm.templates,
+                                successNew: { ...editingDm.templates.successNew, description: e.target.value }
+                              }
+                            })}
+                            style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', minHeight: '100px' }}
+                          />
+                        </div>
+                        
+                        <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
+                          <h5>🔄 認証更新</h5>
+                          <input
+                            type="text"
+                            placeholder="タイトル"
+                            value={editingDm.templates.successUpdate.title}
+                            onChange={(e) => setEditingDm({
+                              ...editingDm,
+                              templates: {
+                                ...editingDm.templates,
+                                successUpdate: { ...editingDm.templates.successUpdate, title: e.target.value }
+                              }
+                            })}
+                            style={{ width: '100%', padding: '0.5rem', marginBottom: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                          />
+                          <textarea
+                            placeholder="内容"
+                            value={editingDm.templates.successUpdate.description}
+                            onChange={(e) => setEditingDm({
+                              ...editingDm,
+                              templates: {
+                                ...editingDm.templates,
+                                successUpdate: { ...editingDm.templates.successUpdate, description: e.target.value }
+                              }
+                            })}
+                            style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', minHeight: '100px' }}
+                          />
+                        </div>
+                        
+                        <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
+                          <h5>❌ 認証失敗</h5>
+                          <input
+                            type="text"
+                            placeholder="タイトル"
+                            value={editingDm.templates.failed.title}
+                            onChange={(e) => setEditingDm({
+                              ...editingDm,
+                              templates: {
+                                ...editingDm.templates,
+                                failed: { ...editingDm.templates.failed, title: e.target.value }
+                              }
+                            })}
+                            style={{ width: '100%', padding: '0.5rem', marginBottom: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                          />
+                          <textarea
+                            placeholder="内容"
+                            value={editingDm.templates.failed.description}
+                            onChange={(e) => setEditingDm({
+                              ...editingDm,
+                              templates: {
+                                ...editingDm.templates,
+                                failed: { ...editingDm.templates.failed, description: e.target.value }
+                              }
+                            })}
+                            style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', minHeight: '100px' }}
+                          />
+                        </div>
+                        
+                        <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
+                          <h5>🚫 ロール削除</h5>
+                          <input
+                            type="text"
+                            placeholder="タイトル"
+                            value={editingDm.templates.revoked.title}
+                            onChange={(e) => setEditingDm({
+                              ...editingDm,
+                              templates: {
+                                ...editingDm.templates,
+                                revoked: { ...editingDm.templates.revoked, title: e.target.value }
+                              }
+                            })}
+                            style={{ width: '100%', padding: '0.5rem', marginBottom: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                          />
+                          <textarea
+                            placeholder="内容"
+                            value={editingDm.templates.revoked.description}
+                            onChange={(e) => setEditingDm({
+                              ...editingDm,
+                              templates: {
+                                ...editingDm.templates,
+                                revoked: { ...editingDm.templates.revoked, description: e.target.value }
+                              }
+                            })}
+                            style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', minHeight: '100px' }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '2rem' }}>
+              <p>DM設定を読み込み中...</p>
+            </div>
+          )}
         </div>
       )}
 

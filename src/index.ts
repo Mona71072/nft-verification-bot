@@ -659,7 +659,8 @@ interface DmTemplates {
   revoked: DmTemplate;
 }
 interface DmSettings {
-  mode: DmMode;
+  mode: DmMode; // 通常認証時のDM通知モード
+  batchMode: DmMode; // バッチ処理時のDM通知モード
   templates: DmTemplates;
 }
 
@@ -673,7 +674,8 @@ async function getDmSettings(c: Context<{ Bindings: Env }>): Promise<DmSettings>
     console.log('⚠️ getDmSettings error, using defaults:', e);
   }
   const defaults: DmSettings = {
-    mode: 'revoke_only',
+    mode: 'all', // 通常認証時は全ての通知
+    batchMode: 'new_and_revoke', // バッチ処理時は新規とロール削除のみ
     templates: {
       successNew: {
         title: '🎉 認証完了',
@@ -705,6 +707,7 @@ async function updateDmSettings(c: Context<{ Bindings: Env }>, patch: Partial<Dm
   const current = await getDmSettings(c);
   const next: DmSettings = {
     mode: patch.mode ?? current.mode,
+    batchMode: patch.batchMode ?? current.batchMode,
     templates: {
       successNew: patch.templates?.successNew ?? current.templates.successNew,
       successUpdate: patch.templates?.successUpdate ?? current.templates.successUpdate,
@@ -800,7 +803,9 @@ async function notifyDiscordBot(
     let notifyUser = true;
     let customMessage: DmTemplate | undefined;
     if (kind) {
-      notifyUser = shouldSendDm(dmSettings.mode, kind);
+      // バッチ処理時と通常認証時で異なるDM通知モードを使用
+      const dmMode = isBatchProcess ? dmSettings.batchMode : dmSettings.mode;
+      notifyUser = shouldSendDm(dmMode, kind);
       if (notifyUser) {
         const tpl =
           kind === 'success_new' ? dmSettings.templates.successNew :
@@ -911,6 +916,28 @@ async function removeVerifiedUser(c: Context<{ Bindings: Env }>, discordId: stri
     return true;
   } catch (error) {
     console.error('Error removing verified user:', error);
+    return false;
+  }
+}
+
+// 認証済みユーザーの最終チェック日時を更新
+async function updateVerifiedUserLastChecked(c: Context<{ Bindings: Env }>, discordId: string, collectionId: string): Promise<boolean> {
+  try {
+    const users = await getVerifiedUsers(c);
+    const userIndex = users.findIndex(u => u.discordId === discordId && u.collectionId === collectionId);
+    
+    if (userIndex >= 0) {
+      // 最終チェック日時を更新
+      users[userIndex] = { ...users[userIndex], lastChecked: new Date().toISOString() };
+      await c.env.COLLECTION_STORE.put(VERIFIED_USERS_KEY, JSON.stringify(users));
+      console.log(`✅ Updated lastChecked for user ${discordId} in collection ${collectionId}`);
+      return true;
+    } else {
+      console.log(`⚠️ User ${discordId} not found in collection ${collectionId} for lastChecked update`);
+      return false;
+    }
+  } catch (error) {
+    console.error('Error updating verified user lastChecked:', error);
     return false;
   }
 }
@@ -2390,6 +2417,10 @@ async function executeBatchCheck(c: Context<{ Bindings: Env }>): Promise<BatchSt
           }
         } else {
           console.log(`✅ User ${user.discordId} still has NFT`);
+          
+          // 最終チェック日時を更新
+          await updateVerifiedUserLastChecked(c, user.discordId, user.collectionId);
+          
           // 所有している場合でも、万一ロールが外れていた時のため再付与を試みる
           // バッチ処理時はチャンネル投稿を無効化
           const collectionsData = await c.env.COLLECTION_STORE.get('collections');
@@ -2590,6 +2621,58 @@ app.put('/api/admin/dm-settings', async (c) => {
   }
 });
 
+// DM設定初期化API
+app.post('/api/admin/dm-settings/initialize', async (c) => {
+  try {
+    const auth = await verifyAdminToken(c);
+    if (!auth.ok) {
+      const addr = c.req.header('X-Admin-Address');
+      if (!addr || !(await isAdmin(c, addr))) return c.json({ success: false, error: 'Unauthorized', reason: (auth as any).reason }, 401);
+    }
+    
+    // デフォルト設定で初期化
+    const defaultSettings: DmSettings = {
+      mode: 'all', // 通常認証時は全ての通知
+      batchMode: 'new_and_revoke', // バッチ処理時は新規とロール削除のみ
+      templates: {
+        successNew: {
+          title: '🎉 認証完了（新規）',
+          description: '**NFT認証が完了しました！**\n\n以下のコレクションでNFTが確認されました:\n• {collectionName}\n\n対応するロールが付与されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。',
+          color: 0x00ff00
+        },
+        successUpdate: {
+          title: '🔄 認証更新完了',
+          description: '**NFT認証が更新されました！**\n\n以下のコレクションでNFTが確認されました:\n• {collectionName}\n\n対応するロールが更新されました。',
+          color: 0x0099ff
+        },
+        failed: {
+          title: '❌ 認証失敗',
+          description: '**NFT認証に失敗しました。**\n\n以下の理由が考えられます:\n• 指定されたコレクションのNFTを保有していない\n• Discord IDが正しくない\n• 署名が無効\n\n正しい情報で再度お試しください。',
+          color: 0xff0000
+        },
+        revoked: {
+          title: '🚫 ロール削除通知',
+          description: '**ロールが削除されました。**\n\n以下のコレクションのNFTが確認できなくなったため、対応するロールが削除されました:\n• {collectionName}\n\nNFTを再取得した場合は、再度認証を行ってください。',
+          color: 0xff6600
+        }
+      }
+    };
+    
+    await c.env.COLLECTION_STORE.put('dm_settings', JSON.stringify(defaultSettings));
+    
+    return c.json({
+      success: true,
+      data: defaultSettings
+    });
+  } catch (error) {
+    console.error('Error initializing DM settings:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to initialize DM settings'
+    }, 500);
+  }
+});
+
 // バッチ処理統計取得API
 app.get('/api/admin/batch-stats', async (c) => {
   try {
@@ -2718,6 +2801,10 @@ async function executeBatchCheckManual(c: Context<{ Bindings: Env }>): Promise<B
           }
         } else {
           console.log(`✅ User ${user.discordId} still has NFT`);
+          
+          // 最終チェック日時を更新
+          await updateVerifiedUserLastChecked(c, user.discordId, user.collectionId);
+          
           // 所有している場合でも、万一ロールが外れていた時のため再付与を試みる
           const collectionsData = await c.env.COLLECTION_STORE.get('collections');
           const allCollections = collectionsData ? JSON.parse(collectionsData) : [];
