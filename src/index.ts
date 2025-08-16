@@ -923,17 +923,37 @@ async function removeVerifiedUser(c: Context<{ Bindings: Env }>, discordId: stri
 // 認証済みユーザーの最終チェック日時を更新
 async function updateVerifiedUserLastChecked(c: Context<{ Bindings: Env }>, discordId: string, collectionId: string): Promise<boolean> {
   try {
+    console.log(`🔄 Updating lastChecked for user ${discordId} in collection ${collectionId}`);
     const users = await getVerifiedUsers(c);
     const userIndex = users.findIndex(u => u.discordId === discordId && u.collectionId === collectionId);
     
+    console.log(`📊 Found ${users.length} total users, user index: ${userIndex}`);
+    
     if (userIndex >= 0) {
+      const oldLastChecked = users[userIndex].lastChecked;
+      const newLastChecked = new Date().toISOString();
+      
       // 最終チェック日時を更新
-      users[userIndex] = { ...users[userIndex], lastChecked: new Date().toISOString() };
+      users[userIndex] = { ...users[userIndex], lastChecked: newLastChecked };
+      
+      console.log(`📝 Updating lastChecked from ${oldLastChecked} to ${newLastChecked}`);
+      
       await c.env.COLLECTION_STORE.put(VERIFIED_USERS_KEY, JSON.stringify(users));
-      console.log(`✅ Updated lastChecked for user ${discordId} in collection ${collectionId}`);
-      return true;
+      
+      // 更新後の確認
+      const updatedUsers = await getVerifiedUsers(c);
+      const updatedUser = updatedUsers.find(u => u.discordId === discordId && u.collectionId === collectionId);
+      
+      if (updatedUser && updatedUser.lastChecked === newLastChecked) {
+        console.log(`✅ Successfully updated lastChecked for user ${discordId} in collection ${collectionId}`);
+        return true;
+      } else {
+        console.error(`❌ Failed to verify lastChecked update for user ${discordId}`);
+        return false;
+      }
     } else {
       console.log(`⚠️ User ${discordId} not found in collection ${collectionId} for lastChecked update`);
+      console.log(`🔍 Available users: ${users.map(u => `${u.discordId}:${u.collectionId}`).join(', ')}`);
       return false;
     }
   } catch (error) {
@@ -2419,7 +2439,9 @@ async function executeBatchCheck(c: Context<{ Bindings: Env }>): Promise<BatchSt
           console.log(`✅ User ${user.discordId} still has NFT`);
           
           // 最終チェック日時を更新
-          await updateVerifiedUserLastChecked(c, user.discordId, user.collectionId);
+          console.log(`🔄 Starting lastChecked update for user ${user.discordId} (auto)`);
+          const updateResult = await updateVerifiedUserLastChecked(c, user.discordId, user.collectionId);
+          console.log(`📊 lastChecked update result (auto): ${updateResult}`);
           
           // 所有している場合でも、万一ロールが外れていた時のため再付与を試みる
           // バッチ処理時はチャンネル投稿を無効化
@@ -2803,7 +2825,9 @@ async function executeBatchCheckManual(c: Context<{ Bindings: Env }>): Promise<B
           console.log(`✅ User ${user.discordId} still has NFT`);
           
           // 最終チェック日時を更新
-          await updateVerifiedUserLastChecked(c, user.discordId, user.collectionId);
+          console.log(`🔄 Starting lastChecked update for user ${user.discordId} (manual)`);
+          const updateResult = await updateVerifiedUserLastChecked(c, user.discordId, user.collectionId);
+          console.log(`📊 lastChecked update result (manual): ${updateResult}`);
           
           // 所有している場合でも、万一ロールが外れていた時のため再付与を試みる
           const collectionsData = await c.env.COLLECTION_STORE.get('collections');
