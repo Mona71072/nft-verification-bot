@@ -40,7 +40,7 @@ app.use((req, res, next) => {
 // Discord アクション処理エンドポイント
 app.post('/api/discord-action', async (req, res) => {
   try {
-    const { discord_id, action, verification_data } = req.body;
+    const { discord_id, action, verification_data, disable_channel_post } = req.body;
 
     if (!discord_id || !action) {
       console.error('❌ Missing required fields:', { discord_id, action });
@@ -50,20 +50,27 @@ app.post('/api/discord-action', async (req, res) => {
       });
     }
 
-    console.log(`🔄 Processing ${action} for Discord ID: ${discord_id}`);
+    console.log(`🔄 Processing ${action} for Discord ID: ${discord_id} (disable_channel_post: ${disable_channel_post})`);
 
     let result = false;
 
     switch (action) {
       case 'grant_role':
-        result = await grantRoleToUser(discord_id);
+        result = await grantRoleToUser(discord_id, { disableChannelPost: disable_channel_post });
         console.log(`✅ Role grant result: ${result}`);
         break;
       case 'grant_roles':
         // 複数ロール付与
         if (verification_data && verification_data.grantedRoles) {
           console.log(`🔄 Granting ${verification_data.grantedRoles.length} roles to user ${discord_id}`);
-          result = await grantMultipleRolesToUser(discord_id, verification_data.grantedRoles);
+          result = await grantMultipleRolesToUser(
+            discord_id,
+            verification_data.grantedRoles,
+            { 
+              notifyUser: verification_data.notifyUser !== false,
+              disableChannelPost: disable_channel_post 
+            }
+          );
           console.log(`✅ Multiple roles grant result: ${result}`);
         } else {
           console.error('❌ No granted roles data provided');
@@ -72,18 +79,18 @@ app.post('/api/discord-action', async (req, res) => {
         break;
       case 'verification_failed':
         // 認証失敗時のDM送信
-        result = await sendVerificationFailedMessage(discord_id, verification_data);
+        result = await sendVerificationFailedMessage(discord_id, verification_data, { disableChannelPost: disable_channel_post });
         console.log(`✅ Verification failed message result: ${result}`);
         break;
       case 'revoke_role':
-        result = await revokeRoleFromUser(discord_id);
+        result = await revokeRoleFromUser(discord_id, { disableChannelPost: disable_channel_post });
         console.log(`✅ Role revoke result: ${result}`);
         break;
       case 'revoke_roles':
         // 複数ロール剥奪（バッチ処理用）
         if (verification_data && verification_data.revokedRoles) {
           console.log(`🔄 Revoking ${verification_data.revokedRoles.length} roles from user ${discord_id}`);
-          result = await revokeMultipleRolesFromUser(discord_id, verification_data.revokedRoles);
+          result = await revokeMultipleRolesFromUser(discord_id, verification_data.revokedRoles, { disableChannelPost: disable_channel_post });
           console.log(`✅ Multiple roles revoke result: ${result}`);
         } else {
           console.error('❌ No revoked roles data provided');
@@ -92,31 +99,26 @@ app.post('/api/discord-action', async (req, res) => {
         break;
       case 'batch_notification':
         // バッチ処理結果通知
-        result = await sendBatchProcessNotification(discord_id, verification_data);
+        result = await sendBatchProcessNotification(discord_id, verification_data, { disableChannelPost: disable_channel_post });
         console.log(`✅ Batch notification result: ${result}`);
         break;
-      case 'admin_batch_notification':
-        // 管理者用バッチ処理通知（実装予定）
-        console.log(`⚠️ Admin batch notification not implemented yet`);
-        result = false;
-        break;
       default:
-        console.error('❌ Invalid action:', action);
+        console.error(`❌ Unknown action: ${action}`);
         return res.status(400).json({
           success: false,
-          error: 'Invalid action. Must be grant_role, grant_roles, verification_failed, revoke_role, revoke_roles, batch_notification, or admin_batch_notification'
+          error: `Unknown action: ${action}`
         });
     }
 
-    res.json({
+    return res.json({
       success: result,
       action: action,
       discord_id: discord_id
     });
 
   } catch (error) {
-    console.error('❌ API Error:', error);
-    res.status(500).json({
+    console.error('❌ Error processing Discord action:', error);
+    return res.status(500).json({
       success: false,
       error: 'Internal server error'
     });

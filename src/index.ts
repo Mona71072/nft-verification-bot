@@ -645,9 +645,9 @@ async function hasTargetNft(address: string, collectionId?: string): Promise<boo
 }
 
 // Discord Bot API（認証結果通知）
-async function notifyDiscordBot(c: Context<{ Bindings: Env }>, discordId: string, action: string, verificationData?: any): Promise<boolean> {
+async function notifyDiscordBot(c: Context<{ Bindings: Env }>, discordId: string, action: string, verificationData?: any, isBatchProcess: boolean = false): Promise<boolean> {
   try {
-    console.log(`🔄 Discord Bot API: ${action} for user ${discordId}`);
+    console.log(`🔄 Discord Bot API: ${action} for user ${discordId} (batch: ${isBatchProcess})`);
     console.log('📋 Verification data:', verificationData);
     
     // 短時間の重複送信防止（同一ユーザー×同一アクションを抑止）
@@ -678,7 +678,9 @@ async function notifyDiscordBot(c: Context<{ Bindings: Env }>, discordId: string
       discord_id: discordId,
       action: action,
       verification_data: verificationData,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      // バッチ処理の場合はチャンネル投稿を無効化
+      disable_channel_post: isBatchProcess
     };
     
     console.log('📤 Sending request to Discord Bot API:', requestBody);
@@ -1565,11 +1567,12 @@ app.post('/api/verify', async (c) => {
             discordId,
             collectionIds: savedCollectionIds,
             grantedRoles: regrantRoles,
+            notifyUser: false,
             reason: '既存の認証者としてロールを再付与しました。',
             timestamp: new Date().toISOString()
           };
 
-          await notifyDiscordBot(c, discordId, 'grant_roles', regrantData);
+          await notifyDiscordBot(c, discordId, 'grant_roles', regrantData, false); // isBatchProcess = false
 
           // lastChecked の更新
           await addVerifiedUser(c, {
@@ -1626,7 +1629,7 @@ app.post('/api/verify', async (c) => {
           discordId,
           reason: 'Invalid signature',
           timestamp: new Date().toISOString()
-        });
+        }, false); // isBatchProcess = false
       } catch (e) {
         console.log('⚠️ Failed to notify Discord bot for invalid signature:', e);
       }
@@ -1739,11 +1742,12 @@ app.post('/api/verify', async (c) => {
               collectionIds: savedCollectionIds,
               verificationResults,
               grantedRoles: regrantRoles,
+              notifyUser: false,
               reason: '既存の認証を検出しました。ロールを再付与します。',
               timestamp: new Date().toISOString()
             };
 
-            await notifyDiscordBot(c, discordId, 'grant_roles', regrantData);
+            await notifyDiscordBot(c, discordId, 'grant_roles', regrantData, false); // isBatchProcess = false
 
             // lastChecked の更新（verifiedAtは維持）
             await addVerifiedUser(c, {
@@ -1774,7 +1778,7 @@ app.post('/api/verify', async (c) => {
       await notifyDiscordBot(c, discordId, 'verification_failed', {
         ...notificationData,
         reason: 'No NFTs found in any selected collections'
-      });
+      }, false); // isBatchProcess = false
       
       return c.json({
         success: false,
@@ -1797,7 +1801,7 @@ app.post('/api/verify', async (c) => {
     await c.env.NONCE_STORE.delete(nonce);
 
     // Discordロール付与（保存後に通知）
-    const roleGranted = await notifyDiscordBot(c, discordId, 'grant_roles', notificationData);
+    const roleGranted = await notifyDiscordBot(c, discordId, 'grant_roles', notificationData, false); // isBatchProcess = false
     if (!roleGranted) {
       console.log('⚠️ Discord notification failed, but verification succeeded');
     }
@@ -1880,13 +1884,13 @@ app.post('/api/admin/batch-check', async (c) => {
         if (!hasNft) {
           console.log(`❌ User ${user.discordId} no longer has NFT, revoking role`);
           
-          // Discord Botにロール剥奪を通知
+          // バッチ処理時はロール削除のみDM通知（チャンネル投稿は無効化）
           const revoked = await notifyDiscordBot(c, user.discordId, 'revoke_role', {
             address: user.address,
             collectionId: user.collectionId,
-            reason: 'NFT no longer owned',
+            reason: 'NFT no longer owned (自動チェック)',
             timestamp: new Date().toISOString()
-          });
+          }, true); // isBatchProcess = true
           
           if (revoked) {
             // 認証済みユーザーリストから削除
@@ -1896,7 +1900,7 @@ app.post('/api/admin/batch-check', async (c) => {
         } else {
           console.log(`✅ User ${user.discordId} still has NFT`);
           // 所有している場合でも、万一ロールが外れていた時のため再付与を試みる
-          // user.collectionIdはIDのCSVの可能性があるため、それに対応
+          // バッチ処理時はチャンネル投稿を無効化
           const collectionsData = await c.env.COLLECTION_STORE.get('collections');
           const allCollections = collectionsData ? JSON.parse(collectionsData) : [];
           const regrantCollectionIds = user.collectionId.split(',').filter(Boolean);
@@ -1911,9 +1915,9 @@ app.post('/api/admin/batch-check', async (c) => {
               discordId: user.discordId,
               collectionIds: regrantCollectionIds,
               grantedRoles: regrantRoles,
-              reason: 'Ensuring roles are granted for verified user',
+              reason: 'Ensuring roles are granted for verified user (自動チェック)',
               timestamp: new Date().toISOString()
-            });
+            }, true); // isBatchProcess = true
           }
         }
         
@@ -2230,13 +2234,13 @@ async function executeBatchCheck(c: Context<{ Bindings: Env }>): Promise<BatchSt
         if (!hasNft) {
           console.log(`❌ User ${user.discordId} no longer has NFT, revoking role`);
           
-          // Discord Botにロール剥奪を通知
+          // バッチ処理時はロール削除のみDM通知（チャンネル投稿は無効化）
           const revoked = await notifyDiscordBot(c, user.discordId, 'revoke_role', {
             address: user.address,
             collectionId: user.collectionId,
-            reason: 'NFT no longer owned',
+            reason: 'NFT no longer owned (自動チェック)',
             timestamp: new Date().toISOString()
-          });
+          }, true); // isBatchProcess = true
           
           if (revoked) {
             // 認証済みユーザーリストから削除
@@ -2246,6 +2250,7 @@ async function executeBatchCheck(c: Context<{ Bindings: Env }>): Promise<BatchSt
         } else {
           console.log(`✅ User ${user.discordId} still has NFT`);
           // 所有している場合でも、万一ロールが外れていた時のため再付与を試みる
+          // バッチ処理時はチャンネル投稿を無効化
           const collectionsData = await c.env.COLLECTION_STORE.get('collections');
           const allCollections = collectionsData ? JSON.parse(collectionsData) : [];
           const regrantCollectionIds = user.collectionId.split(',').filter(Boolean);
@@ -2260,9 +2265,9 @@ async function executeBatchCheck(c: Context<{ Bindings: Env }>): Promise<BatchSt
               discordId: user.discordId,
               collectionIds: regrantCollectionIds,
               grantedRoles: regrantRoles,
-              reason: 'Ensuring roles are granted for verified user',
+              reason: 'Ensuring roles are granted for verified user (自動チェック)',
               timestamp: new Date().toISOString()
-            });
+            }, true); // isBatchProcess = true
           }
         }
         
@@ -2466,6 +2471,173 @@ app.get('/api/admin/batch-schedule', async (c) => {
   }
 });
 
+// 手動実行用のバッチ処理関数（チャンネル投稿有効）
+async function executeBatchCheckManual(c: Context<{ Bindings: Env }>): Promise<BatchStats> {
+  const startTime = Date.now();
+  console.log('🔄 Starting manual batch check process...');
+  
+  try {
+    const verifiedUsers = await getVerifiedUsers(c);
+    const batchConfig = await getBatchConfig(c);
+    
+    console.log(`📊 Found ${verifiedUsers.length} verified users`);
+    console.log(`⚙️ Batch config: ${JSON.stringify(batchConfig)}`);
+    
+    let processedCount = 0;
+    let revokedCount = 0;
+    let errorCount = 0;
+    
+    // バッチサイズを制限
+    const usersToProcess = verifiedUsers.slice(0, batchConfig.maxUsersPerBatch);
+    
+    for (const user of usersToProcess) {
+      try {
+        console.log(`🔍 Checking user ${user.discordId} for collection ${user.collectionId}`);
+        
+        // NFT保有状況をチェック
+        let hasNft = false;
+        
+        if (user.collectionId.includes(',')) {
+          // 複数コレクションの場合
+          const collectionIds = user.collectionId.split(',');
+          for (const collectionId of collectionIds) {
+            const collectionsData = await c.env.COLLECTION_STORE.get('collections');
+            const collections = collectionsData ? JSON.parse(collectionsData) : [];
+            const collection = collections.find((col: any) => col.id === collectionId);
+            
+            if (collection && collection.packageId) {
+              const hasNftInCollection = await hasTargetNft(user.address, collection.packageId);
+              if (hasNftInCollection) {
+                hasNft = true;
+                break;
+              }
+            }
+          }
+        } else {
+          // 単一コレクションの場合
+          const collectionsData = await c.env.COLLECTION_STORE.get('collections');
+          const collections = collectionsData ? JSON.parse(collectionsData) : [];
+          const collection = collections.find((col: any) => col.id === user.collectionId);
+          
+          if (collection && collection.packageId) {
+            hasNft = await hasTargetNft(user.address, collection.packageId);
+          }
+        }
+        
+        if (!hasNft) {
+          console.log(`❌ User ${user.discordId} no longer has NFT, revoking role`);
+          
+          // 手動実行時は通常の通知（チャンネル投稿有効）
+          const revoked = await notifyDiscordBot(c, user.discordId, 'revoke_role', {
+            address: user.address,
+            collectionId: user.collectionId,
+            reason: 'NFT no longer owned (手動チェック)',
+            timestamp: new Date().toISOString()
+          }, false); // isBatchProcess = false
+          
+          if (revoked) {
+            await removeVerifiedUser(c, user.discordId, user.collectionId);
+            revokedCount++;
+          }
+        } else {
+          console.log(`✅ User ${user.discordId} still has NFT`);
+          // 所有している場合でも、万一ロールが外れていた時のため再付与を試みる
+          const collectionsData = await c.env.COLLECTION_STORE.get('collections');
+          const allCollections = collectionsData ? JSON.parse(collectionsData) : [];
+          const regrantCollectionIds = user.collectionId.split(',').filter(Boolean);
+          const regrantRoles = regrantCollectionIds
+            .map((cid) => allCollections.find((col: any) => col.id === cid))
+            .filter((col: any) => col && col.roleId)
+            .map((col: any) => ({ roleId: col.roleId, roleName: col.roleName }));
+
+          if (regrantRoles.length > 0) {
+            await notifyDiscordBot(c, user.discordId, 'grant_roles', {
+              address: user.address,
+              discordId: user.discordId,
+              collectionIds: regrantCollectionIds,
+              grantedRoles: regrantRoles,
+              reason: 'Ensuring roles are granted for verified user (手動チェック)',
+              timestamp: new Date().toISOString()
+            }, false); // isBatchProcess = false
+          }
+        }
+        
+        processedCount++;
+      } catch (error) {
+        console.error(`❌ Error processing user ${user.discordId}:`, error);
+        errorCount++;
+      }
+    }
+    
+    const duration = Date.now() - startTime;
+    const stats: BatchStats = {
+      totalUsers: verifiedUsers.length,
+      processed: processedCount,
+      revoked: revokedCount,
+      errors: errorCount,
+      lastRun: new Date().toISOString(),
+      duration
+    };
+    
+    // 統計を更新
+    await updateBatchStats(c, stats);
+    
+    // 設定を更新（次回実行時刻を設定）
+    await updateBatchConfig(c, {
+      lastRun: new Date().toISOString(),
+      nextRun: new Date(Date.now() + batchConfig.interval * 60 * 1000).toISOString()
+    });
+    
+    console.log(`✅ Manual batch check completed: ${processedCount} processed, ${revokedCount} revoked, ${errorCount} errors`);
+    console.log(`⏱️ Duration: ${duration}ms`);
+    
+    return stats;
+    
+  } catch (error) {
+    console.error('❌ Manual batch check error:', error);
+    const duration = Date.now() - startTime;
+    const stats: BatchStats = {
+      totalUsers: 0,
+      processed: 0,
+      revoked: 0,
+      errors: 1,
+      lastRun: new Date().toISOString(),
+      duration
+    };
+    await updateBatchStats(c, stats);
+    return stats;
+  }
+}
+
+// バッチ処理実行API（手動実行用）
+app.post('/api/admin/batch-execute', async (c) => {
+  try {
+    console.log('🔄 Manual batch execution requested...');
+    // セキュリティ緩和: Authorization が無い場合でも、X-Admin-Address が管理者なら許可
+    const tokenCheck = await verifyAdminToken(c);
+    if (!tokenCheck.ok) {
+      const addr = c.req.header('X-Admin-Address');
+      if (!addr || !(await isAdmin(c, addr))) {
+        return c.json({ success: false, error: 'Unauthorized', reason: (tokenCheck as any).reason || 'no_token_and_not_admin_header' }, 401);
+      }
+    }
+
+    // 手動実行時は通常の通知（チャンネル投稿有効）
+    const stats = await executeBatchCheckManual(c);
+    
+    return c.json({
+      success: true,
+      data: stats
+    });
+    
+  } catch (error) {
+    console.error('❌ Manual batch execution error:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to execute batch check'
+    }, 500);
+  }
+});
 
 export default {
   fetch: app.fetch,

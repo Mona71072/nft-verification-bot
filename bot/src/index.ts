@@ -138,7 +138,7 @@ async function handleVerifyNFT(interaction: ButtonInteraction) {
 }
 
 // Discord Bot APIエンドポイント（Cloudflare Workersから呼び出される）
-export async function grantRoleToUser(discordId: string): Promise<boolean> {
+export async function grantRoleToUser(discordId: string, options?: { disableChannelPost?: boolean }): Promise<boolean> {
   try {
     const guild = await client.guilds.fetch(config.DISCORD_GUILD_ID);
     const member = await guild.members.fetch(discordId);
@@ -167,9 +167,86 @@ export async function grantRoleToUser(discordId: string): Promise<boolean> {
       console.log('Could not send DM to user:', dmError);
     }
     
+    // チャンネル投稿（disableChannelPostがfalseの場合のみ）
+    if (!options?.disableChannelPost) {
+      try {
+        const channel = await guild.channels.fetch(config.VERIFICATION_CHANNEL_ID) as TextChannel;
+        if (channel) {
+          await channel.send({
+            embeds: [
+              new EmbedBuilder()
+                .setTitle('🎉 認証完了')
+                .setDescription(`<@${discordId}> のNFT認証が完了しました！`)
+                .setColor(0x57F287)
+                .setTimestamp()
+            ]
+          });
+        }
+      } catch (channelError) {
+        console.log('Could not send channel message:', channelError);
+      }
+    }
+    
     return true;
   } catch (error) {
     console.error('❌ Error granting role:', error);
+    return false;
+  }
+}
+
+// ロール剥奪関数
+export async function revokeRoleFromUser(discordId: string, options?: { disableChannelPost?: boolean }): Promise<boolean> {
+  try {
+    const guild = await client.guilds.fetch(config.DISCORD_GUILD_ID);
+    const member = await guild.members.fetch(discordId);
+    const role = await guild.roles.fetch(config.DISCORD_ROLE_ID);
+
+    if (!role) {
+      console.error('❌ Role not found');
+      return false;
+    }
+
+    await member.roles.remove(role);
+    console.log(`✅ Role revoked from user ${discordId}`);
+
+    // ユーザーにDM送信
+    try {
+      await member.send({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle('ロール更新通知')
+            .setDescription(`NFTの保有が確認できなくなったため、ロール "${role.name}" が削除されました。\n再度NFTを取得された場合は、認証チャンネルから再認証を行ってください。`)
+            .setColor(0xED4245)
+            .setTimestamp()
+        ]
+      });
+    } catch (dmError) {
+      console.log('Could not send DM to user:', dmError);
+    }
+
+    // チャンネル投稿（disableChannelPostがfalseの場合のみ）
+    if (!options?.disableChannelPost) {
+      try {
+        const channel = await guild.channels.fetch(config.VERIFICATION_CHANNEL_ID) as TextChannel;
+        if (channel) {
+          await channel.send({
+            embeds: [
+              new EmbedBuilder()
+                .setTitle('⚠️ ロール削除')
+                .setDescription(`<@${discordId}> のNFT保有が確認できなくなったため、ロールが削除されました。`)
+                .setColor(0xED4245)
+                .setTimestamp()
+            ]
+          });
+        }
+      } catch (channelError) {
+        console.log('Could not send channel message:', channelError);
+      }
+    }
+
+    return true;
+  } catch (error) {
+    console.error('❌ Error revoking role:', error);
     return false;
   }
 }
@@ -220,7 +297,11 @@ async function isVerifiedUser(discordId: string): Promise<boolean> {
 }
 
 // 複数ロール付与関数（APIから呼び出される）
-export async function grantMultipleRolesToUser(discordId: string, roles: Array<{roleId: string, roleName: string}>): Promise<boolean> {
+export async function grantMultipleRolesToUser(
+  discordId: string,
+  roles: Array<{ roleId: string; roleName: string }>,
+  options?: { notifyUser?: boolean; disableChannelPost?: boolean }
+): Promise<boolean> {
   try {
     const guild = await client.guilds.fetch(config.DISCORD_GUILD_ID);
     const member = await guild.members.fetch(discordId);
@@ -245,48 +326,71 @@ export async function grantMultipleRolesToUser(discordId: string, roles: Array<{
       }
     }
 
-    // ユーザーにDM送信
-    try {
-      const embed = new EmbedBuilder()
-        .setColor(0x57F287)
-        .setTimestamp()
-        .setFooter({ text: 'NFT Verification Bot' });
+    // ユーザーにDM送信（オプション）
+    const shouldNotify = options?.notifyUser !== false;
+    if (shouldNotify) {
+      try {
+        const embed = new EmbedBuilder()
+          .setColor(0x57F287)
+          .setTimestamp()
+          .setFooter({ text: 'NFT Verification Bot' });
 
-      let title = '認証完了';
-      let description = '';
-      
-      // 認証済みユーザーかどうかをチェック
-      console.log(`🔍 Checking if user ${discordId} is already verified...`);
-      const isVerified = await isVerifiedUser(discordId);
-      console.log(`📋 Verification check result for ${discordId}: ${isVerified}`);
-      
-      if (grantedRoles.length > 0) {
-        if (isVerified) {
-          console.log(`🔄 User ${discordId} is already verified, sending update message`);
-          title = '認証更新完了';
-          embed.setColor(0x57F287);
-          description = `NFT認証の更新が完了しました。\n\n以下のコレクションでNFTが確認されました:\n\n${grantedRoles.map(role => `• ${role.roleName}`).join('\n')}\n\n対応するロールが更新されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。`;
-        } else {
-          console.log(`🆕 User ${discordId} is new, sending completion message`);
-          title = '認証完了';
-          embed.setColor(0x57F287);
-          description = `NFT認証が完了しました。\n\n以下のコレクションでNFTが確認されました:\n\n${grantedRoles.map(role => `• ${role.roleName}`).join('\n')}\n\n対応するロールが付与されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。`;
+        let title = '認証完了';
+        let description = '';
+        
+        // 認証済みユーザーかどうかをチェック
+        console.log(`🔍 Checking if user ${discordId} is already verified...`);
+        const isVerified = await isVerifiedUser(discordId);
+        console.log(`📋 Verification check result for ${discordId}: ${isVerified}`);
+        
+        if (grantedRoles.length > 0) {
+          if (isVerified) {
+            console.log(`🔄 User ${discordId} is already verified, sending update message`);
+            title = '認証更新完了';
+            embed.setColor(0x57F287);
+            description = `NFT認証の更新が完了しました。\n\n以下のコレクションでNFTが確認されました:\n\n${grantedRoles.map(role => `• ${role.roleName}`).join('\n')}\n\n対応するロールが更新されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。`;
+          } else {
+            console.log(`🆕 User ${discordId} is new, sending completion message`);
+            title = '認証完了';
+            embed.setColor(0x57F287);
+            description = `NFT認証が完了しました。\n\n以下のコレクションでNFTが確認されました:\n\n${grantedRoles.map(role => `• ${role.roleName}`).join('\n')}\n\n対応するロールが付与されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。`;
+          }
         }
+
+        if (failedRoles.length > 0) {
+          embed.addFields({
+            name: '付与できなかったロール',
+            value: failedRoles.map(name => `• ${name}`).join('\n'),
+            inline: false
+          });
+        }
+
+        embed.setTitle(title).setDescription(description);
+
+        await member.send({ embeds: [embed] });
+      } catch (dmError) {
+        console.log('Could not send DM to user:', dmError);
       }
+    }
 
-      if (failedRoles.length > 0) {
-        embed.addFields({
-          name: '付与できなかったロール',
-          value: failedRoles.map(name => `• ${name}`).join('\n'),
-          inline: false
-        });
+    // チャンネル投稿（disableChannelPostがfalseの場合のみ）
+    if (!options?.disableChannelPost) {
+      try {
+        const channel = await guild.channels.fetch(config.VERIFICATION_CHANNEL_ID) as TextChannel;
+        if (channel && grantedRoles.length > 0) {
+          await channel.send({
+            embeds: [
+              new EmbedBuilder()
+                .setTitle('🎉 認証完了')
+                .setDescription(`<@${discordId}> のNFT認証が完了しました！\n\n付与されたロール: ${grantedRoles.map(role => role.roleName).join(', ')}`)
+                .setColor(0x57F287)
+                .setTimestamp()
+            ]
+          });
+        }
+      } catch (channelError) {
+        console.log('Could not send channel message:', channelError);
       }
-
-      embed.setTitle(title).setDescription(description);
-
-      await member.send({ embeds: [embed] });
-    } catch (dmError) {
-      console.log('Could not send DM to user:', dmError);
     }
 
     return grantedRoles.length > 0;
@@ -296,116 +400,12 @@ export async function grantMultipleRolesToUser(discordId: string, roles: Array<{
   }
 }
 
-// 認証失敗時のDM送信関数
-export async function sendVerificationFailedMessage(discordId: string, verificationData?: any): Promise<boolean> {
-  try {
-    const guild = await client.guilds.fetch(config.DISCORD_GUILD_ID);
-    const member = await guild.members.fetch(discordId);
-
-    try {
-      const embed = new EmbedBuilder()
-        .setColor(0xED4245)
-        .setTimestamp()
-        .setFooter({ text: 'NFT Verification Bot' });
-
-      let title = '認証失敗';
-      let description = '';
-      
-      if (verificationData && verificationData.verificationResults) {
-        const results = verificationData.verificationResults;
-        const successful = results.filter((r: any) => r.hasNft);
-        const failed = results.filter((r: any) => !r.hasNft);
-
-        if (successful.length > 0 && failed.length === 0) {
-          // 認証済みユーザーかどうかをチェック
-          const isVerified = await isVerifiedUser(discordId);
-          
-          if (isVerified) {
-            title = '認証更新完了';
-            embed.setColor(0x57F287);
-            description = `NFT認証の更新が完了しました。\n\n以下のコレクションでNFTが確認されました:\n\n${successful.map((result: any) => `• ${result.collectionName}`).join('\n')}\n\n対応するロールが更新されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。`;
-          } else {
-            title = '認証完了';
-            embed.setColor(0x57F287);
-            description = `NFT認証が完了しました。\n\n以下のコレクションでNFTが確認されました:\n\n${successful.map((result: any) => `• ${result.collectionName}`).join('\n')}\n\n対応するロールが付与されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。`;
-          }
-        } else if (successful.length > 0 && failed.length > 0) {
-          // 認証済みユーザーかどうかをチェック
-          const isVerified = await isVerifiedUser(discordId);
-          
-          if (isVerified) {
-            title = '認証更新完了（一部成功）';
-            embed.setColor(0xFAA61A);
-            description = `NFT認証の更新が完了しました。\n\n✅ **更新成功:**\n${successful.map((result: any) => `• ${result.collectionName}`).join('\n')}\n\n❌ **更新失敗:**\n${failed.map((result: any) => `• ${result.collectionName}`).join('\n')}\n\n認証に成功したコレクションのロールが更新されました。`;
-          } else {
-            title = '認証完了（一部成功）';
-            embed.setColor(0xFAA61A);
-            description = `NFT認証が完了しました。\n\n✅ **認証成功:**\n${successful.map((result: any) => `• ${result.collectionName}`).join('\n')}\n\n❌ **認証失敗:**\n${failed.map((result: any) => `• ${result.collectionName}`).join('\n')}\n\n認証に成功したコレクションのロールが付与されました。`;
-          }
-        } else {
-          title = '認証失敗';
-          embed.setColor(0xED4245);
-          description = `NFT認証が失敗しました。\n\n以下のコレクションでNFTが見つかりませんでした:\n\n${failed.map((result: any) => `• ${result.collectionName}`).join('\n')}\n\n再度認証を試行するか、別のコレクションを選択してください。`;
-        }
-      } else {
-        title = '認証失敗';
-        embed.setColor(0xED4245);
-        description = `NFT認証が失敗しました。\n\n選択されたコレクションでNFTが見つかりませんでした。\n\n再度認証を試行するか、別のコレクションを選択してください。`;
-      }
-
-      embed.setTitle(title).setDescription(description);
-
-      await member.send({ embeds: [embed] });
-      console.log(`✅ Verification result message sent to user ${discordId}`);
-      return true;
-    } catch (dmError) {
-      console.log('Could not send DM to user:', dmError);
-      return false;
-    }
-  } catch (error) {
-    console.error('❌ Error sending verification result message:', error);
-    return false;
-  }
-}
-
-// ロール剥奪関数
-export async function revokeRoleFromUser(discordId: string): Promise<boolean> {
-  try {
-    const guild = await client.guilds.fetch(config.DISCORD_GUILD_ID);
-    const member = await guild.members.fetch(discordId);
-    const role = await guild.roles.fetch(config.DISCORD_ROLE_ID);
-
-    if (!role) {
-      console.error('❌ Role not found');
-      return false;
-    }
-
-    await member.roles.remove(role);
-    console.log(`✅ Role revoked from user ${discordId}`);
-
-    try {
-      await member.send({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle('ロール更新通知')
-            .setDescription(`NFTの保有が確認できなくなったため、ロール "${role.name}" が削除されました。\n再度NFTを取得された場合は、認証チャンネルから再認証を行ってください。`)
-            .setColor(0xED4245)
-            .setTimestamp()
-        ]
-      });
-    } catch (dmError) {
-      console.log('Could not send DM to user:', dmError);
-    }
-
-    return true;
-  } catch (error) {
-    console.error('❌ Error revoking role:', error);
-    return false;
-  }
-}
-
 // 複数ロール剥奪関数
-export async function revokeMultipleRolesFromUser(discordId: string, roles: Array<{roleId: string, roleName: string}>): Promise<boolean> {
+export async function revokeMultipleRolesFromUser(
+  discordId: string, 
+  roles: Array<{roleId: string, roleName: string}>,
+  options?: { disableChannelPost?: boolean }
+): Promise<boolean> {
   try {
     const guild = await client.guilds.fetch(config.DISCORD_GUILD_ID);
     const member = await guild.members.fetch(discordId);
@@ -455,6 +455,26 @@ export async function revokeMultipleRolesFromUser(discordId: string, roles: Arra
       }
     }
 
+    // チャンネル投稿（disableChannelPostがfalseの場合のみ）
+    if (!options?.disableChannelPost && revokedRoles.length > 0) {
+      try {
+        const channel = await guild.channels.fetch(config.VERIFICATION_CHANNEL_ID) as TextChannel;
+        if (channel) {
+          await channel.send({
+            embeds: [
+              new EmbedBuilder()
+                .setTitle('⚠️ ロール削除')
+                .setDescription(`<@${discordId}> のNFT保有が確認できなくなったため、以下のロールが削除されました:\n\n${revokedRoles.map(role => `• ${role.roleName}`).join('\n')}`)
+                .setColor(0xED4245)
+                .setTimestamp()
+            ]
+          });
+        }
+      } catch (channelError) {
+        console.log('Could not send channel message:', channelError);
+      }
+    }
+
     return revokedRoles.length > 0;
   } catch (error) {
     console.error('❌ Error revoking multiple roles:', error);
@@ -463,7 +483,7 @@ export async function revokeMultipleRolesFromUser(discordId: string, roles: Arra
 }
 
 // バッチ処理結果通知関数
-export async function sendBatchProcessNotification(discordId: string, batchData: any): Promise<boolean> {
+export async function sendBatchProcessNotification(discordId: string, batchData: any, options?: { disableChannelPost?: boolean }): Promise<boolean> {
   try {
     const guild = await client.guilds.fetch(config.DISCORD_GUILD_ID);
     const member = await guild.members.fetch(discordId);
@@ -500,6 +520,65 @@ export async function sendBatchProcessNotification(discordId: string, batchData:
   }
 }
 
+// 認証失敗時のDM送信関数
+export async function sendVerificationFailedMessage(discordId: string, verificationData?: any, options?: { disableChannelPost?: boolean }): Promise<boolean> {
+  try {
+    const guild = await client.guilds.fetch(config.DISCORD_GUILD_ID);
+    const member = await guild.members.fetch(discordId);
+
+    try {
+      const embed = new EmbedBuilder()
+        .setColor(0xED4245)
+        .setTimestamp()
+        .setFooter({ text: 'NFT Verification Bot' });
+
+      let title = '認証失敗';
+      let description = '';
+      
+      if (verificationData && verificationData.verificationResults) {
+        const results = verificationData.verificationResults;
+        const successful = results.filter((r: any) => r.hasNft);
+        const failed = results.filter((r: any) => !r.hasNft);
+
+        if (successful.length > 0 && failed.length === 0) {
+          // 認証済みユーザーかどうかをチェック
+          const isVerified = await isVerifiedUser(discordId);
+          
+          if (isVerified) {
+            title = '認証更新完了';
+            embed.setColor(0x57F287);
+            description = `NFT認証の更新が完了しました。\n\n以下のコレクションでNFTが確認されました:\n\n${successful.map((result: any) => `• ${result.collectionName}`).join('\n')}\n\n対応するロールが更新されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。`;
+          } else {
+            title = '認証完了';
+            embed.setColor(0x57F287);
+            description = `NFT認証が完了しました。\n\n以下のコレクションでNFTが確認されました:\n\n${successful.map((result: any) => `• ${result.collectionName}`).join('\n')}\n\n対応するロールが付与されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。`;
+          }
+        } else if (successful.length > 0 && failed.length > 0) {
+          title = '部分的な認証完了';
+          embed.setColor(0xFAA61A);
+          description = `一部のコレクションでのみNFTが確認されました。\n\n✅ **認証成功:**\n${successful.map((result: any) => `• ${result.collectionName}`).join('\n')}\n\n❌ **認証失敗:**\n${failed.map((result: any) => `• ${result.collectionName}`).join('\n')}`;
+        } else {
+          title = '認証失敗';
+          embed.setColor(0xED4245);
+          description = `選択されたコレクションでNFTが見つかりませんでした。\n\n以下のコレクションを確認しました:\n${failed.map((result: any) => `• ${result.collectionName}`).join('\n')}\n\nNFTを保有していることを確認してから再度お試しください。`;
+        }
+      } else {
+        description = verificationData?.reason || 'NFT認証に失敗しました。再度お試しください。';
+      }
+
+      embed.setTitle(title).setDescription(description);
+      await member.send({ embeds: [embed] });
+      return true;
+    } catch (dmError) {
+      console.log('Could not send DM to user:', dmError);
+      return false;
+    }
+  } catch (error) {
+    console.error('❌ Error sending verification failed message:', error);
+    return false;
+  }
+}
+
 // Discordロール一覧取得API
 export async function getDiscordRoles(): Promise<Array<{id: string, name: string}>> {
   try {
@@ -513,42 +592,6 @@ export async function getDiscordRoles(): Promise<Array<{id: string, name: string
   } catch (error) {
     console.error('❌ Error getting Discord roles:', error);
     return [];
-  }
-}
-
-// Discordアクション処理API
-export async function handleDiscordAction(action: string, discordId: string, data?: any): Promise<boolean> {
-  try {
-    console.log(`🔄 Discord action: ${action} for user ${discordId}`);
-    
-    switch (action) {
-      case 'grant_roles':
-        if (data && data.grantedRoles) {
-          return await grantMultipleRolesToUser(discordId, data.grantedRoles);
-        }
-        break;
-        
-      case 'revoke_role':
-        if (data && data.roles) {
-          return await revokeMultipleRolesFromUser(discordId, data.roles);
-        }
-        break;
-        
-      case 'verification_failed':
-        return await sendVerificationFailedMessage(discordId, data);
-        
-      case 'batch_complete':
-        return await sendBatchProcessNotification(discordId, data);
-        
-      default:
-        console.log(`⚠️ Unknown action: ${action}`);
-        return false;
-    }
-    
-    return false;
-  } catch (error) {
-    console.error('❌ Error handling Discord action:', error);
-    return false;
   }
 }
 

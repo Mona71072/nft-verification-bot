@@ -36,7 +36,7 @@ if (!rootElement) {
 }
 
 // WalletProviderの初期化エラーをキャッチ
-const AppWithErrorBoundary = () => {
+export const AppWithErrorBoundary = () => {
   try {
     return (
       <WalletProvider>
