@@ -39,6 +39,16 @@ interface BatchStats {
   duration: number;
 }
 
+interface VerifiedUser {
+  discordId: string;
+  address: string;
+  collectionId: string;
+  roleId: string;
+  roleName: string;
+  verifiedAt: string;
+  lastChecked?: string;
+}
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
 
 function AdminPanel() {
@@ -52,7 +62,11 @@ function AdminPanel() {
   const [batchConfig, setBatchConfig] = useState<BatchConfig | null>(null);
   const [batchStats, setBatchStats] = useState<BatchStats | null>(null);
   const [batchLoading, setBatchLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'collections' | 'batch'>('collections');
+  const [activeTab, setActiveTab] = useState<'collections' | 'batch' | 'users'>('collections');
+
+  // 認証済みユーザー関連の状態
+  const [verifiedUsers, setVerifiedUsers] = useState<VerifiedUser[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
 
   const [newCollection, setNewCollection] = useState({
     name: '',
@@ -99,6 +113,29 @@ function AdminPanel() {
     } catch (error) {
       console.error('❌ Error fetching Discord roles:', error);
     }
+  };
+
+  // 認証済みユーザー一覧取得
+  const fetchVerifiedUsers = async () => {
+    setUsersLoading(true);
+    try {
+      console.log('🔄 Fetching verified users...');
+      const response = await fetch(`${API_BASE_URL}/api/admin/verified-users`, {
+        headers: getAuthHeaders()
+      });
+      const data = await response.json();
+      if (data.success) {
+        setVerifiedUsers(data.data);
+        console.log(`✅ Loaded ${data.data.length} verified users`);
+      } else {
+        console.error('❌ Failed to fetch verified users:', data.error);
+        setMessage('認証済みユーザーの取得に失敗しました');
+      }
+    } catch (error) {
+      console.error('❌ Error fetching verified users:', error);
+      setMessage('認証済みユーザーの取得中にエラーが発生しました');
+    }
+    setUsersLoading(false);
   };
 
   // ロール選択時の処理
@@ -281,12 +318,25 @@ function AdminPanel() {
     setBatchLoading(false);
   };
 
+  // 総ユーザー数クリック時の処理
+  const handleTotalUsersClick = () => {
+    setActiveTab('users');
+    fetchVerifiedUsers();
+  };
+
   // コンポーネントマウント時にデータを取得
   useEffect(() => {
     fetchCollections();
     fetchDiscordRoles();
     fetchBatchConfig();
   }, []);
+
+  // タブ変更時にユーザー一覧を取得
+  useEffect(() => {
+    if (activeTab === 'users') {
+      fetchVerifiedUsers();
+    }
+  }, [activeTab]);
 
   return (
     <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
@@ -325,6 +375,19 @@ function AdminPanel() {
           }}
         >
           バッチ処理管理
+        </button>
+        <button
+          onClick={() => setActiveTab('users')}
+          style={{
+            padding: '0.5rem 1rem',
+            background: activeTab === 'users' ? '#007bff' : '#f8f9fa',
+            color: activeTab === 'users' ? 'white' : '#333',
+            border: '1px solid #ccc',
+            borderRadius: '4px',
+            cursor: 'pointer'
+          }}
+        >
+          認証済みユーザー
         </button>
       </div>
 
@@ -606,9 +669,21 @@ function AdminPanel() {
             <h4>バッチ処理統計</h4>
             {batchStats && (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-                <div style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '4px' }}>
+                <div 
+                  style={{ 
+                    padding: '1rem', 
+                    background: '#f8f9fa', 
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    transition: 'background-color 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e9ecef'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f8f9fa'}
+                  onClick={handleTotalUsersClick}
+                >
                   <h5>総ユーザー数</h5>
                   <p style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>{batchStats.totalUsers}</p>
+                  <small style={{ color: '#6c757d' }}>クリックして詳細を表示</small>
                 </div>
                 <div style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '4px' }}>
                   <h5>処理完了</h5>
@@ -633,6 +708,97 @@ function AdminPanel() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {activeTab === 'users' && (
+        <div>
+          <h3>認証済みユーザー一覧</h3>
+          
+          <div style={{ 
+            marginBottom: '1rem',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <p>総ユーザー数: {verifiedUsers.length}人</p>
+            <button
+              onClick={fetchVerifiedUsers}
+              disabled={usersLoading}
+              style={{
+                padding: '0.5rem 1rem',
+                background: '#007bff',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: usersLoading ? 'not-allowed' : 'pointer',
+                opacity: usersLoading ? 0.6 : 1
+              }}
+            >
+              {usersLoading ? '更新中...' : '更新'}
+            </button>
+          </div>
+
+          {usersLoading ? (
+            <div style={{ textAlign: 'center', padding: '2rem' }}>
+              <p>ユーザー一覧を読み込み中...</p>
+            </div>
+          ) : verifiedUsers.length > 0 ? (
+            <div style={{ 
+              maxHeight: '600px', 
+              overflowY: 'auto',
+              border: '1px solid #ccc',
+              borderRadius: '8px'
+            }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead style={{ position: 'sticky', top: 0, background: '#f8f9fa' }}>
+                  <tr>
+                    <th style={{ padding: '0.75rem', textAlign: 'left', borderBottom: '1px solid #ccc' }}>Discord ID</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'left', borderBottom: '1px solid #ccc' }}>ウォレットアドレス</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'left', borderBottom: '1px solid #ccc' }}>ロール名</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'left', borderBottom: '1px solid #ccc' }}>認証日時</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'left', borderBottom: '1px solid #ccc' }}>最終チェック</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {verifiedUsers.map((user, index) => (
+                    <tr key={index} style={{ borderBottom: '1px solid #eee' }}>
+                      <td style={{ padding: '0.75rem' }}>{user.discordId}</td>
+                      <td style={{ padding: '0.75rem', fontFamily: 'monospace', fontSize: '0.9rem' }}>
+                        {user.address.length > 20 ? `${user.address.slice(0, 10)}...${user.address.slice(-8)}` : user.address}
+                      </td>
+                      <td style={{ padding: '0.75rem' }}>
+                        <span style={{ 
+                          background: '#007bff', 
+                          color: 'white', 
+                          padding: '0.25rem 0.5rem', 
+                          borderRadius: '4px',
+                          fontSize: '0.8rem'
+                        }}>
+                          {user.roleName}
+                        </span>
+                      </td>
+                      <td style={{ padding: '0.75rem', fontSize: '0.9rem' }}>
+                        {new Date(user.verifiedAt).toLocaleString('ja-JP')}
+                      </td>
+                      <td style={{ padding: '0.75rem', fontSize: '0.9rem' }}>
+                        {user.lastChecked ? new Date(user.lastChecked).toLocaleString('ja-JP') : '未チェック'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div style={{ 
+              textAlign: 'center', 
+              padding: '2rem',
+              color: '#666',
+              fontStyle: 'italic'
+            }}>
+              <p>認証済みユーザーがいません</p>
+            </div>
+          )}
         </div>
       )}
 
