@@ -28,6 +28,7 @@ interface BatchConfig {
   nextRun: string;
   maxUsersPerBatch: number;
   retryAttempts: number;
+  enableDmNotifications: boolean;
 }
 
 interface BatchStats {
@@ -38,6 +39,10 @@ interface BatchStats {
   lastRun: string;
   duration: number;
 }
+
+type DmMode = 'all' | 'new_and_revoke' | 'update_and_revoke' | 'revoke_only' | 'none';
+interface DmTemplates { successNew: string; successUpdate: string; failed: string; revoked: string }
+interface DmSettings { mode: DmMode; templates: DmTemplates }
 
 interface VerifiedUser {
   discordId: string;
@@ -62,11 +67,21 @@ function AdminPanel() {
   const [batchConfig, setBatchConfig] = useState<BatchConfig | null>(null);
   const [batchStats, setBatchStats] = useState<BatchStats | null>(null);
   const [batchLoading, setBatchLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'collections' | 'batch' | 'users'>('collections');
+  const [activeTab, setActiveTab] = useState<'collections' | 'batch' | 'users' | 'admins'>('collections');
 
   // 認証済みユーザー関連の状態
   const [verifiedUsers, setVerifiedUsers] = useState<VerifiedUser[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
+
+  // 管理者関連の状態
+  const [adminAddresses, setAdminAddresses] = useState<string[]>([]);
+  const [newAdminAddress, setNewAdminAddress] = useState('');
+  const [adminLoading, setAdminLoading] = useState(false);
+
+  // DM通知設定
+  const [dmSettings, setDmSettings] = useState<DmSettings | null>(null);
+  const [dmEditing, setDmEditing] = useState(false);
+  const [editingDm, setEditingDm] = useState<DmSettings | null>(null);
 
   const [newCollection, setNewCollection] = useState({
     name: '',
@@ -115,6 +130,41 @@ function AdminPanel() {
     }
   };
 
+  // DM通知設定の取得
+  const fetchDmSettings = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/dm-settings`, { headers: getAuthHeaders() });
+      const data = await res.json();
+      if (data.success) setDmSettings(data.data);
+    } catch (e) {
+      console.error('❌ Failed to fetch DM settings', e);
+    }
+  };
+
+  // DM通知設定の保存
+  const saveDmSettings = async () => {
+    if (!editingDm) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/dm-settings`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(editingDm)
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDmSettings(data.data);
+        setDmEditing(false);
+        setEditingDm(null);
+        setMessage('DM通知設定を保存しました');
+      } else {
+        setMessage('DM通知設定の保存に失敗しました');
+      }
+    } catch (e) {
+      console.error('❌ Failed to save DM settings', e);
+      setMessage('DM通知設定の保存に失敗しました');
+    }
+  };
+
   // 認証済みユーザー一覧取得
   const fetchVerifiedUsers = async () => {
     setUsersLoading(true);
@@ -136,6 +186,100 @@ function AdminPanel() {
       setMessage('認証済みユーザーの取得中にエラーが発生しました');
     }
     setUsersLoading(false);
+  };
+
+  // 管理者アドレス一覧取得
+  const fetchAdminAddresses = async () => {
+    setAdminLoading(true);
+    try {
+      console.log('🔄 Fetching admin addresses...');
+      const response = await fetch(`${API_BASE_URL}/api/admin/addresses`, {
+        headers: getAuthHeaders()
+      });
+      const data = await response.json();
+      if (data.success) {
+        setAdminAddresses(data.data);
+        console.log(`✅ Loaded ${data.data.length} admin addresses`);
+      } else {
+        console.error('❌ Failed to fetch admin addresses:', data.error);
+        setMessage('管理者アドレスの取得に失敗しました');
+      }
+    } catch (error) {
+      console.error('❌ Error fetching admin addresses:', error);
+      setMessage('管理者アドレスの取得中にエラーが発生しました');
+    }
+    setAdminLoading(false);
+  };
+
+  // 管理者アドレス追加
+  const handleAddAdminAddress = async () => {
+    if (!newAdminAddress || !newAdminAddress.trim()) {
+      setMessage('有効なアドレスを入力してください');
+      return;
+    }
+
+    // 既に存在するかチェック
+    if (adminAddresses.some(addr => addr.toLowerCase() === newAdminAddress.toLowerCase())) {
+      setMessage('このアドレスは既に管理者として登録されています');
+      return;
+    }
+
+    setAdminLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/admin/addresses`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ address: newAdminAddress.trim() })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setAdminAddresses(data.data);
+        setNewAdminAddress('');
+        setMessage('管理者アドレスが正常に追加されました');
+        console.log('✅ Admin address added successfully');
+      } else {
+        console.error('❌ Failed to add admin address:', data.error);
+        setMessage(`管理者アドレスの追加に失敗しました: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('❌ Failed to add admin address:', error);
+      setMessage('管理者アドレスの追加に失敗しました');
+    }
+    setAdminLoading(false);
+  };
+
+  // 管理者アドレス削除
+  const handleRemoveAdminAddress = async (address: string) => {
+    if (adminAddresses.length <= 1) {
+      setMessage('管理者アドレスを全て削除することはできません。最低1つの管理者アドレスが必要です');
+      return;
+    }
+
+    if (!confirm(`管理者アドレス "${address}" を削除しますか？`)) {
+      return;
+    }
+
+    setAdminLoading(true);
+    try {
+      console.log(`🗑️ Removing admin address: ${address}`);
+      const response = await fetch(`${API_BASE_URL}/api/admin/addresses/${encodeURIComponent(address)}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+      const data = await response.json();
+      if (data.success) {
+        setAdminAddresses(data.data);
+        setMessage('管理者アドレスが正常に削除されました');
+        console.log('✅ Admin address removed successfully');
+      } else {
+        console.error('❌ Failed to remove admin address:', data.error);
+        setMessage(`管理者アドレスの削除に失敗しました: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('❌ Failed to remove admin address:', error);
+      setMessage('管理者アドレスの削除に失敗しました');
+    }
+    setAdminLoading(false);
   };
 
   // ロール選択時の処理
@@ -295,6 +439,10 @@ function AdminPanel() {
     setBatchLoading(false);
   };
 
+  // バッチ処理設定の編集用状態
+  const [editingBatchConfig, setEditingBatchConfig] = useState<BatchConfig | null>(null);
+  const [batchConfigEditing, setBatchConfigEditing] = useState(false);
+
   // バッチ処理設定更新
   const updateBatchConfig = async (config: Partial<BatchConfig>) => {
     setBatchLoading(true);
@@ -309,6 +457,8 @@ function AdminPanel() {
       if (data.success) {
         setMessage('バッチ処理設定が正常に更新されました');
         setBatchConfig(data.data);
+        setBatchConfigEditing(false);
+        setEditingBatchConfig(null);
       } else {
         setMessage('バッチ処理設定の更新に失敗しました');
       }
@@ -316,6 +466,27 @@ function AdminPanel() {
       setMessage('エラーが発生しました');
     }
     setBatchLoading(false);
+  };
+
+  // バッチ処理設定編集開始
+  const handleEditBatchConfig = () => {
+    if (batchConfig) {
+      setEditingBatchConfig({ ...batchConfig });
+      setBatchConfigEditing(true);
+    }
+  };
+
+  // バッチ処理設定編集キャンセル
+  const handleCancelBatchConfigEdit = () => {
+    setBatchConfigEditing(false);
+    setEditingBatchConfig(null);
+  };
+
+  // バッチ処理設定保存
+  const handleSaveBatchConfig = () => {
+    if (editingBatchConfig) {
+      updateBatchConfig(editingBatchConfig);
+    }
   };
 
   // 総ユーザー数クリック時の処理
@@ -329,12 +500,15 @@ function AdminPanel() {
     fetchCollections();
     fetchDiscordRoles();
     fetchBatchConfig();
+    fetchDmSettings();
   }, []);
 
-  // タブ変更時にユーザー一覧を取得
+  // タブ変更時にデータを取得
   useEffect(() => {
     if (activeTab === 'users') {
       fetchVerifiedUsers();
+    } else if (activeTab === 'admins') {
+      fetchAdminAddresses();
     }
   }, [activeTab]);
 
@@ -348,7 +522,8 @@ function AdminPanel() {
         gap: '0.5rem', 
         marginBottom: '2rem',
         borderBottom: '1px solid #ccc',
-        paddingBottom: '1rem'
+        paddingBottom: '1rem',
+        flexWrap: 'wrap'
       }}>
         <button
           onClick={() => setActiveTab('collections')}
@@ -388,6 +563,19 @@ function AdminPanel() {
           }}
         >
           認証済みユーザー
+        </button>
+        <button
+          onClick={() => setActiveTab('admins')}
+          style={{
+            padding: '0.5rem 1rem',
+            background: activeTab === 'admins' ? '#007bff' : '#f8f9fa',
+            color: activeTab === 'admins' ? 'white' : '#333',
+            border: '1px solid #ccc',
+            borderRadius: '4px',
+            cursor: 'pointer'
+          }}
+        >
+          管理者管理
         </button>
       </div>
 
@@ -579,58 +767,188 @@ function AdminPanel() {
             border: '1px solid #ccc',
             borderRadius: '8px'
           }}>
-            <h4>バッチ処理設定</h4>
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              marginBottom: '1rem'
+            }}>
+              <h4>バッチ処理設定</h4>
+              {!batchConfigEditing && (
+                <button
+                  onClick={handleEditBatchConfig}
+                  disabled={batchLoading || !batchConfig}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    background: '#007bff',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: batchLoading || !batchConfig ? 'not-allowed' : 'pointer',
+                    opacity: batchLoading || !batchConfig ? 0.6 : 1,
+                    fontSize: '0.9rem'
+                  }}
+                >
+                  設定を編集
+                </button>
+              )}
+            </div>
+
             {batchConfig && (
               <div style={{ display: 'grid', gap: '1rem', maxWidth: '600px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={batchConfig.enabled}
-                      onChange={(e) => updateBatchConfig({ enabled: e.target.checked })}
-                      disabled={batchLoading}
-                    />
-                    バッチ処理を有効にする
-                  </label>
-                </div>
-                
-                <div>
-                  <label>実行間隔（分）:</label>
-                  <input
-                    type="number"
-                    value={batchConfig.interval}
-                    onChange={(e) => updateBatchConfig({ interval: parseInt(e.target.value) })}
-                    disabled={batchLoading}
-                    style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', marginLeft: '1rem' }}
-                  />
-                </div>
-                
-                <div>
-                  <label>バッチサイズ（最大ユーザー数）:</label>
-                  <input
-                    type="number"
-                    value={batchConfig.maxUsersPerBatch}
-                    onChange={(e) => updateBatchConfig({ maxUsersPerBatch: parseInt(e.target.value) })}
-                    disabled={batchLoading}
-                    style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', marginLeft: '1rem' }}
-                  />
-                </div>
-                
-                <div>
-                  <label>リトライ回数:</label>
-                  <input
-                    type="number"
-                    value={batchConfig.retryAttempts}
-                    onChange={(e) => updateBatchConfig({ retryAttempts: parseInt(e.target.value) })}
-                    disabled={batchLoading}
-                    style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', marginLeft: '1rem' }}
-                  />
-                </div>
-                
-                <div>
-                  <p><strong>最終実行:</strong> {batchConfig.lastRun ? new Date(batchConfig.lastRun).toLocaleString('ja-JP') : '未実行'}</p>
-                  <p><strong>次回実行予定:</strong> {batchConfig.nextRun ? new Date(batchConfig.nextRun).toLocaleString('ja-JP') : '未設定'}</p>
-                </div>
+                {/* 現在の設定表示 */}
+                {!batchConfigEditing && (
+                  <div style={{ 
+                    background: '#f8f9fa', 
+                    padding: '1rem', 
+                    borderRadius: '8px',
+                    marginBottom: '1rem'
+                  }}>
+                    <h5 style={{ margin: '0 0 1rem 0', color: '#495057' }}>現在の設定</h5>
+                                         <div style={{ display: 'grid', gap: '0.5rem' }}>
+                       <div>
+                         <strong>バッチ処理:</strong> {batchConfig.enabled ? '有効' : '無効'}
+                       </div>
+                       <div>
+                         <strong>実行間隔:</strong> {batchConfig.interval}分
+                       </div>
+                       <div>
+                         <strong>バッチサイズ:</strong> {batchConfig.maxUsersPerBatch}ユーザー
+                       </div>
+                       <div>
+                         <strong>リトライ回数:</strong> {batchConfig.retryAttempts}回
+                       </div>
+                       <div>
+                         <strong>DM通知:</strong> {batchConfig.enableDmNotifications ? '有効' : '無効'}
+                       </div>
+                       <div>
+                         <strong>最終実行:</strong> {batchConfig.lastRun ? new Date(batchConfig.lastRun).toLocaleString('ja-JP') : '未実行'}
+                       </div>
+                       <div>
+                         <strong>次回実行予定:</strong> {batchConfig.nextRun ? new Date(batchConfig.nextRun).toLocaleString('ja-JP') : '未設定'}
+                       </div>
+                     </div>
+                  </div>
+                )}
+
+                {/* 編集フォーム */}
+                {batchConfigEditing && editingBatchConfig && (
+                  <div style={{ 
+                    background: '#fff3cd', 
+                    padding: '1rem', 
+                    borderRadius: '8px',
+                    border: '1px solid #ffeaa7',
+                    marginBottom: '1rem'
+                  }}>
+                    <h5 style={{ margin: '0 0 1rem 0', color: '#856404' }}>設定を編集</h5>
+                    <div style={{ display: 'grid', gap: '1rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={editingBatchConfig.enabled}
+                            onChange={(e) => setEditingBatchConfig({
+                              ...editingBatchConfig,
+                              enabled: e.target.checked
+                            })}
+                            disabled={batchLoading}
+                          />
+                          バッチ処理を有効にする
+                        </label>
+                      </div>
+                      
+                      <div>
+                        <label>実行間隔（分）:</label>
+                        <input
+                          type="number"
+                          value={editingBatchConfig.interval}
+                          onChange={(e) => setEditingBatchConfig({
+                            ...editingBatchConfig,
+                            interval: parseInt(e.target.value) || 0
+                          })}
+                          disabled={batchLoading}
+                          style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', marginLeft: '1rem', width: '100px' }}
+                        />
+                      </div>
+                      
+                      <div>
+                        <label>バッチサイズ（最大ユーザー数）:</label>
+                        <input
+                          type="number"
+                          value={editingBatchConfig.maxUsersPerBatch}
+                          onChange={(e) => setEditingBatchConfig({
+                            ...editingBatchConfig,
+                            maxUsersPerBatch: parseInt(e.target.value) || 0
+                          })}
+                          disabled={batchLoading}
+                          style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', marginLeft: '1rem', width: '100px' }}
+                        />
+                      </div>
+                      
+                                             <div>
+                         <label>リトライ回数:</label>
+                         <input
+                           type="number"
+                           value={editingBatchConfig.retryAttempts}
+                           onChange={(e) => setEditingBatchConfig({
+                             ...editingBatchConfig,
+                             retryAttempts: parseInt(e.target.value) || 0
+                           })}
+                           disabled={batchLoading}
+                           style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', marginLeft: '1rem', width: '100px' }}
+                         />
+                       </div>
+
+                       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                         <label>
+                           <input
+                             type="checkbox"
+                             checked={editingBatchConfig.enableDmNotifications}
+                             onChange={(e) => setEditingBatchConfig({
+                               ...editingBatchConfig,
+                               enableDmNotifications: e.target.checked
+                             })}
+                             disabled={batchLoading}
+                           />
+                           バッチ処理時のDM通知を有効にする
+                         </label>
+                       </div>
+
+                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+                        <button
+                          onClick={handleSaveBatchConfig}
+                          disabled={batchLoading}
+                          style={{
+                            padding: '0.5rem 1rem',
+                            background: '#28a745',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: batchLoading ? 'not-allowed' : 'pointer',
+                            opacity: batchLoading ? 0.6 : 1
+                          }}
+                        >
+                          {batchLoading ? '保存中...' : '設定を保存'}
+                        </button>
+                        <button
+                          onClick={handleCancelBatchConfigEdit}
+                          disabled={batchLoading}
+                          style={{
+                            padding: '0.5rem 1rem',
+                            background: '#6c757d',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: batchLoading ? 'not-allowed' : 'pointer',
+                            opacity: batchLoading ? 0.6 : 1
+                          }}
+                        >
+                          キャンセル
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -705,6 +1023,91 @@ function AdminPanel() {
                   <h5>最終実行</h5>
                   <p style={{ fontSize: '1rem', margin: 0 }}>{batchStats.lastRun ? new Date(batchStats.lastRun).toLocaleString('ja-JP') : '未実行'}</p>
                 </div>
+              </div>
+            )}
+          </div>
+
+          {/* DM通知設定 */}
+          <div style={{ 
+            marginBottom: '2rem', 
+            padding: '1rem', 
+            border: '1px solid #ccc',
+            borderRadius: '8px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h4>DM通知設定</h4>
+              {!dmEditing && (
+                <button
+                  onClick={() => { if (dmSettings) { setEditingDm({ ...dmSettings }); setDmEditing(true); } }}
+                  style={{ padding: '0.5rem 1rem', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                >設定を編集</button>
+              )}
+            </div>
+
+            {dmSettings && !dmEditing && (
+              <div style={{ background: '#f8f9fa', padding: '1rem', borderRadius: '8px' }}>
+                <div style={{ marginBottom: '0.75rem' }}><strong>モード:</strong> {dmSettings.mode}</div>
+                <div style={{ display: 'grid', gap: '0.5rem' }}>
+                  <div>
+                    <strong>新規認証:</strong>
+                    <div style={{ whiteSpace: 'pre-wrap', background: '#fff', border: '1px solid #e9ecef', padding: '0.5rem', borderRadius: '4px' }}>{dmSettings.templates.successNew}</div>
+                  </div>
+                  <div>
+                    <strong>認証更新:</strong>
+                    <div style={{ whiteSpace: 'pre-wrap', background: '#fff', border: '1px solid #e9ecef', padding: '0.5rem', borderRadius: '4px' }}>{dmSettings.templates.successUpdate}</div>
+                  </div>
+                  <div>
+                    <strong>認証失敗:</strong>
+                    <div style={{ whiteSpace: 'pre-wrap', background: '#fff', border: '1px solid #e9ecef', padding: '0.5rem', borderRadius: '4px' }}>{dmSettings.templates.failed}</div>
+                  </div>
+                  <div>
+                    <strong>ロール剥奪:</strong>
+                    <div style={{ whiteSpace: 'pre-wrap', background: '#fff', border: '1px solid #e9ecef', padding: '0.5rem', borderRadius: '4px' }}>{dmSettings.templates.revoked}</div>
+                  </div>
+                </div>
+                <small style={{ color: '#6c757d' }}>利用可能な変数: {`{discordId} {roles} {collections} {reason} {timestamp}`}</small>
+              </div>
+            )}
+
+            {dmEditing && editingDm && (
+              <div style={{ background: '#fff3cd', padding: '1rem', borderRadius: '8px', border: '1px solid #ffeaa7' }}>
+                <div style={{ marginBottom: '1rem' }}>
+                  <label>モード: </label>
+                  <select
+                    value={editingDm.mode}
+                    onChange={(e) => setEditingDm({ ...editingDm, mode: e.target.value as DmMode })}
+                    style={{ marginLeft: '0.5rem' }}
+                  >
+                    <option value="all">常に送る（新規/更新/失敗/剥奪）</option>
+                    <option value="new_and_revoke">新規認証と剥奪のみ</option>
+                    <option value="update_and_revoke">更新認証と剥奪のみ</option>
+                    <option value="revoke_only">剥奪のみ</option>
+                    <option value="none">送らない</option>
+                  </select>
+                </div>
+                <div style={{ display: 'grid', gap: '0.75rem' }}>
+                  <div>
+                    <label>新規認証テンプレート</label>
+                    <textarea value={editingDm.templates.successNew} onChange={(e) => setEditingDm({ ...editingDm, templates: { ...editingDm.templates, successNew: e.target.value } })} style={{ width: '100%', minHeight: '80px' }} />
+                  </div>
+                  <div>
+                    <label>認証更新テンプレート</label>
+                    <textarea value={editingDm.templates.successUpdate} onChange={(e) => setEditingDm({ ...editingDm, templates: { ...editingDm.templates, successUpdate: e.target.value } })} style={{ width: '100%', minHeight: '80px' }} />
+                  </div>
+                  <div>
+                    <label>認証失敗テンプレート</label>
+                    <textarea value={editingDm.templates.failed} onChange={(e) => setEditingDm({ ...editingDm, templates: { ...editingDm.templates, failed: e.target.value } })} style={{ width: '100%', minHeight: '80px' }} />
+                  </div>
+                  <div>
+                    <label>ロール剥奪テンプレート</label>
+                    <textarea value={editingDm.templates.revoked} onChange={(e) => setEditingDm({ ...editingDm, templates: { ...editingDm.templates, revoked: e.target.value } })} style={{ width: '100%', minHeight: '80px' }} />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+                  <button onClick={saveDmSettings} style={{ padding: '0.5rem 1rem', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px' }}>{'保存'}</button>
+                  <button onClick={() => { setDmEditing(false); setEditingDm(null); }} style={{ padding: '0.5rem 1rem', background: '#6c757d', color: 'white', border: 'none', borderRadius: '4px' }}>{'キャンセル'}</button>
+                </div>
+                <small style={{ color: '#6c757d' }}>利用可能な変数: {`{discordId} {roles} {collections} {reason} {timestamp}`}</small>
               </div>
             )}
           </div>
@@ -799,6 +1202,161 @@ function AdminPanel() {
               <p>認証済みユーザーがいません</p>
             </div>
           )}
+        </div>
+      )}
+
+      {activeTab === 'admins' && (
+        <div>
+          <h3>管理者管理</h3>
+          
+          {/* 管理者追加フォーム */}
+          <div style={{ 
+            marginBottom: '2rem', 
+            padding: '1rem', 
+            border: '1px solid #ccc',
+            borderRadius: '8px'
+          }}>
+            <h4>新しい管理者を追加</h4>
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', maxWidth: '600px' }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                  ウォレットアドレス
+                </label>
+                <input
+                  type="text"
+                  placeholder="0x..."
+                  value={newAdminAddress}
+                  onChange={(e) => setNewAdminAddress(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    border: '1px solid #ccc',
+                    borderRadius: '4px',
+                    fontSize: '0.9rem',
+                    fontFamily: 'monospace'
+                  }}
+                />
+              </div>
+              <button
+                onClick={handleAddAdminAddress}
+                disabled={adminLoading || !newAdminAddress.trim()}
+                style={{
+                  padding: '0.75rem 1.5rem',
+                  background: '#28a745',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: adminLoading || !newAdminAddress.trim() ? 'not-allowed' : 'pointer',
+                  opacity: adminLoading || !newAdminAddress.trim() ? 0.6 : 1,
+                  fontWeight: '500'
+                }}
+              >
+                {adminLoading ? '追加中...' : '管理者追加'}
+              </button>
+            </div>
+          </div>
+
+          {/* 現在の管理者一覧 */}
+          <div style={{ 
+            padding: '1rem', 
+            border: '1px solid #ccc',
+            borderRadius: '8px'
+          }}>
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              marginBottom: '1rem'
+            }}>
+              <h4>現在の管理者一覧</h4>
+              <button
+                onClick={fetchAdminAddresses}
+                disabled={adminLoading}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: '#007bff',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: adminLoading ? 'not-allowed' : 'pointer',
+                  opacity: adminLoading ? 0.6 : 1,
+                  fontSize: '0.9rem'
+                }}
+              >
+                {adminLoading ? '更新中...' : '更新'}
+              </button>
+            </div>
+
+            {adminLoading ? (
+              <div style={{ textAlign: 'center', padding: '2rem' }}>
+                <p>管理者一覧を読み込み中...</p>
+              </div>
+            ) : adminAddresses.length > 0 ? (
+              <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                {adminAddresses.map((address, index) => (
+                  <div key={index} style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '1rem',
+                    background: '#f8f9fa',
+                    borderRadius: '8px',
+                    marginBottom: '0.75rem',
+                    border: '1px solid #e9ecef'
+                  }}>
+                    <div>
+                      <span style={{
+                        fontSize: '0.9rem',
+                        fontFamily: 'monospace',
+                        color: '#495057',
+                        wordBreak: 'break-all'
+                      }}>
+                        {address}
+                      </span>
+                      {index === 0 && (
+                        <span style={{
+                          background: '#28a745',
+                          color: 'white',
+                          padding: '0.25rem 0.5rem',
+                          borderRadius: '4px',
+                          fontSize: '0.7rem',
+                          marginLeft: '0.5rem'
+                        }}>
+                          メイン管理者
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => handleRemoveAdminAddress(address)}
+                      disabled={adminAddresses.length <= 1}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        background: adminAddresses.length <= 1 ? '#6c757d' : '#dc3545',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: adminAddresses.length <= 1 ? 'not-allowed' : 'pointer',
+                        opacity: adminAddresses.length <= 1 ? 0.6 : 1,
+                        fontSize: '0.8rem'
+                      }}
+                      title={adminAddresses.length <= 1 ? '最低1つの管理者が必要です' : '管理者を削除'}
+                    >
+                      削除
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ 
+                textAlign: 'center', 
+                padding: '2rem',
+                color: '#666',
+                fontStyle: 'italic'
+              }}>
+                <p>管理者が登録されていません</p>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

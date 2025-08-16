@@ -56,7 +56,11 @@ app.post('/api/discord-action', async (req, res) => {
 
     switch (action) {
       case 'grant_role':
-        result = await grantRoleToUser(discord_id, { disableChannelPost: disable_channel_post });
+        result = await grantRoleToUser(discord_id, { 
+          disableChannelPost: disable_channel_post,
+          notifyUser: verification_data?.notifyUser !== false,
+          customMessage: verification_data?.custom_message
+        });
         console.log(`✅ Role grant result: ${result}`);
         break;
       case 'grant_roles':
@@ -68,7 +72,8 @@ app.post('/api/discord-action', async (req, res) => {
             verification_data.grantedRoles,
             { 
               notifyUser: verification_data.notifyUser !== false,
-              disableChannelPost: disable_channel_post 
+              disableChannelPost: disable_channel_post,
+              customMessage: verification_data?.custom_message 
             }
           );
           console.log(`✅ Multiple roles grant result: ${result}`);
@@ -79,18 +84,30 @@ app.post('/api/discord-action', async (req, res) => {
         break;
       case 'verification_failed':
         // 認証失敗時のDM送信
-        result = await sendVerificationFailedMessage(discord_id, verification_data, { disableChannelPost: disable_channel_post });
+        result = await sendVerificationFailedMessage(discord_id, verification_data, { 
+          disableChannelPost: disable_channel_post,
+          notifyUser: verification_data?.notifyUser !== false,
+          customMessage: verification_data?.custom_message
+        });
         console.log(`✅ Verification failed message result: ${result}`);
         break;
       case 'revoke_role':
-        result = await revokeRoleFromUser(discord_id, { disableChannelPost: disable_channel_post });
+        result = await revokeRoleFromUser(discord_id, { 
+          disableChannelPost: disable_channel_post,
+          notifyUser: verification_data?.notifyUser !== false,
+          customMessage: verification_data?.custom_message
+        });
         console.log(`✅ Role revoke result: ${result}`);
         break;
       case 'revoke_roles':
         // 複数ロール剥奪（バッチ処理用）
         if (verification_data && verification_data.revokedRoles) {
           console.log(`🔄 Revoking ${verification_data.revokedRoles.length} roles from user ${discord_id}`);
-          result = await revokeMultipleRolesFromUser(discord_id, verification_data.revokedRoles, { disableChannelPost: disable_channel_post });
+          result = await revokeMultipleRolesFromUser(discord_id, verification_data.revokedRoles, { 
+            disableChannelPost: disable_channel_post,
+            notifyUser: verification_data?.notifyUser !== false,
+            customMessage: verification_data?.custom_message
+          });
           console.log(`✅ Multiple roles revoke result: ${result}`);
         } else {
           console.error('❌ No revoked roles data provided');

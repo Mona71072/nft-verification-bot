@@ -644,9 +644,103 @@ async function hasTargetNft(address: string, collectionId?: string): Promise<boo
   }
 }
 
-// Discord Bot API（認証結果通知）
-async function notifyDiscordBot(c: Context<{ Bindings: Env }>, discordId: string, action: string, verificationData?: any, isBatchProcess: boolean = false): Promise<boolean> {
+// DM通知設定
+type DmMode = 'all' | 'new_and_revoke' | 'update_and_revoke' | 'revoke_only' | 'none';
+interface DmTemplates {
+  successNew: string;
+  successUpdate: string;
+  failed: string;
+  revoked: string;
+}
+interface DmSettings {
+  mode: DmMode;
+  templates: DmTemplates;
+}
+
+const DM_SETTINGS_KEY = 'dm_settings';
+
+async function getDmSettings(c: Context<{ Bindings: Env }>): Promise<DmSettings> {
   try {
+    const v = await c.env.COLLECTION_STORE.get(DM_SETTINGS_KEY);
+    if (v) return JSON.parse(v) as DmSettings;
+  } catch (e) {
+    console.log('⚠️ getDmSettings error, using defaults:', e);
+  }
+  const defaults: DmSettings = {
+    mode: 'revoke_only',
+    templates: {
+      successNew: 'NFT認証が完了しました。付与されたロール: {roles}',
+      successUpdate: 'NFT認証の更新が完了しました。確認されたロール: {roles}',
+      failed: 'NFT認証に失敗しました。理由: {reason}',
+      revoked: 'NFT保有が確認できなくなったためロールが削除されました: {roles}'
+    }
+  };
+  await c.env.COLLECTION_STORE.put(DM_SETTINGS_KEY, JSON.stringify(defaults));
+  return defaults;
+}
+
+async function updateDmSettings(c: Context<{ Bindings: Env }>, patch: Partial<DmSettings>): Promise<DmSettings> {
+  const current = await getDmSettings(c);
+  const next: DmSettings = {
+    mode: patch.mode ?? current.mode,
+    templates: {
+      successNew: patch.templates?.successNew ?? current.templates.successNew,
+      successUpdate: patch.templates?.successUpdate ?? current.templates.successUpdate,
+      failed: patch.templates?.failed ?? current.templates.failed,
+      revoked: patch.templates?.revoked ?? current.templates.revoked
+    }
+  };
+  await c.env.COLLECTION_STORE.put(DM_SETTINGS_KEY, JSON.stringify(next));
+  return next;
+}
+
+type NotifyKind = 'success_new' | 'success_update' | 'failed' | 'revoked';
+
+function buildMessageFromTemplate(template: string, data: any): string {
+  const roles = (data?.grantedRoles || data?.revokedRoles || [])
+    .map((r: any) => r.roleName || r.name)
+    .filter(Boolean)
+    .join(', ');
+  const collections = Array.isArray(data?.collectionIds) ? data.collectionIds.join(', ') : (data?.collectionId || '');
+  const map: Record<string, string> = {
+    '{discordId}': String(data?.discordId ?? ''),
+    '{roles}': roles,
+    '{collections}': String(collections ?? ''),
+    '{reason}': String(data?.reason ?? ''),
+    '{timestamp}': new Date().toISOString()
+  };
+  let msg = template;
+  for (const k of Object.keys(map)) msg = msg.split(k).join(map[k]);
+  return msg;
+}
+
+function shouldSendDm(mode: DmMode, kind: NotifyKind): boolean {
+  switch (mode) {
+    case 'all':
+      return true;
+    case 'new_and_revoke':
+      return kind === 'success_new' || kind === 'revoked';
+    case 'update_and_revoke':
+      return kind === 'success_update' || kind === 'revoked';
+    case 'revoke_only':
+      return kind === 'revoked';
+    case 'none':
+      return false;
+    default:
+      return false;
+  }
+}
+
+// Discord Bot API（認証結果通知）
+async function notifyDiscordBot(
+  c: Context<{ Bindings: Env }>,
+  discordId: string,
+  action: string,
+  verificationData?: any,
+  options?: { isBatch?: boolean; kind?: NotifyKind }
+): Promise<boolean> {
+  try {
+    const isBatchProcess = !!options?.isBatch;
     console.log(`🔄 Discord Bot API: ${action} for user ${discordId} (batch: ${isBatchProcess})`);
     console.log('📋 Verification data:', verificationData);
     
@@ -673,11 +767,29 @@ async function notifyDiscordBot(c: Context<{ Bindings: Env }>, discordId: string
       return true; // モックモード
     }
     
+    // DM設定を読み込み、送信可否とテンプレートを適用
+    const dmSettings = await getDmSettings(c);
+    const kind: NotifyKind | undefined = options?.kind;
+
+    let notifyUser = true;
+    let customMessage: string | undefined;
+    if (kind) {
+      notifyUser = shouldSendDm(dmSettings.mode, kind);
+      if (notifyUser) {
+        const tpl =
+          kind === 'success_new' ? dmSettings.templates.successNew :
+          kind === 'success_update' ? dmSettings.templates.successUpdate :
+          kind === 'failed' ? dmSettings.templates.failed :
+          dmSettings.templates.revoked;
+        customMessage = buildMessageFromTemplate(tpl, verificationData);
+      }
+    }
+
     // リクエストボディの構築
     const requestBody = {
       discord_id: discordId,
       action: action,
-      verification_data: verificationData,
+      verification_data: { ...(verificationData || {}), notifyUser, custom_message: customMessage },
       timestamp: new Date().toISOString(),
       // バッチ処理の場合はチャンネル投稿を無効化
       disable_channel_post: isBatchProcess
@@ -1572,7 +1684,7 @@ app.post('/api/verify', async (c) => {
             timestamp: new Date().toISOString()
           };
 
-          await notifyDiscordBot(c, discordId, 'grant_roles', regrantData, false); // isBatchProcess = false
+          await notifyDiscordBot(c, discordId, 'grant_roles', regrantData, { isBatch: false, kind: 'success_update' });
 
           // lastChecked の更新
           await addVerifiedUser(c, {
@@ -1629,7 +1741,7 @@ app.post('/api/verify', async (c) => {
           discordId,
           reason: 'Invalid signature',
           timestamp: new Date().toISOString()
-        }, false); // isBatchProcess = false
+        }, { isBatch: false, kind: 'failed' });
       } catch (e) {
         console.log('⚠️ Failed to notify Discord bot for invalid signature:', e);
       }
@@ -1747,7 +1859,7 @@ app.post('/api/verify', async (c) => {
               timestamp: new Date().toISOString()
             };
 
-            await notifyDiscordBot(c, discordId, 'grant_roles', regrantData, false); // isBatchProcess = false
+            await notifyDiscordBot(c, discordId, 'grant_roles', regrantData, { isBatch: false, kind: 'success_update' });
 
             // lastChecked の更新（verifiedAtは維持）
             await addVerifiedUser(c, {
@@ -1778,7 +1890,7 @@ app.post('/api/verify', async (c) => {
       await notifyDiscordBot(c, discordId, 'verification_failed', {
         ...notificationData,
         reason: 'No NFTs found in any selected collections'
-      }, false); // isBatchProcess = false
+      }, { isBatch: false, kind: 'failed' });
       
       return c.json({
         success: false,
@@ -1801,7 +1913,7 @@ app.post('/api/verify', async (c) => {
     await c.env.NONCE_STORE.delete(nonce);
 
     // Discordロール付与（保存後に通知）
-    const roleGranted = await notifyDiscordBot(c, discordId, 'grant_roles', notificationData, false); // isBatchProcess = false
+    const roleGranted = await notifyDiscordBot(c, discordId, 'grant_roles', notificationData, { isBatch: false, kind: 'success_new' });
     if (!roleGranted) {
       console.log('⚠️ Discord notification failed, but verification succeeded');
     }
@@ -1890,7 +2002,7 @@ app.post('/api/admin/batch-check', async (c) => {
             collectionId: user.collectionId,
             reason: 'NFT no longer owned (自動チェック)',
             timestamp: new Date().toISOString()
-          }, true); // isBatchProcess = true
+          }, { isBatch: true, kind: 'revoked' });
           
           if (revoked) {
             // 認証済みユーザーリストから削除
@@ -1917,7 +2029,7 @@ app.post('/api/admin/batch-check', async (c) => {
               grantedRoles: regrantRoles,
               reason: 'Ensuring roles are granted for verified user (自動チェック)',
               timestamp: new Date().toISOString()
-            }, true); // isBatchProcess = true
+            }, { isBatch: true, kind: 'success_update' });
           }
         }
         
@@ -2076,6 +2188,7 @@ interface BatchConfig {
   nextRun: string;
   maxUsersPerBatch: number;
   retryAttempts: number;
+  enableDmNotifications: boolean; // DM通知の有効/無効
 }
 
 // バッチ処理の統計
@@ -2102,7 +2215,8 @@ async function getBatchConfig(c: Context<{ Bindings: Env }>): Promise<BatchConfi
       lastRun: new Date(0).toISOString(),
       nextRun: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
       maxUsersPerBatch: 50,
-      retryAttempts: 3
+      retryAttempts: 3,
+      enableDmNotifications: false // デフォルトでDM通知は無効
     };
     await c.env.COLLECTION_STORE.put('batch_config', JSON.stringify(defaultConfig));
     return defaultConfig;
@@ -2114,7 +2228,8 @@ async function getBatchConfig(c: Context<{ Bindings: Env }>): Promise<BatchConfi
       lastRun: new Date(0).toISOString(),
       nextRun: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
       maxUsersPerBatch: 50,
-      retryAttempts: 3
+      retryAttempts: 3,
+      enableDmNotifications: false
     };
   }
 }
@@ -2240,7 +2355,7 @@ async function executeBatchCheck(c: Context<{ Bindings: Env }>): Promise<BatchSt
             collectionId: user.collectionId,
             reason: 'NFT no longer owned (自動チェック)',
             timestamp: new Date().toISOString()
-          }, true); // isBatchProcess = true
+          }, { isBatch: true, kind: 'revoked' });
           
           if (revoked) {
             // 認証済みユーザーリストから削除
@@ -2260,14 +2375,19 @@ async function executeBatchCheck(c: Context<{ Bindings: Env }>): Promise<BatchSt
             .map((col: any) => ({ roleId: col.roleId, roleName: col.roleName }));
 
           if (regrantRoles.length > 0) {
-            await notifyDiscordBot(c, user.discordId, 'grant_roles', {
-              address: user.address,
-              discordId: user.discordId,
-              collectionIds: regrantCollectionIds,
-              grantedRoles: regrantRoles,
-              reason: 'Ensuring roles are granted for verified user (自動チェック)',
-              timestamp: new Date().toISOString()
-            }, true); // isBatchProcess = true
+            // バッチ処理設定に基づいてDM通知を制御
+            if (batchConfig.enableDmNotifications) {
+              await notifyDiscordBot(c, user.discordId, 'grant_roles', {
+                address: user.address,
+                discordId: user.discordId,
+                collectionIds: regrantCollectionIds,
+                grantedRoles: regrantRoles,
+                reason: 'Ensuring roles are granted for verified user (自動チェック)',
+                timestamp: new Date().toISOString()
+              }, { isBatch: true, kind: 'success_update' });
+            } else {
+              console.log(`📧 DM通知が無効のため、ロール再付与通知をスキップ`);
+            }
           }
         }
         
@@ -2413,6 +2533,37 @@ app.put('/api/admin/batch-config', async (c) => {
   }
 });
 
+// DM通知設定 取得API
+app.get('/api/admin/dm-settings', async (c) => {
+  try {
+    const auth = await verifyAdminToken(c);
+    if (!auth.ok) {
+      const addr = c.req.header('X-Admin-Address');
+      if (!addr || !(await isAdmin(c, addr))) return c.json({ success: false, error: 'Unauthorized', reason: (auth as any).reason }, 401);
+    }
+    const settings = await getDmSettings(c);
+    return c.json({ success: true, data: settings });
+  } catch (e) {
+    return c.json({ success: false, error: 'Failed to get DM settings' }, 500);
+  }
+});
+
+// DM通知設定 更新API
+app.put('/api/admin/dm-settings', async (c) => {
+  try {
+    const auth = await verifyAdminToken(c);
+    if (!auth.ok) {
+      const addr = c.req.header('X-Admin-Address');
+      if (!addr || !(await isAdmin(c, addr))) return c.json({ success: false, error: 'Unauthorized', reason: (auth as any).reason }, 401);
+    }
+    const body = await c.req.json();
+    const updated = await updateDmSettings(c, body);
+    return c.json({ success: true, data: updated });
+  } catch (e) {
+    return c.json({ success: false, error: 'Failed to update DM settings' }, 500);
+  }
+});
+
 // バッチ処理統計取得API
 app.get('/api/admin/batch-stats', async (c) => {
   try {
@@ -2533,7 +2684,7 @@ async function executeBatchCheckManual(c: Context<{ Bindings: Env }>): Promise<B
             collectionId: user.collectionId,
             reason: 'NFT no longer owned (手動チェック)',
             timestamp: new Date().toISOString()
-          }, false); // isBatchProcess = false
+          }, { isBatch: false, kind: 'revoked' });
           
           if (revoked) {
             await removeVerifiedUser(c, user.discordId, user.collectionId);
@@ -2558,7 +2709,7 @@ async function executeBatchCheckManual(c: Context<{ Bindings: Env }>): Promise<B
               grantedRoles: regrantRoles,
               reason: 'Ensuring roles are granted for verified user (手動チェック)',
               timestamp: new Date().toISOString()
-            }, false); // isBatchProcess = false
+            }, { isBatch: false, kind: 'success_update' });
           }
         }
         
