@@ -676,23 +676,23 @@ async function getDmSettings(c: Context<{ Bindings: Env }>): Promise<DmSettings>
     mode: 'revoke_only',
     templates: {
       successNew: {
-        title: '認証完了',
-        description: 'NFT認証が完了しました。\n\n以下のコレクションでNFTが確認されました:\n\n{roles}\n\n対応するロールが付与されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。',
+        title: '🎉 認証完了',
+        description: 'NFT認証が完了しました！\n\n**確認されたコレクション:**\n{roles}\n\n対応するロールが付与されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。\n\nご利用ありがとうございます！',
         color: 0x57F287
       },
       successUpdate: {
-        title: '認証更新完了',
-        description: 'NFT認証の更新が完了しました。\n\n以下のコレクションでNFTが確認されました:\n\n{roles}\n\n対応するロールが更新されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。',
+        title: '🔄 認証更新完了',
+        description: 'NFT認証の更新が完了しました！\n\n**確認されたコレクション:**\n{roles}\n\n対応するロールが更新されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。\n\n引き続きご利用ください！',
         color: 0x57F287
       },
       failed: {
-        title: '認証失敗',
-        description: 'NFT認証に失敗しました。\n\n理由: {reason}',
+        title: '❌ 認証失敗',
+        description: 'NFT認証に失敗しました。\n\n**失敗理由:**\n{reason}\n\n以下の点をご確認ください：\n• 正しいウォレットで接続しているか\n• 指定されたコレクションのNFTを保有しているか\n• ネットワーク接続に問題がないか\n\n問題が解決しない場合は、管理者にお問い合わせください。',
         color: 0xED4245
       },
       revoked: {
-        title: 'ロール更新通知',
-        description: 'NFTの保有が確認できなくなったため、以下のロールが削除されました:\n\n{roles}\n\n再度NFTを取得された場合は、認証チャンネルから再認証を行ってください。',
+        title: '⚠️ ロール削除通知',
+        description: 'NFTの保有が確認できなくなったため、以下のロールが削除されました：\n\n**削除されたロール:**\n{roles}\n\n**対処方法：**\n• 再度NFTを取得された場合は、認証チャンネルから再認証を行ってください\n• ウォレットの変更がある場合は、新しいウォレットで認証してください\n\nご不明な点がございましたら、管理者にお問い合わせください。',
         color: 0xED4245
       }
     }
