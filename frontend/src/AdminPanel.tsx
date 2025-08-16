@@ -44,8 +44,6 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verificat
 function AdminPanel() {
   const [collections, setCollections] = useState<NFTCollection[]>([]);
   const [discordRoles, setDiscordRoles] = useState<DiscordRole[]>([]);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [address, setAddress] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [editingCollection, setEditingCollection] = useState<NFTCollection | null>(null);
@@ -270,106 +268,12 @@ function AdminPanel() {
     setBatchLoading(false);
   };
 
-  // 署名式ログイン
-  const handleAuth = async () => {
-    try {
-      setLoading(true);
-      setMessage('');
-      // ウォレット接続中のApp側で行う想定だが、ここではアドレスを入力式に
-      if (!address) {
-        setMessage('管理者ウォレットアドレスを入力してください');
-        setLoading(false);
-        return;
-      }
-      // 1) ナンス取得
-      const nonceResp = await fetch(`${API_BASE_URL}/api/admin/login-nonce`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address })
-      });
-      const nonceData = await nonceResp.json();
-      if (!nonceData.success) {
-        setMessage(nonceData.error || 'ナンス取得に失敗しました');
-        setLoading(false);
-        return;
-      }
-      const nonce = nonceData.data.nonce;
-      const timestamp = new Date().toISOString();
-      const authMessage = `SXT Admin Login\naddress=${address}\nnonce=${nonce}\ntimestamp=${timestamp}`;
-      // 2) ここで本来はウォレット署名を行い signature/bytes/publicKey を得る
-      // デモ用にbytes=authMessage, signature/ publicKey をダミー（本運用ではApp.tsxから引き回し）
-      const bytes = new TextEncoder().encode(authMessage);
-      const signature = btoa('dummy');
-      // 3) 検証要求
-      const verifyResp = await fetch(`${API_BASE_URL}/api/admin/login-verify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address, signature, bytes, authMessage, nonce })
-      });
-      const verifyData = await verifyResp.json();
-      if (!verifyData.success) {
-        setMessage(verifyData.error || 'ログイン検証に失敗しました');
-        setLoading(false);
-        return;
-      }
-      // トークンはApp側の実装を使用（ここでは保存しない）
-      setIsAuthenticated(true);
-    } catch (e) {
-      setMessage('認証処理でエラーが発生しました');
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // コンポーネントマウント時にデータを取得
   useEffect(() => {
-    if (isAuthenticated) {
-      fetchCollections();
-      fetchDiscordRoles();
-      fetchBatchConfig(); // バッチ処理設定も取得
-    }
-  }, [isAuthenticated]);
-
-  if (!isAuthenticated) {
-    return (
-      <div style={{ 
-        padding: '2rem', 
-        textAlign: 'center',
-        maxWidth: '400px',
-        margin: '0 auto'
-      }}>
-        <h2 style={{ marginBottom: '1rem' }}>管理者認証</h2>
-        <input
-          type="text"
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
-          placeholder="管理者ウォレットアドレス"
-          style={{ 
-            padding: '0.5rem', 
-            margin: '1rem',
-            width: '100%',
-            borderRadius: '4px',
-            border: '1px solid #ccc'
-          }}
-        />
-        <button 
-          onClick={handleAuth}
-          style={{
-            padding: '0.5rem 1rem',
-            background: '#007bff',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer'
-          }}
-        >
-          認証
-        </button>
-        {message && (
-          <p style={{ color: 'red', marginTop: '1rem' }}>{message}</p>
-        )}
-      </div>
-    );
-  }
+    fetchCollections();
+    fetchDiscordRoles();
+    fetchBatchConfig();
+  }, []);
 
   return (
     <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
