@@ -41,7 +41,8 @@ interface BatchStats {
 }
 
 type DmMode = 'all' | 'new_and_revoke' | 'update_and_revoke' | 'revoke_only' | 'none';
-interface DmTemplates { successNew: string; successUpdate: string; failed: string; revoked: string }
+interface DmTemplate { title: string; description: string; color?: number }
+interface DmTemplates { successNew: DmTemplate; successUpdate: DmTemplate; failed: DmTemplate; revoked: DmTemplate }
 interface DmSettings { mode: DmMode; templates: DmTemplates }
 
 interface VerifiedUser {
@@ -1050,19 +1051,31 @@ function AdminPanel() {
                 <div style={{ display: 'grid', gap: '0.5rem' }}>
                   <div>
                     <strong>新規認証:</strong>
-                    <div style={{ whiteSpace: 'pre-wrap', background: '#fff', border: '1px solid #e9ecef', padding: '0.5rem', borderRadius: '4px' }}>{dmSettings.templates.successNew}</div>
+                    <div style={{ background: '#fff', border: '1px solid #e9ecef', padding: '0.5rem', borderRadius: '4px' }}>
+                      <div><strong>タイトル:</strong> {dmSettings.templates.successNew.title}</div>
+                      <div style={{ whiteSpace: 'pre-wrap', marginTop: '0.25rem' }}><strong>本文:</strong> {dmSettings.templates.successNew.description}</div>
+                    </div>
                   </div>
                   <div>
                     <strong>認証更新:</strong>
-                    <div style={{ whiteSpace: 'pre-wrap', background: '#fff', border: '1px solid #e9ecef', padding: '0.5rem', borderRadius: '4px' }}>{dmSettings.templates.successUpdate}</div>
+                    <div style={{ background: '#fff', border: '1px solid #e9ecef', padding: '0.5rem', borderRadius: '4px' }}>
+                      <div><strong>タイトル:</strong> {dmSettings.templates.successUpdate.title}</div>
+                      <div style={{ whiteSpace: 'pre-wrap', marginTop: '0.25rem' }}><strong>本文:</strong> {dmSettings.templates.successUpdate.description}</div>
+                    </div>
                   </div>
                   <div>
                     <strong>認証失敗:</strong>
-                    <div style={{ whiteSpace: 'pre-wrap', background: '#fff', border: '1px solid #e9ecef', padding: '0.5rem', borderRadius: '4px' }}>{dmSettings.templates.failed}</div>
+                    <div style={{ background: '#fff', border: '1px solid #e9ecef', padding: '0.5rem', borderRadius: '4px' }}>
+                      <div><strong>タイトル:</strong> {dmSettings.templates.failed.title}</div>
+                      <div style={{ whiteSpace: 'pre-wrap', marginTop: '0.25rem' }}><strong>本文:</strong> {dmSettings.templates.failed.description}</div>
+                    </div>
                   </div>
                   <div>
                     <strong>ロール剥奪:</strong>
-                    <div style={{ whiteSpace: 'pre-wrap', background: '#fff', border: '1px solid #e9ecef', padding: '0.5rem', borderRadius: '4px' }}>{dmSettings.templates.revoked}</div>
+                    <div style={{ background: '#fff', border: '1px solid #e9ecef', padding: '0.5rem', borderRadius: '4px' }}>
+                      <div><strong>タイトル:</strong> {dmSettings.templates.revoked.title}</div>
+                      <div style={{ whiteSpace: 'pre-wrap', marginTop: '0.25rem' }}><strong>本文:</strong> {dmSettings.templates.revoked.description}</div>
+                    </div>
                   </div>
                 </div>
                 <small style={{ color: '#6c757d' }}>利用可能な変数: {`{discordId} {roles} {collections} {reason} {timestamp}`}</small>
@@ -1088,19 +1101,31 @@ function AdminPanel() {
                 <div style={{ display: 'grid', gap: '0.75rem' }}>
                   <div>
                     <label>新規認証テンプレート</label>
-                    <textarea value={editingDm.templates.successNew} onChange={(e) => setEditingDm({ ...editingDm, templates: { ...editingDm.templates, successNew: e.target.value } })} style={{ width: '100%', minHeight: '80px' }} />
+                    <div style={{ display: 'grid', gap: '0.5rem' }}>
+                      <input placeholder="タイトル" value={editingDm.templates.successNew.title} onChange={(e) => setEditingDm({ ...editingDm, templates: { ...editingDm.templates, successNew: { ...editingDm.templates.successNew, title: e.target.value } } })} style={{ padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px' }} />
+                      <textarea placeholder="本文" value={editingDm.templates.successNew.description} onChange={(e) => setEditingDm({ ...editingDm, templates: { ...editingDm.templates, successNew: { ...editingDm.templates.successNew, description: e.target.value } } })} style={{ width: '100%', minHeight: '80px', padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px' }} />
+                    </div>
                   </div>
                   <div>
                     <label>認証更新テンプレート</label>
-                    <textarea value={editingDm.templates.successUpdate} onChange={(e) => setEditingDm({ ...editingDm, templates: { ...editingDm.templates, successUpdate: e.target.value } })} style={{ width: '100%', minHeight: '80px' }} />
+                    <div style={{ display: 'grid', gap: '0.5rem' }}>
+                      <input placeholder="タイトル" value={editingDm.templates.successUpdate.title} onChange={(e) => setEditingDm({ ...editingDm, templates: { ...editingDm.templates, successUpdate: { ...editingDm.templates.successUpdate, title: e.target.value } } })} style={{ padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px' }} />
+                      <textarea placeholder="本文" value={editingDm.templates.successUpdate.description} onChange={(e) => setEditingDm({ ...editingDm, templates: { ...editingDm.templates, successUpdate: { ...editingDm.templates.successUpdate, description: e.target.value } } })} style={{ width: '100%', minHeight: '80px', padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px' }} />
+                    </div>
                   </div>
                   <div>
                     <label>認証失敗テンプレート</label>
-                    <textarea value={editingDm.templates.failed} onChange={(e) => setEditingDm({ ...editingDm, templates: { ...editingDm.templates, failed: e.target.value } })} style={{ width: '100%', minHeight: '80px' }} />
+                    <div style={{ display: 'grid', gap: '0.5rem' }}>
+                      <input placeholder="タイトル" value={editingDm.templates.failed.title} onChange={(e) => setEditingDm({ ...editingDm, templates: { ...editingDm.templates, failed: { ...editingDm.templates.failed, title: e.target.value } } })} style={{ padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px' }} />
+                      <textarea placeholder="本文" value={editingDm.templates.failed.description} onChange={(e) => setEditingDm({ ...editingDm, templates: { ...editingDm.templates, failed: { ...editingDm.templates.failed, description: e.target.value } } })} style={{ width: '100%', minHeight: '80px', padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px' }} />
+                    </div>
                   </div>
                   <div>
                     <label>ロール剥奪テンプレート</label>
-                    <textarea value={editingDm.templates.revoked} onChange={(e) => setEditingDm({ ...editingDm, templates: { ...editingDm.templates, revoked: e.target.value } })} style={{ width: '100%', minHeight: '80px' }} />
+                    <div style={{ display: 'grid', gap: '0.5rem' }}>
+                      <input placeholder="タイトル" value={editingDm.templates.revoked.title} onChange={(e) => setEditingDm({ ...editingDm, templates: { ...editingDm.templates, revoked: { ...editingDm.templates.revoked, title: e.target.value } } })} style={{ padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px' }} />
+                      <textarea placeholder="本文" value={editingDm.templates.revoked.description} onChange={(e) => setEditingDm({ ...editingDm, templates: { ...editingDm.templates, revoked: { ...editingDm.templates.revoked, description: e.target.value } } })} style={{ width: '100%', minHeight: '80px', padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px' }} />
+                    </div>
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>

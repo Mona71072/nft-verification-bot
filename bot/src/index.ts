@@ -138,7 +138,7 @@ async function handleVerifyNFT(interaction: ButtonInteraction) {
 }
 
 // Discord Bot APIエンドポイント（Cloudflare Workersから呼び出される）
-export async function grantRoleToUser(discordId: string, options?: { disableChannelPost?: boolean, notifyUser?: boolean, customMessage?: string }): Promise<boolean> {
+export async function grantRoleToUser(discordId: string, options?: { disableChannelPost?: boolean, notifyUser?: boolean, customMessage?: { title: string; description: string; color?: number } }): Promise<boolean> {
   try {
     const guild = await client.guilds.fetch(config.DISCORD_GUILD_ID);
     const member = await guild.members.fetch(discordId);
@@ -156,7 +156,16 @@ export async function grantRoleToUser(discordId: string, options?: { disableChan
     if (options?.notifyUser !== false) {
       try {
         if (options?.customMessage) {
-          await member.send({ content: options.customMessage });
+          await member.send({
+            embeds: [
+              new EmbedBuilder()
+                .setTitle(options.customMessage.title)
+                .setDescription(options.customMessage.description)
+                .setColor(options.customMessage.color || 0x57F287)
+                .setTimestamp()
+                .setFooter({ text: 'NFT Verification Bot' })
+            ]
+          });
         } else {
           await member.send({
             embeds: [
@@ -201,7 +210,7 @@ export async function grantRoleToUser(discordId: string, options?: { disableChan
 }
 
 // ロール剥奪関数
-export async function revokeRoleFromUser(discordId: string, options?: { disableChannelPost?: boolean, notifyUser?: boolean, customMessage?: string }): Promise<boolean> {
+export async function revokeRoleFromUser(discordId: string, options?: { disableChannelPost?: boolean, notifyUser?: boolean, customMessage?: { title: string; description: string; color?: number } }): Promise<boolean> {
   try {
     const guild = await client.guilds.fetch(config.DISCORD_GUILD_ID);
     const member = await guild.members.fetch(discordId);
@@ -219,7 +228,16 @@ export async function revokeRoleFromUser(discordId: string, options?: { disableC
     if (options?.notifyUser !== false) {
       try {
         if (options?.customMessage) {
-          await member.send({ content: options.customMessage });
+          await member.send({
+            embeds: [
+              new EmbedBuilder()
+                .setTitle(options.customMessage.title)
+                .setDescription(options.customMessage.description)
+                .setColor(options.customMessage.color || 0xED4245)
+                .setTimestamp()
+                .setFooter({ text: 'NFT Verification Bot' })
+            ]
+          });
         } else {
           await member.send({
             embeds: [
@@ -312,7 +330,7 @@ async function isVerifiedUser(discordId: string): Promise<boolean> {
 export async function grantMultipleRolesToUser(
   discordId: string,
   roles: Array<{ roleId: string; roleName: string }>,
-  options?: { notifyUser?: boolean; disableChannelPost?: boolean, customMessage?: string }
+  options?: { notifyUser?: boolean; disableChannelPost?: boolean, customMessage?: { title: string; description: string; color?: number } }
 ): Promise<boolean> {
   try {
     const guild = await client.guilds.fetch(config.DISCORD_GUILD_ID);
@@ -343,7 +361,16 @@ export async function grantMultipleRolesToUser(
     if (shouldNotify) {
       try {
         if (options?.customMessage) {
-          await member.send({ content: options.customMessage });
+          await member.send({
+            embeds: [
+              new EmbedBuilder()
+                .setTitle(options.customMessage.title)
+                .setDescription(options.customMessage.description)
+                .setColor(options.customMessage.color || 0x57F287)
+                .setTimestamp()
+                .setFooter({ text: 'NFT Verification Bot' })
+            ]
+          });
         } else {
           const embed = new EmbedBuilder()
             .setColor(0x57F287)
@@ -419,7 +446,7 @@ export async function grantMultipleRolesToUser(
 export async function revokeMultipleRolesFromUser(
   discordId: string, 
   roles: Array<{roleId: string, roleName: string}>,
-  options?: { disableChannelPost?: boolean, notifyUser?: boolean, customMessage?: string }
+  options?: { disableChannelPost?: boolean, notifyUser?: boolean, customMessage?: { title: string; description: string; color?: number } }
 ): Promise<boolean> {
   try {
     const guild = await client.guilds.fetch(config.DISCORD_GUILD_ID);
@@ -450,7 +477,16 @@ export async function revokeMultipleRolesFromUser(
     if (revokedRoles.length > 0 && options?.notifyUser !== false) {
       try {
         if (options?.customMessage) {
-          await member.send({ content: options.customMessage });
+          await member.send({
+            embeds: [
+              new EmbedBuilder()
+                .setTitle(options.customMessage.title)
+                .setDescription(options.customMessage.description)
+                .setColor(options.customMessage.color || 0xED4245)
+                .setTimestamp()
+                .setFooter({ text: 'NFT Verification Bot' })
+            ]
+          });
         } else {
           const embed = new EmbedBuilder()
             .setTitle('ロール更新通知')
@@ -540,7 +576,7 @@ export async function sendBatchProcessNotification(discordId: string, batchData:
 }
 
 // 認証失敗時のDM送信関数
-export async function sendVerificationFailedMessage(discordId: string, verificationData?: any, options?: { disableChannelPost?: boolean, notifyUser?: boolean, customMessage?: string }): Promise<boolean> {
+export async function sendVerificationFailedMessage(discordId: string, verificationData?: any, options?: { disableChannelPost?: boolean, notifyUser?: boolean, customMessage?: { title: string; description: string; color?: number } }): Promise<boolean> {
   try {
     const guild = await client.guilds.fetch(config.DISCORD_GUILD_ID);
     const member = await guild.members.fetch(discordId);
@@ -548,7 +584,16 @@ export async function sendVerificationFailedMessage(discordId: string, verificat
     try {
       if (options?.notifyUser === false) return true;
       if (options?.customMessage) {
-        await member.send({ content: options.customMessage });
+        await member.send({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle(options.customMessage.title)
+              .setDescription(options.customMessage.description)
+              .setColor(options.customMessage.color || 0xED4245)
+              .setTimestamp()
+              .setFooter({ text: 'NFT Verification Bot' })
+          ]
+        });
         return true;
       }
       const embed = new EmbedBuilder()

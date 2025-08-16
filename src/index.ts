@@ -646,11 +646,17 @@ async function hasTargetNft(address: string, collectionId?: string): Promise<boo
 
 // DM通知設定
 type DmMode = 'all' | 'new_and_revoke' | 'update_and_revoke' | 'revoke_only' | 'none';
+interface DmTemplate {
+  title: string;
+  description: string;
+  color?: number;
+}
+
 interface DmTemplates {
-  successNew: string;
-  successUpdate: string;
-  failed: string;
-  revoked: string;
+  successNew: DmTemplate;
+  successUpdate: DmTemplate;
+  failed: DmTemplate;
+  revoked: DmTemplate;
 }
 interface DmSettings {
   mode: DmMode;
@@ -669,10 +675,26 @@ async function getDmSettings(c: Context<{ Bindings: Env }>): Promise<DmSettings>
   const defaults: DmSettings = {
     mode: 'revoke_only',
     templates: {
-      successNew: 'NFT認証が完了しました。付与されたロール: {roles}',
-      successUpdate: 'NFT認証の更新が完了しました。確認されたロール: {roles}',
-      failed: 'NFT認証に失敗しました。理由: {reason}',
-      revoked: 'NFT保有が確認できなくなったためロールが削除されました: {roles}'
+      successNew: {
+        title: '認証完了',
+        description: 'NFT認証が完了しました。\n\n以下のコレクションでNFTが確認されました:\n\n{roles}\n\n対応するロールが付与されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。',
+        color: 0x57F287
+      },
+      successUpdate: {
+        title: '認証更新完了',
+        description: 'NFT認証の更新が完了しました。\n\n以下のコレクションでNFTが確認されました:\n\n{roles}\n\n対応するロールが更新されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。',
+        color: 0x57F287
+      },
+      failed: {
+        title: '認証失敗',
+        description: 'NFT認証に失敗しました。\n\n理由: {reason}',
+        color: 0xED4245
+      },
+      revoked: {
+        title: 'ロール更新通知',
+        description: 'NFTの保有が確認できなくなったため、以下のロールが削除されました:\n\n{roles}\n\n再度NFTを取得された場合は、認証チャンネルから再認証を行ってください。',
+        color: 0xED4245
+      }
     }
   };
   await c.env.COLLECTION_STORE.put(DM_SETTINGS_KEY, JSON.stringify(defaults));
@@ -696,7 +718,7 @@ async function updateDmSettings(c: Context<{ Bindings: Env }>, patch: Partial<Dm
 
 type NotifyKind = 'success_new' | 'success_update' | 'failed' | 'revoked';
 
-function buildMessageFromTemplate(template: string, data: any): string {
+function buildMessageFromTemplate(template: DmTemplate, data: any): DmTemplate {
   const roles = (data?.grantedRoles || data?.revokedRoles || [])
     .map((r: any) => r.roleName || r.name)
     .filter(Boolean)
@@ -709,9 +731,13 @@ function buildMessageFromTemplate(template: string, data: any): string {
     '{reason}': String(data?.reason ?? ''),
     '{timestamp}': new Date().toISOString()
   };
-  let msg = template;
-  for (const k of Object.keys(map)) msg = msg.split(k).join(map[k]);
-  return msg;
+  let title = template.title;
+  let description = template.description;
+  for (const k of Object.keys(map)) {
+    title = title.split(k).join(map[k]);
+    description = description.split(k).join(map[k]);
+  }
+  return { title, description, color: template.color };
 }
 
 function shouldSendDm(mode: DmMode, kind: NotifyKind): boolean {
@@ -772,7 +798,7 @@ async function notifyDiscordBot(
     const kind: NotifyKind | undefined = options?.kind;
 
     let notifyUser = true;
-    let customMessage: string | undefined;
+    let customMessage: DmTemplate | undefined;
     if (kind) {
       notifyUser = shouldSendDm(dmSettings.mode, kind);
       if (notifyUser) {
