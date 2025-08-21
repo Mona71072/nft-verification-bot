@@ -163,108 +163,36 @@ async function setupVerificationChannel() {
 
     console.log('🔄 Creating new verification messages...');
 
-    // シンプルでカッコいいユーザー認証メッセージ
-    const userVerificationEmbed = new EmbedBuilder()
-      .setTitle('🎯 SXT NFT Verification Portal')
-      .setDescription(`**Join the exclusive NFT community by verifying your Sui wallet ownership!**
-
-🌟 **What you'll get:**
-• **Exclusive Discord Role:** NFT Holder
-• **Premium Access:** Special channels and features
-• **Community Status:** Verified NFT holder
-• **Future Benefits:** Early access to upcoming features
-
-🎯 **How to verify:**
-1. **Click the verification button below**
-2. **Get your personalized verification URL**
-3. **Connect your Sui wallet** (Sui Wallet, Slush Wallet, etc.)
-4. **Complete the verification process**
-5. **Get your exclusive role automatically!**
-
-💎 **Security Features:**
-• Blockchain-verified NFT ownership
-• Secure message signing (no private key access)
-• Instant role assignment
-• Professional verification process`)
-      .setColor(0x6366f1)
+    // シンプルな認証メッセージ
+    const verificationEmbed = new EmbedBuilder()
+      .setTitle('🎫 NFT Verification System')
+      .setDescription('This system grants roles to users who hold NFTs on the Sui network.\n\nClick the button below to start verification.')
+      .addFields(
+        { name: '📋 Verification Steps', value: '1. Click the button\n2. Sign with your wallet\n3. NFT ownership check\n4. Role assignment', inline: false }
+      )
+      .setColor(0x57F287)
       .setFooter({ 
-        text: 'Sui NFT Verification'
+        text: 'NFT Verification Bot'
       })
       .setTimestamp();
 
     // シンプルなボタン
     const verifyButton = new ButtonBuilder()
       .setCustomId('verify_nft')
-      .setLabel('Verify NFT')
+      .setLabel('Start NFT Verification')
       .setStyle(ButtonStyle.Primary)
-      .setEmoji('🚀');
+      .setEmoji('🎫');
 
-    const helpButton = new ButtonBuilder()
-      .setCustomId('help_verification')
-      .setLabel('Help')
-      .setStyle(ButtonStyle.Secondary)
-      .setEmoji('❓');
+    const actionRow = new ActionRowBuilder<ButtonBuilder>()
+      .addComponents(verifyButton);
 
-    const userActionRow = new ActionRowBuilder<ButtonBuilder>()
-      .addComponents(verifyButton, helpButton);
-
-    // 一般ユーザー向けメッセージ送信
-    console.log('📤 Sending user verification message...');
+    // 認証メッセージ送信
+    console.log('📤 Sending verification message...');
     await verificationChannel.send({
-      embeds: [userVerificationEmbed],
-      components: [userActionRow]
+      embeds: [verificationEmbed],
+      components: [actionRow]
     });
-    console.log('✅ User verification message sent');
-
-    // シンプルでカッコいい管理者パネル
-    const adminEmbed = new EmbedBuilder()
-      .setTitle('⚙️ Admin Panel')
-      .setDescription(`**System Status: Online**
-
-Manage verification system and monitor performance.`)
-      .setColor(0x71717a)
-      .setFooter({ 
-        text: 'Admin Panel'
-      })
-      .setTimestamp();
-
-    // シンプルな管理ボタン
-    const statsButton = new ButtonBuilder()
-      .setCustomId('admin_stats')
-      .setLabel('Stats')
-      .setStyle(ButtonStyle.Secondary)
-      .setEmoji('📊');
-
-    const refreshButton = new ButtonBuilder()
-      .setCustomId('admin_refresh')
-      .setLabel('Refresh')
-      .setStyle(ButtonStyle.Secondary)
-      .setEmoji('🔄');
-
-    const statusButton = new ButtonBuilder()
-      .setCustomId('admin_status')
-      .setLabel('Status')
-      .setStyle(ButtonStyle.Secondary)
-      .setEmoji('🟢');
-
-    const collectionsButton = new ButtonBuilder()
-      .setCustomId('admin_collections')
-      .setLabel('Collections')
-      .setStyle(ButtonStyle.Secondary)
-      .setEmoji('🎨');
-
-    const adminActionRow = new ActionRowBuilder<ButtonBuilder>()
-      .addComponents(statsButton, refreshButton, statusButton, collectionsButton);
-
-    // 管理者向けメッセージ送信
-    console.log('📤 Sending admin verification message...');
-    await verificationChannel.send({
-      embeds: [adminEmbed],
-      components: [adminActionRow]
-    });
-    console.log('✅ Admin verification message sent');
-
-    console.log('✅ User and Admin verification messages posted successfully');
+    console.log('✅ Verification message sent');
 
   } catch (error) {
     console.error('❌ Error setting up verification channel:', error);
@@ -301,37 +229,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
 
-    // 一般ユーザー向けボタン
+    // 認証ボタン
     if (customId === 'verify_nft') {
       console.log(`✅ Processing verify_nft for user ${user.username}`);
       await handleVerifyNFT(interaction);
-    }
-    // ヘルプボタン
-    else if (customId === 'help_verification') {
-      console.log(`✅ Processing help_verification for user ${user.username}`);
-      await handleHelpVerification(interaction);
-    }
-    // サポートボタン
-    else if (customId === 'support_verification') {
-      console.log(`✅ Processing support_verification for user ${user.username}`);
-      await handleSupportVerification(interaction);
-    }
-    // 管理者向けボタン
-    else if (customId === 'admin_stats') {
-      console.log(`✅ Processing admin_stats for user ${user.username} (isAdmin: ${isAdmin})`);
-      await handleAdminStats(interaction, isAdmin);
-    } else if (customId === 'admin_refresh') {
-      console.log(`✅ Processing admin_refresh for user ${user.username} (isAdmin: ${isAdmin})`);
-      await handleAdminRefresh(interaction, isAdmin);
-    } else if (customId === 'admin_status') {
-      console.log(`✅ Processing admin_status for user ${user.username} (isAdmin: ${isAdmin})`);
-      await handleAdminStatus(interaction, isAdmin);
-    } else if (customId === 'admin_logs') {
-      console.log(`✅ Processing admin_logs for user ${user.username} (isAdmin: ${isAdmin})`);
-      await handleAdminLogs(interaction, isAdmin);
-    } else if (customId === 'admin_collections') {
-      console.log(`✅ Processing admin_collections for user ${user.username} (isAdmin: ${isAdmin})`);
-      await handleAdminCollections(interaction, isAdmin);
     } else {
       console.log(`❌ Unknown button interaction: ${customId}`);
       if (!interaction.replied && !interaction.deferred) {
@@ -395,12 +296,15 @@ async function handleVerifyNFT(interaction: ButtonInteraction) {
     console.log(`🔗 Verification URL: ${verificationUrl}`);
 
     const verifyEmbed = new EmbedBuilder()
-      .setTitle('🔗 NFT Verification')
-      .setDescription(`**Starting NFT verification**
-[Open verification page](${verificationUrl})`)
-      .setColor(0x6366f1)
+      .setTitle('🎫 NFT Verification')
+      .setDescription('Starting verification...')
+      .addFields(
+        { name: '🔗 Verification URL', value: verificationUrl, inline: false },
+        { name: '⚠️ Note', value: 'Wallet signatures are safe. We only verify NFT ownership and do not move any assets.', inline: false }
+      )
+      .setColor(0x57F287)
       .setFooter({ 
-        text: 'Sui NFT Verification'
+        text: 'NFT Verification Bot'
       })
       .setTimestamp();
 
@@ -462,99 +366,7 @@ async function handleVerifyNFT(interaction: ButtonInteraction) {
   }
 }
 
-// ヘルプボタン処理
-async function handleHelpVerification(interaction: ButtonInteraction) {
-  try {
-    console.log(`🔄 Handling help_verification for user ${interaction.user.username} (${interaction.user.id})`);
 
-    const helpEmbed = new EmbedBuilder()
-      .setTitle('❓ Help')
-      .setDescription(`**How to verify your NFT:**
-
-1. Click "Verify NFT" button
-2. Open the verification page
-3. Connect your wallet
-4. Sign the message
-5. Get your role
-
-**Requirements:**
-• Sui wallet with NFTs
-• Wallet extension installed
-• Discord server membership`)
-      .setColor(0x57F287)
-      .setFooter({ 
-        text: 'Sui NFT Verification'
-      })
-      .setTimestamp();
-
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({
-        embeds: [helpEmbed],
-        ephemeral: true
-      });
-    }
-  } catch (error) {
-    console.error('❌ Error in handleHelpVerification:', error);
-    console.error('❌ Error stack:', (error as Error).stack);
-    
-    if (!interaction.replied && !interaction.deferred) {
-      try {
-        await interaction.reply({
-          content: '❌ 認証方法の説明に失敗しました。',
-          ephemeral: true
-        });
-      } catch (replyError) {
-        console.error('❌ Error sending help reply:', replyError);
-      }
-    }
-  }
-}
-
-// サポートボタン処理
-async function handleSupportVerification(interaction: ButtonInteraction) {
-  try {
-    console.log(`🔄 Handling support_verification for user ${interaction.user.username} (${interaction.user.id})`);
-
-    const supportEmbed = new EmbedBuilder()
-      .setTitle('🆘 Support & Assistance')
-      .setDescription(`**Need help with the NFT verification process?**\\n\\n🔗 **[🔐 Open Secure Verification Portal](${config.VERIFICATION_URL || 'Configured in system'})**\\n\\n📚 **Documentation:**\\n• Visit our official documentation for detailed guides: [Sui NFT Verification Docs](https://docs.sui.network/docs/learn/nft-verification)\\n\\n💬 **Discord Support:**\\n• Join our official Discord server for immediate assistance: [Sui NFT Verification Discord](https://discord.gg/sui)\\n\\n🔒 **Security:**\\n• All verification is done through secure signatures\\n• Your wallet data remains private\\n• Blockchain-verified ownership only\\n\\n❓ **Common Issues:**\\n• **Q: I can't connect my wallet.**\\n  A: Ensure your Sui Wallet extension is installed and up-to-date.\\n\\n• **Q: The verification link expired.**\\n  A: The verification link is valid for 5 minutes. If it expires, please request a new one.\\n\\n• **Q: My role isn't showing up.**\\n  A: Please check your wallet connection and try again. If the issue persists, contact support.`)
-      .setColor(0xFEE75C)
-      .setThumbnail('https://i.imgur.com/8tBXd6L.png')
-      .addFields(
-        { name: '🌐 Verification Portal', value: config.VERIFICATION_URL || 'Configured in system', inline: true },
-        { name: '💬 Support Channel', value: 'https://discord.gg/sui', inline: true },
-        { name: '🔒 Security Level', value: 'Maximum Protection', inline: true },
-        { name: '⚡ Process Speed', value: 'Under 2 minutes', inline: true },
-        { name: '🎁 Benefits', value: 'Exclusive Access', inline: true }
-      )
-      .setFooter({ 
-        text: 'Sui NFT Verification Support • Professional Assistance',
-        iconURL: 'https://i.imgur.com/8tBXd6L.png'
-      })
-      .setTimestamp();
-
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({
-        embeds: [supportEmbed],
-        ephemeral: true
-      });
-    }
-  } catch (error) {
-    console.error('❌ Error in handleSupportVerification:', error);
-    console.error('❌ Error stack:', (error as Error).stack);
-    
-    if (!interaction.replied && !interaction.deferred) {
-      try {
-        await interaction.reply({
-          content: '❌ サポートに失敗しました。',
-          ephemeral: true
-        });
-      } catch (replyError) {
-        console.error('❌ Error sending support reply:', replyError);
-      }
-    }
-  }
-}
 
 
 // ロール付与関数（APIから呼び出される）
@@ -764,226 +576,6 @@ export async function sendVerificationFailureMessage(discordId: string, verifica
     console.error('❌ Error details:', (error as Error).message);
     console.error('❌ Error stack:', (error as Error).stack);
     return false;
-  }
-}
-
-// 管理者統計表示（シンプル版）
-async function handleAdminStats(interaction: ButtonInteraction, isAdmin: boolean) {
-  try {
-    if (!isAdmin) {
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({
-          content: '❌ Administrator privileges required.',
-          ephemeral: true
-        });
-      }
-      return;
-    }
-
-    const statsEmbed = new EmbedBuilder()
-      .setTitle('📊 Stats')
-      .setDescription(`**System Statistics**
-
-Bot ID: ${client.user?.id || 'Unknown'}
-Guild: ${interaction.guild?.name || 'Unknown'}
-Version: 2.0.0`)
-      .setColor(0x57F287)
-      .setFooter({ 
-        text: 'Admin Panel'
-      })
-      .setTimestamp();
-
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({
-        embeds: [statsEmbed],
-        ephemeral: true
-      });
-    }
-  } catch (error) {
-    console.error('Error in handleAdminStats:', error);
-    throw error;
-  }
-}
-
-// 管理者リフレッシュ（シンプル版）
-async function handleAdminRefresh(interaction: ButtonInteraction, isAdmin: boolean) {
-  try {
-    if (!isAdmin) {
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({
-          content: '❌ Administrator privileges required.',
-          ephemeral: true
-        });
-      }
-      return;
-    }
-
-    const refreshEmbed = new EmbedBuilder()
-      .setTitle('🔄 Refresh')
-      .setDescription(`**System refreshed successfully**
-
-Status: Online
-Network: ${config.SUI_NETWORK}
-Time: ${new Date().toLocaleString()}`)
-      .setColor(0x57F287)
-      .setFooter({ 
-        text: 'Admin Panel'
-      })
-      .setTimestamp();
-
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({
-        embeds: [refreshEmbed],
-        ephemeral: true
-      });
-    }
-  } catch (error) {
-    console.error('Error in handleAdminRefresh:', error);
-    throw error;
-  }
-}
-
-// 管理者ステータス表示（シンプル版）
-async function handleAdminStatus(interaction: ButtonInteraction, isAdmin: boolean) {
-  try {
-    if (!isAdmin) {
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({
-          content: '❌ Administrator privileges required.',
-          ephemeral: true
-        });
-      }
-      return;
-    }
-
-    const statusEmbed = new EmbedBuilder()
-      .setTitle('🟢 Status')
-      .setDescription(`**System Status: Online**
-
-Bot Service: Online
-API Connection: Connected
-Database: Healthy
-Verification: Active`)
-      .setColor(0x57F287)
-      .setFooter({ 
-        text: 'Admin Panel'
-      })
-      .setTimestamp();
-
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({
-        embeds: [statusEmbed],
-        ephemeral: true
-      });
-    }
-  } catch (error) {
-    console.error('Error in handleAdminStatus:', error);
-    throw error;
-  }
-}
-
-// 管理者ログ表示（プロフェッショナル版）
-async function handleAdminLogs(interaction: ButtonInteraction, isAdmin: boolean) {
-  try {
-    if (!isAdmin) {
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({
-          content: '❌ Administrator privileges required.',
-          ephemeral: true
-        });
-      }
-      return;
-    }
-
-    const logsEmbed = new EmbedBuilder()
-      .setTitle('📋 System Logs')
-      .setDescription(`**Latest System Logs**\\n\\n*Logs will be implemented in future updates*`)
-      .setColor(0x57F287)
-      .setThumbnail('https://i.imgur.com/8tBXd6L.png')
-      .addFields(
-        { name: '🆔 Bot ID', value: client.user?.id || 'Unknown', inline: true },
-        { name: '🏠 Guild', value: interaction.guild?.name || 'Unknown', inline: true },
-        { name: '📈 Version', value: '2.0.0', inline: true }
-      )
-      .setFooter({ 
-        text: 'System Logs • Real-time Monitoring',
-        iconURL: client.user?.displayAvatarURL()
-      })
-      .setTimestamp();
-
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({
-        embeds: [logsEmbed],
-        ephemeral: true
-      });
-    }
-  } catch (error) {
-    console.error('Error in handleAdminLogs:', error);
-    throw error;
-  }
-}
-
-// コレクション管理ボタン処理
-async function handleAdminCollections(interaction: ButtonInteraction, isAdmin: boolean) {
-  try {
-    if (!isAdmin) {
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({
-          content: '❌ Administrator privileges required.',
-          ephemeral: true
-        });
-      }
-      return;
-    }
-
-    const collectionsEmbed = new EmbedBuilder()
-      .setTitle('🎨 Collections Management')
-      .setDescription(`**Manage your NFT collections and their associated roles.**
-
-\`\`\`
-Collection ID: ${config.NFT_COLLECTION_ID || 'Not set'}
-Role ID: ${config.DISCORD_ROLE_ID || 'Not set'}
-\`\`\`
-
-**Current Collections:**
-${config.NFT_COLLECTION_ID ? `• \`${config.NFT_COLLECTION_ID}\` (Active)` : '• No collections configured.'}
-
-**Add New Collection:**
-1. Create a new channel in Discord.
-2. Set its ID in \`VERIFICATION_CHANNEL_ID\` in \`config.ts\`.
-3. Set its \`collectionId\` in \`NFT_COLLECTION_ID\` in \`config.ts\`.
-4. Set its \`roleId\` in \`DISCORD_ROLE_ID\` in \`config.ts\`.
-
-**Note:**
-• \`VERIFICATION_CHANNEL_ID\` must be a text channel.
-• \`NFT_COLLECTION_ID\` must be a valid Sui Network collection ID.
-• \`DISCORD_ROLE_ID\` must be a role that exists in your Discord server.
-• The \`roleId\` in \`config.ts\` must match the role ID in your Discord server.`)
-      .setColor(0x57F287)
-      .setFooter({ 
-        text: 'Collections Management'
-      })
-      .setTimestamp();
-
-    const backButton = new ButtonBuilder()
-      .setCustomId('admin_back_to_status')
-      .setLabel('Back to Status')
-      .setStyle(ButtonStyle.Secondary)
-      .setEmoji('⬅️');
-
-    const actionRow = new ActionRowBuilder<ButtonBuilder>()
-      .addComponents(backButton);
-
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({
-        embeds: [collectionsEmbed],
-        components: [actionRow],
-        ephemeral: true
-      });
-    }
-  } catch (error) {
-    console.error('Error in handleAdminCollections:', error);
-    throw error;
   }
 }
 
