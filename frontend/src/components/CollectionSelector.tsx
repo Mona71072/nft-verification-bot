@@ -1,4 +1,4 @@
-import { NFTCollection } from '../types';
+import type { NFTCollection } from '../types';
 
 interface CollectionSelectorProps {
   collections: NFTCollection[];
@@ -22,9 +22,9 @@ export const CollectionSelector: React.FC<CollectionSelectorProps> = ({
   return (
     <div style={{ marginBottom: '1.5rem' }}>
       <div style={{ marginBottom: '1rem' }}>
-        <h3 style={{ fontWeight: '600', color: '#1a1a1a', marginBottom: '0.5rem' }}>NFTコレクション選択</h3>
+        <h3 style={{ fontWeight: '600', color: '#1a1a1a', marginBottom: '0.5rem' }}>Select NFT Collection</h3>
         <p style={{ fontSize: '0.875rem', color: '#666' }}>
-          認証したいNFTコレクションを選択してください
+        Choose the NFT collection you want to verify.
         </p>
       </div>
       <div style={{ marginBottom: '0.5rem' }}>

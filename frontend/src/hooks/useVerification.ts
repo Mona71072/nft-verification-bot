@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { VerificationResult, VerifiedUser } from '../types';
+import type { VerificationResult, VerifiedUser } from '../types';
 
 // 認証処理のカスタムフック
 export const useVerification = (apiBaseUrl: string) => {
@@ -77,7 +77,7 @@ export const useVerification = (apiBaseUrl: string) => {
       const messageBytes = new TextEncoder().encode(authMessage);
       const signatureResult = await signPersonalMessage({
         message: messageBytes
-      }).catch(error => {
+      }).catch((error: unknown) => {
         console.error('Signature error:', error);
         throw new Error('署名に失敗しました。ウォレットで署名を承認してください。');
       });
@@ -87,7 +87,7 @@ export const useVerification = (apiBaseUrl: string) => {
       // 4. バックエンドに送信
       const requestBody = {
         signature: signatureResult.signature,
-        bytes: signatureResult.bytes || messageBytes,
+        bytes: signatureResult.bytes, // ウォレットが実際に署名したbytesを使用
         publicKey: (signatureResult as any)?.publicKey ?? (account as any)?.publicKey,
         address: account.address,
         discordId: discordId.trim(),
@@ -124,9 +124,18 @@ export const useVerification = (apiBaseUrl: string) => {
           });
         }
       } else {
+        // サーバーからのエラーに応じたわかりやすい文言（errorCode優先）
+        const code = (data.errorCode as string) || '';
+        const msg = typeof data.error === 'string' ? data.error : '';
+        const notOwned = code === 'NO_NFTS' || msg.includes('No NFTs found');
+        const invalidSig = code === 'INVALID_SIGNATURE' || msg.includes('Invalid signature');
         setVerificationResult({
           success: false,
-          message: data.error || '認証に失敗しました。'
+          message: notOwned
+            ? '対象コレクションのNFTを保有していません。ウォレット内の保有状況をご確認ください。'
+            : invalidSig
+              ? '署名の確認に失敗しました。別のウォレット（Suiet / Surf など）またはブラウザでお試しください。改善しない場合は管理者にお問い合わせください。'
+              : (data.error || '認証に失敗しました。')
         });
       }
 

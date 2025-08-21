@@ -19,8 +19,8 @@ export const WalletConnection: React.FC<WalletConnectionProps> = ({
   return (
     <div style={{ marginBottom: '1.5rem' }}>
       <div style={{ marginBottom: '1rem' }}>
-        <h3 style={{ fontWeight: '600', color: '#1a1a1a', marginBottom: '0.5rem' }}>ウォレット接続</h3>
-        <p style={{ fontSize: '0.875rem', color: '#666' }}>Suiウォレットを接続してNFT所有権を確認</p>
+        <h3 style={{ fontWeight: '600', color: '#1a1a1a', marginBottom: '0.5rem' }}>Connect Wallet</h3>
+        <p style={{ fontSize: '0.875rem', color: '#666' }}>Connect your Sui wallet to verify NFT ownership.</p>
       </div>
       {(() => {
         try {
@@ -93,7 +93,7 @@ export const WalletConnection: React.FC<WalletConnectionProps> = ({
                 {copied ? 'コピー済み' : 'コピー'}
               </button>
               <button
-                onClick={() => setShowFullAddress(v => !v)}
+                onClick={() => setShowFullAddress(!showFullAddress)}
                 style={{
                   padding: '0.25rem 0.5rem',
                   border: '1px solid #d1d5db',

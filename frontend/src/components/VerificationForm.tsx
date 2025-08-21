@@ -52,7 +52,7 @@ export const VerificationForm: React.FC<VerificationFormProps> = ({
           <h3 style={{ fontWeight: '600', color: '#1a1a1a', marginBottom: '0.5rem' }}>Discord ID</h3>
           <p style={{ fontSize: '0.875rem', color: '#666' }}>
             {isDiscordIdFromUrl()
-              ? 'URLから自動取得しました（変更不可）'
+              ? 'Your Discord ID has been automatically retrieved.'
               : 'Discord IDを入力してください'}
           </p>
         </div>
@@ -82,8 +82,9 @@ export const VerificationForm: React.FC<VerificationFormProps> = ({
       {/* Verification */}
       <div style={{ marginBottom: '1.5rem' }}>
         <div style={{ marginBottom: '1rem' }}>
-          <h3 style={{ fontWeight: '600', color: '#1a1a1a', marginBottom: '0.5rem' }}>NFT所有権確認</h3>
-          <p style={{ fontSize: '0.875rem', color: '#666' }}>メッセージに署名してNFT所有権を安全に確認</p>
+          <h3 style={{ fontWeight: '600', color: '#1a1a1a', marginBottom: '0.5rem' }}>Verify NFT Ownership</h3>
+          <p style={{ fontSize: '0.875rem', color: '#666' }}>Sign a message to securely confirm your NFT ownership.
+          This signature does not involve any transaction or transfer of funds.</p>
         </div>
         <button
           onClick={handleVerifyClick}
@@ -116,7 +117,7 @@ export const VerificationForm: React.FC<VerificationFormProps> = ({
               確認中...
             </div>
           ) : (
-            '認証開始'
+            'Start Verification'
           )}
         </button>
       </div>

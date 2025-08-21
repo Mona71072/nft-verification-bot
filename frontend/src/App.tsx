@@ -137,7 +137,7 @@ function App() {
             color: '#1a1a1a',
             margin: 0
           }}>
-            NFT Verification
+            SyndicateXTokyo
           </h1>
           {isAdmin && (
             <button

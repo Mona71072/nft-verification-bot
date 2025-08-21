@@ -96,6 +96,17 @@ function AdminPanel() {
     description: ''
   });
 
+  // メッセージを5秒後に自動で消すためのuseEffect
+  useEffect(() => {
+    if (message) {
+      const timer = setTimeout(() => {
+        setMessage('');
+      }, 5000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [message]);
+
   // 管理者認証ヘッダーを生成
   const getAuthHeaders = () => {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };

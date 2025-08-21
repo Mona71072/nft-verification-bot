@@ -33,6 +33,27 @@ interface Env {
   [key: string]: any;
 }
 
+// 統一ログ関数
+function logInfo(message: string, data?: any): void {
+  console.log(`ℹ️ ${message}`, data || '');
+}
+
+function logError(message: string, error?: any): void {
+  console.error(`❌ ${message}`, error || '');
+}
+
+function logSuccess(message: string, data?: any): void {
+  console.log(`✅ ${message}`, data || '');
+}
+
+function logWarning(message: string, data?: any): void {
+  console.warn(`⚠️ ${message}`, data || '');
+}
+
+function logDebug(message: string, data?: any): void {
+  console.log(`🔍 ${message}`, data || '');
+}
+
 const app = new Hono<{ Bindings: Env }>();
 
 // カスタムCORSミドルウェア
@@ -40,7 +61,7 @@ app.use('*', async (c, next) => {
   const origin = c.req.header('Origin');
   const method = c.req.method;
   
-  console.log('=== CORS MIDDLEWARE ===');
+  logInfo('CORS MIDDLEWARE');
   console.log('Origin:', origin);
   console.log('Method:', method);
   console.log('URL:', c.req.url);
@@ -55,7 +76,7 @@ app.use('*', async (c, next) => {
   
   // OPTIONSリクエストの場合は即座にレスポンス
   if (method === 'OPTIONS') {
-    console.log('OPTIONS request handled by middleware');
+    logInfo('OPTIONS request handled by middleware');
     return new Response('', {
       status: 200,
       headers: {
@@ -79,123 +100,6 @@ app.get('/', (c) => {
     timestamp: new Date().toISOString()
   });
 });
-
-// ナンス生成エンドポイント
-app.post('/api/nonce', async (c) => {
-  try {
-    console.log('=== NONCE ENDPOINT CALLED ===');
-    console.log('URL:', c.req.url);
-    console.log('Method:', c.req.method);
-    console.log('Origin:', c.req.header('Origin'));
-    console.log('User-Agent:', c.req.header('User-Agent'));
-    console.log('Content-Type:', c.req.header('Content-Type'));
-    
-    const body = await c.req.json();
-    console.log('Request body:', body);
-    
-    const { discordId, address } = body;
-
-    if (!discordId || !address) {
-      console.log('Missing required fields:', { discordId, address });
-      return c.json({
-        success: false,
-        error: 'discordId and address are required'
-      }, 400);
-    }
-
-    // ナンス生成
-    const nonce = Date.now().toString(36) + Math.random().toString(36).substr(2);
-    const expiresAt = Date.now() + 5 * 60 * 1000; // 5分後
-
-    // Cloudflare KVに保存
-    const nonceData = {
-      nonce,
-      discordId,
-      address,
-      expiresAt
-    };
-
-    await (c.env.NONCE_STORE as any).put(nonce, JSON.stringify(nonceData), {
-      expirationTtl: 300 // 5分後に自動削除
-    });
-
-    console.log(`Generated nonce for ${address} (Discord: ${discordId}): ${nonce}`);
-
-    return c.json({
-      success: true,
-      data: {
-        nonce,
-        expiresAt
-      }
-    });
-
-  } catch (error) {
-    console.error('Nonce generation error:', error);
-    return c.json({
-      success: false,
-      error: `Failed to generate nonce: ${error instanceof Error ? error.message : 'Unknown error'}`
-    }, 500);
-  }
-});
-
-// ========================
-// 管理者署名ログイン API
-// ========================
-// 1) 管理者ログイン用のナンス発行
-app.post('/api/admin/login-nonce', async (c) => {
-  try {
-    const { address } = await c.req.json();
-    if (!address) return c.json({ success: false, error: 'address is required' }, 400);
-    // 管理者でなければ拒否
-    if (!(await isAdmin(c, address))) {
-      return c.json({ success: false, error: 'not admin' }, 403);
-    }
-    const nonce = generateRandomToken(24);
-    const key = ADMIN_LOGIN_NONCE_PREFIX + nonce;
-    const expiresAt = Date.now() + 5 * 60 * 1000;
-    await c.env.COLLECTION_STORE.put(key, JSON.stringify({ address, expiresAt }), { expirationTtl: 300 });
-    return c.json({ success: true, data: { nonce, expiresAt } });
-  } catch (e) {
-    return c.json({ success: false, error: 'failed to issue admin login nonce' }, 500);
-  }
-});
-
-// 2) ナンスに対する署名を検証し、短期トークンを発行
-app.post('/api/admin/login-verify', async (c) => {
-  try {
-    const { address, signature, bytes, authMessage, nonce, publicKey } = await c.req.json();
-    if (!address || !signature || !bytes || !authMessage || !nonce) {
-      return c.json({ success: false, error: 'missing params' }, 400);
-    }
-    const stored = await c.env.COLLECTION_STORE.get(ADMIN_LOGIN_NONCE_PREFIX + nonce);
-    if (!stored) return c.json({ success: false, error: 'invalid or expired nonce' }, 400);
-    const { address: storedAddress, expiresAt } = JSON.parse(stored);
-    if (storedAddress.toLowerCase() !== String(address).toLowerCase() || Date.now() > expiresAt) {
-      return c.json({ success: false, error: 'invalid or expired nonce' }, 400);
-    }
-    // メッセージ検証
-    const expected = new TextEncoder().encode(authMessage);
-    const ok = await verifySignedMessage({ signature, bytes, publicKey }, expected);
-    if (!ok) return c.json({ success: false, error: 'invalid signature' }, 400);
-    // 管理者再確認
-    if (!(await isAdmin(c, address))) return c.json({ success: false, error: 'not admin' }, 403);
-
-    // トークン発行（24時間）
-    const token = generateRandomToken(48);
-    const tokenKey = ADMIN_TOKEN_PREFIX + token;
-    const tokenExpiresAt = Date.now() + 24 * 60 * 60 * 1000;
-    await c.env.COLLECTION_STORE.put(tokenKey, JSON.stringify({ address, expiresAt: tokenExpiresAt }), { expirationTtl: 24 * 60 * 60 });
-
-    // 使い終わったナンスは削除
-    await c.env.COLLECTION_STORE.delete(ADMIN_LOGIN_NONCE_PREFIX + nonce);
-
-    return c.json({ success: true, data: { token, expiresAt: tokenExpiresAt } });
-  } catch (e) {
-    return c.json({ success: false, error: 'admin login verify failed' }, 500);
-  }
-});
-
-
 
 // ================
 // 署名検証ヘルパー
@@ -233,35 +137,64 @@ function toUint8Array(input: any): Uint8Array | null {
   }
 }
 
-  async function verifySignedMessage(signatureData: any, expectedMessageBytes: Uint8Array): Promise<boolean> {
+// BCS: ULEB128 で長さをエンコード（vector<u8> のプレフィックス用）
+function encodeUleb128(value: number): Uint8Array {
+  const out: number[] = [];
+  let v = value >>> 0; // ensure unsigned
+  do {
+    let byte = v & 0x7f;
+    v >>>= 7;
+    if (v !== 0) byte |= 0x80;
+    out.push(byte);
+  } while (v !== 0);
+  return new Uint8Array(out);
+}
+
+interface SignatureData {
+  signature: string | Uint8Array;
+  bytes: string | Uint8Array;
+  publicKey?: string | Uint8Array;
+}
+
+async function verifySignedMessage(signatureData: SignatureData, expectedMessageBytes: Uint8Array | null): Promise<boolean> {
   try {
-    // SuietのsignPersonalMessageは bytes=Uint8Array を署名対象にする
-    // ここでは最低限の整合性検証（将来的に公開鍵検証を追加）
+    // スラッシュウォレット対応: ウォレットから送信されたbytesを直接使用
     const { signature, bytes, publicKey } = signatureData ?? {};
 
     if (!signature || !bytes) {
-      console.error('Missing signature or bytes');
+      logError('Missing signature or bytes');
       return false;
     }
 
-    // 受信bytesとサーバー側で再構築した expectedMessageBytes を厳密一致
-    const received = toUint8Array(bytes);
-    if (!received) {
-      console.error('Invalid bytes payload');
-      return false;
-    }
-    const same = received.length === expectedMessageBytes.length && received.every((b, i) => b === expectedMessageBytes[i]);
-    if (!same) {
-      console.error('Message bytes mismatch');
+    // ウォレットから送信されたbytesを直接使用
+    const receivedDecoded = toUint8Array(bytes);
+    if (!receivedDecoded) {
+      logError('Invalid bytes payload');
       return false;
     }
 
-    // 署名・公開鍵の抽出（SuiのSerializedSignature対応: [scheme(1)][signature(64)][pubkey(32)])
+    // 追加候補: bytesがBase64文字列そのもののASCIIとして署名されている可能性
+    let receivedAscii: Uint8Array | null = null;
+    if (typeof bytes === 'string') {
+      try {
+        receivedAscii = new TextEncoder().encode(bytes);
+      } catch {}
+    }
+
+    // 署名検証で試すメッセージ候補（優先順）
+    const candidateMessages: Array<{ name: string; data: Uint8Array }> = [];
+    if (expectedMessageBytes) candidateMessages.push({ name: 'expectedBytes', data: expectedMessageBytes });
+    candidateMessages.push({ name: 'receivedDecoded', data: receivedDecoded });
+    if (receivedAscii) candidateMessages.push({ name: 'receivedAscii', data: receivedAscii });
+
+    // 署名・公開鍵の抽出（スラッシュウォレット対応）
     const rawSig = toUint8Array(signature);
     if (!rawSig || !(rawSig instanceof Uint8Array)) {
-      console.error('Invalid signature format');
+      logError('Invalid signature format');
       return false;
     }
+
+    console.log(`Raw signature (first 16): ${Array.from(rawSig.slice(0, 16))}`);
 
     let sigBytes: Uint8Array | null = null;
     let pubBytes: Uint8Array | null = null;
@@ -270,6 +203,7 @@ function toUint8Array(input: any): Uint8Array | null {
     if (publicKey) {
       const pk = toUint8Array(publicKey);
       if (pk) {
+        console.log(`Public key length: ${pk.length}`);
         // 先頭1バイトがスキームの場合(33bytes) → 取り除く
         pubBytes = pk.length === 33 ? pk.slice(1) : pk;
       }
@@ -301,6 +235,8 @@ function toUint8Array(input: any): Uint8Array | null {
     // ケース3: SerializedSignature (scheme(1)+signature(64)+publicKey(32 or 33))
     if (!sigBytes && rawSig.length >= 1 + 64 + 32) {
       const scheme = rawSig[0];
+      console.log(`SerializedSignature scheme: ${scheme} (0x${scheme.toString(16)})`);
+      
       // 0x00: Ed25519 / 0x01: Secp256k1 / 0x02: Secp256r1
       if (scheme !== 0x00) {
         console.error(`Unsupported signature scheme: ${scheme}`);
@@ -308,36 +244,93 @@ function toUint8Array(input: any): Uint8Array | null {
       }
       sigBytes = rawSig.slice(1, 65);
       const extractedPubAll = rawSig.slice(65);
-      if (!pubBytes || pubBytes.length !== 32) {
-        if (extractedPubAll.length === 33) {
-          pubBytes = extractedPubAll.slice(1);
-        } else if (extractedPubAll.length === 32) {
-          pubBytes = extractedPubAll;
-        } else {
-          console.error(`Unexpected public key length in serialized signature: ${extractedPubAll.length}`);
-          return false;
-        }
+      console.log(`Extracted signature length: ${sigBytes.length}`);
+      console.log(`Extracted public key length: ${extractedPubAll.length}`);
+      
+      // 署名内の公開鍵を優先使用（スラッシュウォレット対応）
+      if (extractedPubAll.length === 33) {
+        pubBytes = extractedPubAll.slice(1);
+      } else if (extractedPubAll.length === 32) {
+        pubBytes = extractedPubAll;
+      } else {
+        console.error(`Unexpected public key length in serialized signature: ${extractedPubAll.length}`);
+        return false;
+      }
+    }
+
+    // ケース4: スラッシュウォレット形式（88文字Base64 = 66バイト）
+    if (!sigBytes && rawSig.length === 66) {
+      console.log('Detected Slash wallet signature format (66 bytes)');
+      
+      // スラッシュウォレットの署名形式を試行
+      // パターン1: 先頭2バイトがスキーム、残り64バイトが署名
+      const scheme1 = rawSig[0];
+      const scheme2 = rawSig[1];
+      console.log(`Scheme bytes: [${scheme1}, ${scheme2}]`);
+      
+      if (scheme1 === 0x00 && scheme2 === 0x00) {
+        sigBytes = rawSig.slice(2, 66); // 2バイトスキーム + 64バイト署名
+      } else if (scheme1 === 0x00) {
+        sigBytes = rawSig.slice(1, 65); // 1バイトスキーム + 64バイト署名
+      } else {
+        sigBytes = rawSig.slice(0, 64); // 先頭64バイトを署名として使用
       }
     }
 
     if (!sigBytes || !pubBytes || pubBytes.length !== 32) {
-      console.error('Failed to extract signature/publicKey for Ed25519 verification');
+      console.error(`Failed to extract signature/publicKey for Ed25519 verification (sigBytes? ${!!sigBytes}, pubBytesLen=${pubBytes?.length || 0}, rawSigLen=${rawSig?.length || 0})`);
       return false;
     }
 
-    // まずは素のメッセージに対して検証（Walletが素のbytesに署名する実装の場合を許容）
-    let ok = await ed25519.verify(sigBytes, expectedMessageBytes, pubBytes);
-    if (ok) return true;
+    // 各候補メッセージに対して、複数モードで検証
+    for (const candidate of candidateMessages) {
+      const messageBytes = candidate.data;
 
-    // フォールバック: SuiのPersonalMessage想定（Intent付与 + blake2b-256）
-    const intent = new Uint8Array([0, 0, 0]); // scope=PersonalMessage, version=0, appId=0
-    const intentMessage = new Uint8Array(intent.length + expectedMessageBytes.length);
-    intentMessage.set(intent, 0);
-    intentMessage.set(expectedMessageBytes, intent.length);
-    const digest = blake2b(intentMessage, { dkLen: 32 });
-    ok = await ed25519.verify(sigBytes, digest, pubBytes);
-    if (!ok) console.error('Ed25519 verification failed');
-    return ok;
+      // まずは素のメッセージに対して検証
+      let ok = await ed25519.verify(sigBytes, messageBytes, pubBytes);
+      if (ok) {
+        console.log(`Ed25519 verification succeeded (raw mode, candidate=${candidate.name})`);
+        return true;
+      }
+
+      // フォールバック1: Intent + BCS + blake2b-256
+      const intent = new Uint8Array([0, 0, 0]);
+      const lenPrefix = encodeUleb128(messageBytes.length);
+      const bcsMessage = new Uint8Array(lenPrefix.length + messageBytes.length);
+      bcsMessage.set(lenPrefix, 0);
+      bcsMessage.set(messageBytes, lenPrefix.length);
+      let intentMessage = new Uint8Array(intent.length + bcsMessage.length);
+      intentMessage.set(intent, 0);
+      intentMessage.set(bcsMessage, intent.length);
+      let digest = blake2b(intentMessage, { dkLen: 32 });
+      ok = await ed25519.verify(sigBytes, digest, pubBytes);
+      if (ok) {
+        console.log(`Ed25519 verification succeeded (intent+BCS mode, candidate=${candidate.name})`);
+        return true;
+      }
+
+      // フォールバック2: Intentのみ + blake2b-256
+      intentMessage = new Uint8Array(intent.length + messageBytes.length);
+      intentMessage.set(intent, 0);
+      intentMessage.set(messageBytes, intent.length);
+      digest = blake2b(intentMessage, { dkLen: 32 });
+      ok = await ed25519.verify(sigBytes, digest, pubBytes);
+      if (ok) {
+        console.log(`Ed25519 verification succeeded (intent-only mode, candidate=${candidate.name})`);
+        return true;
+      }
+
+      // フォールバック3: blake2b-256(message) のみ
+      digest = blake2b(messageBytes, { dkLen: 32 });
+      ok = await ed25519.verify(sigBytes, digest, pubBytes);
+      if (ok) {
+        console.log(`Ed25519 verification succeeded (blake2b-only mode, candidate=${candidate.name})`);
+        return true;
+      }
+    }
+
+    console.error('Ed25519 verification failed for all candidates and modes');
+    return false;
   } catch (error) {
     console.error('Signature verification error:', error);
     return false;
@@ -400,7 +393,7 @@ function validateNonce(nonce: string, storedNonceData: any): boolean {
 // ================
 // Sui RPC ヘルパー
 // ================
-async function rpcCall<T = any>(rpcUrl: string, body: any, timeoutMs = 15000): Promise<T> {
+async function rpcCall<T = any>(rpcUrl: string, body: any, timeoutMs = 30000): Promise<T> {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -417,229 +410,227 @@ async function rpcCall<T = any>(rpcUrl: string, body: any, timeoutMs = 15000): P
 }
 
 // NFT保有確認関数
-async function hasTargetNft(address: string, collectionId?: string): Promise<boolean> {
+async function hasTargetNft(address: string, collectionId: string): Promise<boolean> {
   try {
-    console.log(`Checking NFT ownership for address: ${address}, collection: ${collectionId || 'any'}`);
+    const suiRpcUrl = 'https://fullnode.mainnet.sui.io:443';
     
-    // 実際のNFT保有確認を実行（開発モードを無効化）
-    console.log('Production mode: Performing actual NFT ownership check...');
+    console.log(`Checking NFT ownership for address: ${address}, collection: ${collectionId}`);
     
-    // 実際のSui APIを使用する場合（本番環境用）
-    if (collectionId && collectionId.trim() !== '') {
-      try {
-        // Sui RPC APIを使用してNFT保有を確認
-        const suiRpcUrl = 'https://fullnode.mainnet.sui.io:443';
-        
-        console.log(`Checking NFT ownership for address: ${address}, collection: ${collectionId}`);
-        // 先に軽量な直接所有チェック（ページネーション + タイムアウト + 早期終了）
-        try {
-          let directCursor: any = null;
-          for (let page = 0; page < 5; page++) {
-            const directData = await rpcCall<any>(suiRpcUrl, {
-              jsonrpc: '2.0',
-              id: 100,
-              method: 'suix_getOwnedObjects',
-              params: [
-                address,
-                { filter: { StructType: collectionId }, options: { showType: true } },
-                directCursor,
-                50
-              ]
-            }, 15000);
-            const dataArr = directData.result?.data ?? [];
-            if (dataArr.length > 0) {
-              console.log(`✅ Direct NFTs found (fast path): ${dataArr.length} for ${address} in ${collectionId}`);
-              return true;
-            }
-            directCursor = directData.result?.nextCursor ?? null;
-            if (!directCursor) break;
-          }
-        } catch (fastErr) {
-          console.log('Fast direct ownership check failed, falling back:', fastErr);
-        }
-        
-        // 方法1: 直接所有されているNFTを確認
-        const directResponse = await fetch(`${suiRpcUrl}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            jsonrpc: '2.0',
-            id: 1,
-            method: 'suix_getOwnedObjects',
-            params: [
-              address,
-              {
-                filter: {
-                  StructType: collectionId
-                }
-              },
-              null,
-              null,
-              true
-            ]
-          })
-        });
-        
-        const directData = await directResponse.json() as any;
-        console.log(`📥 Direct ownership Sui API response:`, JSON.stringify(directData, null, 2));
-        
-        const hasDirectNft = directData.result && directData.result.data && directData.result.data.length > 0;
-        
-        if (hasDirectNft) {
-          console.log(`✅ Direct NFTs found: ${directData.result.data.length} NFTs for address ${address} in collection ${collectionId}`);
+    // 先に軽量な直接所有チェック（ページネーション + タイムアウト + 早期終了）
+    try {
+      let directCursor: any = null;
+      for (let page = 0; page < 5; page++) {
+        const directData = await rpcCall<any>(suiRpcUrl, {
+          jsonrpc: '2.0',
+          id: 100,
+          method: 'suix_getOwnedObjects',
+          params: [
+            address,
+            { filter: { StructType: collectionId }, options: { showType: true } },
+            directCursor,
+            50
+          ]
+        }, 30000); // タイムアウトを30秒に延長
+        const dataArr = directData.result?.data ?? [];
+        if (dataArr.length > 0) {
+          console.log(`✅ Direct NFTs found (fast path): ${dataArr.length} for ${address} in ${collectionId}`);
           return true;
         }
-        
-        // 方法2: 間接的に所有されているNFTを確認（オブジェクトを介して管理されている場合）
-        console.log(`🔍 Checking indirect ownership for address: ${address}`);
-        
-        // アドレスが所有しているすべてのオブジェクトを取得
-        const allObjectsResponse = await fetch(`${suiRpcUrl}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            jsonrpc: '2.0',
-            id: 2,
-            method: 'suix_getOwnedObjects',
-            params: [
-              address,
-              null,
-              null,
-              null,
-              true
-            ]
-          })
-        });
-        
-        const allObjectsData = await allObjectsResponse.json() as any;
-        console.log(`📥 All objects response:`, JSON.stringify(allObjectsData, null, 2));
-        
-        if (allObjectsData.result && allObjectsData.result.data) {
-          // 各オブジェクトの詳細を確認して、間接的に所有されているNFTを検索
-          for (const obj of allObjectsData.result.data) {
-            if (obj.data && obj.data.objectId) {
+        directCursor = directData.result?.nextCursor ?? null;
+        if (!directCursor) break;
+      }
+    } catch (fastErr) {
+      console.log('Fast direct ownership check failed, falling back:', fastErr);
+    }
+    
+    // 方法1: 直接所有されているNFTを確認（タイムアウト延長）
+    const directResponse = await fetch(`${suiRpcUrl}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'suix_getOwnedObjects',
+        params: [
+          address,
+          {
+            filter: {
+              StructType: collectionId
+            }
+          },
+          null,
+          null,
+          true
+        ]
+      })
+    });
+    
+    if (!directResponse.ok) {
+      throw new Error(`Sui API request failed: ${directResponse.status} ${directResponse.statusText}`);
+    }
+    
+    const directData = await directResponse.json() as any;
+    console.log(`📥 Direct ownership Sui API response:`, JSON.stringify(directData, null, 2));
+    
+    const hasDirectNft = directData.result && directData.result.data && directData.result.data.length > 0;
+    
+    if (hasDirectNft) {
+      console.log(`✅ Direct NFTs found: ${directData.result.data.length} NFTs for address ${address} in collection ${collectionId}`);
+      return true;
+    }
+    
+    // 方法2: 間接的に所有されているNFTを確認（オブジェクトを介して管理されている場合）
+    console.log(`🔍 Checking indirect ownership for address: ${address}`);
+    
+    // アドレスが所有しているすべてのオブジェクトを取得（タイムアウト延長）
+    const allObjectsResponse = await fetch(`${suiRpcUrl}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'suix_getOwnedObjects',
+        params: [
+          address,
+          null,
+          null,
+          null,
+          true
+        ]
+      })
+    });
+    
+    if (!allObjectsResponse.ok) {
+      throw new Error(`Sui API request failed: ${allObjectsResponse.status} ${allObjectsResponse.statusText}`);
+    }
+    
+    const allObjectsData = await allObjectsResponse.json() as any;
+    console.log(`📥 All objects response:`, JSON.stringify(allObjectsData, null, 2));
+    
+    if (allObjectsData.result && allObjectsData.result.data) {
+      // 各オブジェクトの詳細を確認して、間接的に所有されているNFTを検索
+      for (const obj of allObjectsData.result.data) {
+        if (obj.data && obj.data.objectId) {
+          try {
+            const objDetailResponse = await fetch(`${suiRpcUrl}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                jsonrpc: '2.0',
+                id: 3,
+                method: 'sui_getObject',
+                params: [
+                  obj.data.objectId,
+                  {
+                    showType: true,
+                    showContent: true,
+                    showOwner: true
+                  }
+                ]
+              })
+            });
+            
+            if (!objDetailResponse.ok) {
+              console.log(`⚠️ Failed to fetch object ${obj.data.objectId}: ${objDetailResponse.status}`);
+              continue;
+            }
+            
+            const objDetail = await objDetailResponse.json() as any;
+            console.log(`🔍 Object ${obj.data.objectId} type:`, objDetail.result?.data?.type);
+            
+            // オブジェクトが指定されたコレクションのNFTを所有しているかチェック
+            if (objDetail.result?.data?.type === collectionId) {
+              console.log(`✅ Indirect NFT found: ${obj.data.objectId} is a ${collectionId} NFT`);
+              return true;
+            }
+            
+            // PersonalKioskCapオブジェクトの場合、そのKioskが所有するNFTをチェック
+            if (objDetail.result?.data?.type === '0x0cb4bcc0560340eb1a1b929cabe56b33fc6449820ec8c1980d69bb98b649b802::personal_kiosk::PersonalKioskCap') {
+              console.log(`🔍 Found PersonalKioskCap: ${obj.data.objectId}, checking for Kiosk...`);
+              
               try {
-                const objDetailResponse = await fetch(`${suiRpcUrl}`, {
+                // PersonalKioskCapの内容を確認
+                const capContent = objDetail.result?.data?.content?.fields;
+                console.log(`📋 PersonalKioskCap content:`, JSON.stringify(capContent, null, 2));
+                
+                // PersonalKioskCapからKioskのIDを直接取得
+                const kioskId = capContent.cap.fields.for;
+                console.log(`🔍 Kiosk ID from PersonalKioskCap: ${kioskId}`);
+                
+                // Kiosk内のアイテムを検索（タイムアウト延長）
+                const kioskItemsResponse = await fetch(`${suiRpcUrl}`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     jsonrpc: '2.0',
-                    id: 3,
-                    method: 'sui_getObject',
+                    id: 6,
+                    method: 'suix_getDynamicFields',
                     params: [
-                      obj.data.objectId,
-                      {
-                        showType: true,
-                        showContent: true,
-                        showOwner: true
-                      }
+                      kioskId,
+                      null,
+                      null,
+                      null
                     ]
                   })
                 });
                 
-                const objDetail = await objDetailResponse.json() as any;
-                console.log(`🔍 Object ${obj.data.objectId} type:`, objDetail.result?.data?.type);
+                const kioskItemsData = await kioskItemsResponse.json() as any;
+                console.log(`📥 Kiosk items response:`, JSON.stringify(kioskItemsData, null, 2));
                 
-                // オブジェクトが指定されたコレクションのNFTを所有しているかチェック
-                if (objDetail.result?.data?.type === collectionId) {
-                  console.log(`✅ Indirect NFT found: ${obj.data.objectId} is a ${collectionId} NFT`);
-                  return true;
-                }
-                
-                // PersonalKioskCapオブジェクトの場合、そのKioskが所有するNFTをチェック
-                if (objDetail.result?.data?.type === '0x0cb4bcc0560340eb1a1b929cabe56b33fc6449820ec8c1980d69bb98b649b802::personal_kiosk::PersonalKioskCap') {
-                  console.log(`🔍 Found PersonalKioskCap: ${obj.data.objectId}, checking for Kiosk...`);
-                  
-                  try {
-                    // PersonalKioskCapの内容を確認
-                    const capContent = objDetail.result?.data?.content?.fields;
-                    console.log(`📋 PersonalKioskCap content:`, JSON.stringify(capContent, null, 2));
-                    
-                    // PersonalKioskCapからKioskのIDを直接取得
-                    const kioskId = capContent.cap.fields.for;
-                    console.log(`🔍 Kiosk ID from PersonalKioskCap: ${kioskId}`);
-                    
-                    // Kiosk内のアイテムを検索
-                    const kioskItemsResponse = await fetch(`${suiRpcUrl}`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        jsonrpc: '2.0',
-                        id: 6,
-                        method: 'suix_getDynamicFields',
-                        params: [
-                          kioskId,
-                          null,
-                          null,
-                          null
-                        ]
-                      })
-                    });
-                    
-                    const kioskItemsData = await kioskItemsResponse.json() as any;
-                    console.log(`📥 Kiosk items response:`, JSON.stringify(kioskItemsData, null, 2));
-                    
-                    if (kioskItemsData.result && kioskItemsData.result.data) {
-                      // Kiosk内のアイテムをチェック
-                      for (const item of kioskItemsData.result.data) {
-                        try {
-                          // アイテムの詳細を取得
-                          const itemDetailResponse = await fetch(`${suiRpcUrl}`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              jsonrpc: '2.0',
-                              id: 7,
-                              method: 'sui_getObject',
-                              params: [
-                                item.objectId,
-                                {
-                                  showType: true,
-                                  showContent: true,
-                                  showOwner: true
-                                }
-                              ]
-                            })
-                          });
-                          
-                          const itemDetail = await itemDetailResponse.json() as any;
-                          console.log(`🔍 Kiosk item ${item.objectId} type:`, itemDetail.result?.data?.type);
-                          
-                          if (itemDetail.result?.data?.type === collectionId) {
-                            console.log(`✅ Found NFT in Kiosk: ${item.objectId} is a ${collectionId} NFT`);
-                            return true;
-                          }
-                        } catch (itemError) {
-                          console.log(`⚠️ Error checking Kiosk item ${item.objectId}:`, itemError);
-                          continue;
-                        }
+                if (kioskItemsData.result && kioskItemsData.result.data) {
+                  // Kiosk内のアイテムをチェック
+                  for (const item of kioskItemsData.result.data) {
+                    try {
+                      // アイテムの詳細を取得
+                      const itemDetailResponse = await fetch(`${suiRpcUrl}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          jsonrpc: '2.0',
+                          id: 7,
+                          method: 'sui_getObject',
+                          params: [
+                            item.objectId,
+                            {
+                              showType: true,
+                              showContent: true,
+                              showOwner: true
+                            }
+                          ]
+                        })
+                      });
+                      
+                      const itemDetail = await itemDetailResponse.json() as any;
+                      console.log(`🔍 Kiosk item ${item.objectId} type:`, itemDetail.result?.data?.type);
+                      
+                      if (itemDetail.result?.data?.type === collectionId) {
+                        console.log(`✅ Found NFT in Kiosk: ${item.objectId} is a ${collectionId} NFT`);
+                        return true;
                       }
+                    } catch (itemError) {
+                      console.log(`⚠️ Error checking Kiosk item ${item.objectId}:`, itemError);
+                      continue;
                     }
-                  } catch (capError) {
-                    console.log(`⚠️ Error checking PersonalKioskCap:`, capError);
                   }
                 }
-              } catch (objError) {
-                console.log(`⚠️ Error checking object ${obj.data.objectId}:`, objError);
-                continue;
+              } catch (capError) {
+                console.log(`⚠️ Error checking PersonalKioskCap:`, capError);
               }
             }
+          } catch (objError) {
+            console.log(`⚠️ Error checking object ${obj.data.objectId}:`, objError);
+            continue;
           }
         }
-        
-        console.log(`❌ No NFTs found for address ${address} in collection ${collectionId}`);
-        return false;
-        
-      } catch (apiError) {
-        console.error('❌ Sui API error:', apiError);
-        console.log('🔄 NFT check failed due to API error - returning false');
-        return false;
       }
     }
     
+    console.log(`❌ No NFTs found for address ${address} in collection ${collectionId}`);
     return false;
-  } catch (error) {
-    console.error('NFT check error:', error);
+    
+  } catch (apiError) {
+    console.error('❌ Sui API error:', apiError);
+    console.log('🔄 NFT check failed due to API error - returning false');
     return false;
   }
 }
@@ -679,12 +670,12 @@ async function getDmSettings(c: Context<{ Bindings: Env }>): Promise<DmSettings>
     templates: {
       successNew: {
         title: '🎉 認証完了',
-        description: 'NFT認証が完了しました！\n\n**確認されたコレクション:**\n{roles}\n\n対応するロールが付与されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。\n\nご利用ありがとうございます！',
+        description: 'NFT認証が完了しました！\n\n以下のコレクションでNFTが確認されました:\n{collectionName}\n\n対応するロールが付与されました。\n{roles}\n\nサーバーでロールが表示されるまで少し時間がかかる場合があります。\n\nご利用ありがとうございます！',
         color: 0x57F287
       },
       successUpdate: {
         title: '🔄 認証更新完了',
-        description: 'NFT認証の更新が完了しました！\n\n**確認されたコレクション:**\n{roles}\n\n対応するロールが更新されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。\n\n引き続きご利用ください！',
+        description: 'NFT認証が更新されました！\n\n以下のコレクションでNFTが確認されました:\n{collectionName}\n\n対応するロールが更新されました。\n{roles}\n\nサーバーでロールが表示されるまで少し時間がかかる場合があります。\n\n引き続きご利用ください！',
         color: 0x57F287
       },
       failed: {
@@ -721,16 +712,45 @@ async function updateDmSettings(c: Context<{ Bindings: Env }>, patch: Partial<Dm
 
 type NotifyKind = 'success_new' | 'success_update' | 'failed' | 'revoked';
 
-function buildMessageFromTemplate(template: DmTemplate, data: any): DmTemplate {
+interface VerificationData {
+  grantedRoles?: Array<{ roleId: string; roleName: string }>;
+  revokedRoles?: Array<{ roleId: string; roleName: string }>;
+  verificationResults?: Array<{ hasNft: boolean; collectionName: string }>;
+  collectionIds?: string[] | string;
+  discordId?: string;
+  reason?: string;
+  [key: string]: any;
+}
+
+function buildMessageFromTemplate(template: DmTemplate, data: VerificationData): DmTemplate {
   const roles = (data?.grantedRoles || data?.revokedRoles || [])
-    .map((r: any) => r.roleName || r.name)
+    .map((r: any) => `• ${r.roleName || r.name}`)
     .filter(Boolean)
-    .join(', ');
+    .join('\n');
   const collections = Array.isArray(data?.collectionIds) ? data.collectionIds.join(', ') : (data?.collectionId || '');
+  
+  // コレクション名の取得（verificationResultsから） - 素の名前で保持
+  const collectionNamesRaw = (data?.verificationResults || [])
+    .filter((r: any) => r.hasNft)
+    .map((r: any) => r.collectionName)
+    .filter(Boolean) as string[];
+  const collectionNames = collectionNamesRaw.length > 0
+    ? collectionNamesRaw.map(n => `• ${n}`).join('\n')
+    : '';
+  
+  // コレクション名が取得できない場合、grantedRolesから推測
+  let fallbackCollectionName = '';
+  if (!collectionNames && data?.grantedRoles && Array.isArray(data.grantedRoles)) {
+    // ロール名から推測されるコレクション名を取得
+    // 現在は実際のコレクション名が取得できないため、分かりやすい表示にする
+    fallbackCollectionName = '確認されたNFTコレクション';
+  }
+  
   const map: Record<string, string> = {
     '{discordId}': String(data?.discordId ?? ''),
     '{roles}': roles,
     '{collections}': String(collections ?? ''),
+    '{collectionName}': collectionNames || (fallbackCollectionName ? `• ${fallbackCollectionName}` : '• コレクション情報を取得中...'),
     '{reason}': String(data?.reason ?? ''),
     '{timestamp}': new Date().toISOString()
   };
@@ -773,9 +793,15 @@ async function notifyDiscordBot(
     console.log(`🔄 Discord Bot API: ${action} for user ${discordId} (batch: ${isBatchProcess})`);
     console.log('📋 Verification data:', verificationData);
     
-    // 短時間の重複送信防止（同一ユーザー×同一アクションを抑止）
+    // 短時間の重複送信防止（同一ユーザー×同一アクション×概略理由を抑止）
     try {
-      const dedupeKey = `notify_dedupe:${action}:${discordId}`;
+      const reasonRaw = String((verificationData as any)?.reason || '').toLowerCase();
+      const reasonBucket = reasonRaw.includes('no nfts')
+        ? 'no_nfts'
+        : reasonRaw.includes('invalid signature')
+          ? 'invalid_signature'
+          : 'other';
+      const dedupeKey = `notify_dedupe:${action}:${discordId}:${reasonBucket}`;
       const existed = await c.env.COLLECTION_STORE.get(dedupeKey);
       if (existed) {
         console.log(`⏭️ Skip duplicated notification: ${dedupeKey}`);
@@ -813,6 +839,37 @@ async function notifyDiscordBot(
           kind === 'failed' ? dmSettings.templates.failed :
           dmSettings.templates.revoked;
         customMessage = buildMessageFromTemplate(tpl, verificationData);
+
+        // 失敗時はユーザーが対応可能な文面に強制上書き（Discord ID/署名など技術項目は非表示）
+        if (kind === 'failed') {
+          const reasonText = String((verificationData as any)?.reason ?? '').toLowerCase();
+          const errorCode = String((verificationData as any)?.errorCode ?? '').toUpperCase();
+          if (errorCode === 'NO_NFTS' || reasonText.includes('no nfts')) {
+            customMessage = {
+              title: '❌ 認証失敗',
+              description: '対象コレクションのNFTが確認できませんでした。ウォレットの保有状況をご確認のうえ、保有後に再度認証してください。',
+              color: 0xED4245
+            };
+          } else if (errorCode === 'INVALID_SIGNATURE' || reasonText.includes('invalid signature')) {
+            customMessage = {
+              title: '❌ 認証失敗',
+              description: '署名の確認に失敗しました。別のウォレット（Suiet / Surf など）またはブラウザで再度お試しください。改善しない場合は管理者にお問い合わせください。',
+              color: 0xED4245
+            };
+          } else if (errorCode === 'NFT_CHECK_ERROR' || reasonText.includes('nft check failed')) {
+            customMessage = {
+              title: '❌ 認証失敗',
+              description: 'NFTの確認処理でエラーが発生しました。ネットワーク接続をご確認のうえ、しばらく時間をおいて再度お試しください。',
+              color: 0xED4245
+            };
+          } else {
+            customMessage = {
+              title: '❌ 認証失敗',
+              description: 'エラーが発生しました。ウォレットを再接続して再度お試しください。解消しない場合は管理者にお問い合わせください。',
+              color: 0xED4245
+            };
+          }
+        }
       }
     }
 
@@ -822,8 +879,8 @@ async function notifyDiscordBot(
       action: action,
       verification_data: { ...(verificationData || {}), notifyUser, custom_message: customMessage },
       timestamp: new Date().toISOString(),
-      // バッチ処理の場合はチャンネル投稿を無効化
-      disable_channel_post: isBatchProcess
+      // 常にチャンネル投稿を無効化（DMのみ）
+      disable_channel_post: true
     };
     
     console.log('📤 Sending request to Discord Bot API:', requestBody);
@@ -1695,6 +1752,52 @@ app.get('/api/discord/roles', async (c) => {
   }
 });
 
+// ナンス生成エンドポイント
+app.post('/api/nonce', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { discordId, address } = body;
+
+    if (!discordId || !address) {
+      return c.json({
+        success: false,
+        error: 'discordId and address are required'
+      }, 400);
+    }
+
+    // ナンス生成
+    const nonce = Date.now().toString(36) + Math.random().toString(36).substr(2);
+    const expiresAt = Date.now() + 5 * 60 * 1000; // 5分後
+
+    // Cloudflare KVに保存
+    const nonceData = {
+      nonce,
+      discordId,
+      address,
+      expiresAt
+    };
+
+    await (c.env.NONCE_STORE as any).put(nonce, JSON.stringify(nonceData), {
+      expirationTtl: 300 // 5分後に自動削除
+    });
+
+    return c.json({
+      success: true,
+      data: {
+        nonce,
+        expiresAt
+      }
+    });
+
+  } catch (error) {
+    console.error('Nonce generation error:', error);
+    return c.json({
+      success: false,
+      error: `Failed to generate nonce: ${error instanceof Error ? error.message : 'Unknown error'}`
+    }, 500);
+  }
+});
+
 // 認証エンドポイント
 app.post('/api/verify', async (c) => {
   try {
@@ -1746,12 +1849,25 @@ app.post('/api/verify', async (c) => {
           .filter((col): col is NFTCollection => Boolean(col))
           .map((col) => ({ roleId: col.roleId, roleName: col.roleName }));
 
+        // 既存再付与フローでもコレクション名をDMに渡すための結果を構築
+        const regrantVerificationResults = savedCollectionIds
+          .map((cid) => allCollections.find((col) => col.id === cid))
+          .filter((col): col is NFTCollection => Boolean(col))
+          .map((col) => ({
+            collectionId: col.id,
+            collectionName: col.name,
+            roleId: col.roleId,
+            roleName: col.roleName,
+            hasNft: true
+          }));
+
         if (regrantRoles.length > 0) {
           const regrantData = {
             address,
             discordId,
             collectionIds: savedCollectionIds,
             grantedRoles: regrantRoles,
+            verificationResults: regrantVerificationResults,
             notifyUser: false,
             reason: '既存の認証者としてロールを再付与しました。',
             timestamp: new Date().toISOString()
@@ -1777,7 +1893,7 @@ app.post('/api/verify', async (c) => {
             success: true,
             data: {
               grantedRoles: regrantRoles,
-              verificationResults: [],
+              verificationResults: regrantVerificationResults,
               message: '既存の認証を検出しました。ロールを再付与しました。'
             }
           });
@@ -1803,9 +1919,9 @@ app.post('/api/verify', async (c) => {
       return c.json({ success: false, error: 'authMessage mismatch' }, 400);
     }
 
-    const expectedBytes = new TextEncoder().encode(authMessage);
+    // ウォレットから送信されたbytesを直接使用（スラッシュウォレット対応）
     const signatureData = { signature, bytes, publicKey: body.publicKey };
-    const isValidSignature = await verifySignedMessage(signatureData, expectedBytes);
+    const isValidSignature = await verifySignedMessage(signatureData, null); // bytesを直接使用
     if (!isValidSignature) {
       try {
         // 署名不正でもユーザーにDMで通知
@@ -1813,6 +1929,7 @@ app.post('/api/verify', async (c) => {
           address,
           discordId,
           reason: 'Invalid signature',
+          errorCode: 'INVALID_SIGNATURE',
           timestamp: new Date().toISOString()
         }, { isBatch: false, kind: 'failed' });
       } catch (e) {
@@ -1820,7 +1937,8 @@ app.post('/api/verify', async (c) => {
       }
       return c.json({
         success: false,
-        error: 'Invalid signature'
+        error: 'Invalid signature',
+        errorCode: 'INVALID_SIGNATURE'
       }, 400);
     }
 
@@ -1860,30 +1978,49 @@ app.post('/api/verify', async (c) => {
     for (const collection of targetCollections) {
       console.log(`🔍 Checking NFT ownership for collection: ${collection.name} (${collection.packageId})`);
       
-      const hasNft = await hasTargetNft(address, collection.packageId);
-      
-      if (hasNft) {
-        console.log(`✅ NFT found for collection: ${collection.name}`);
-        verificationResults.push({
-          collectionId: collection.id,
-          collectionName: collection.name,
-          roleId: collection.roleId,
-          roleName: collection.roleName,
-          hasNft: true
-        });
-        grantedRoles.push({
-          roleId: collection.roleId,
-          roleName: collection.roleName
-        });
-      } else {
-        console.log(`❌ No NFT found for collection: ${collection.name}`);
-        verificationResults.push({
-          collectionId: collection.id,
-          collectionName: collection.name,
-          roleId: collection.roleId,
-          roleName: collection.roleName,
-          hasNft: false
-        });
+      try {
+        const hasNft = await hasTargetNft(address, collection.packageId);
+        
+        if (hasNft) {
+          console.log(`✅ NFT found for collection: ${collection.name}`);
+          verificationResults.push({
+            collectionId: collection.id,
+            collectionName: collection.name,
+            roleId: collection.roleId,
+            roleName: collection.roleName,
+            hasNft: true
+          });
+          grantedRoles.push({
+            roleId: collection.roleId,
+            roleName: collection.roleName
+          });
+        } else {
+          console.log(`❌ No NFT found for collection: ${collection.name}`);
+          verificationResults.push({
+            collectionId: collection.id,
+            collectionName: collection.name,
+            roleId: collection.roleId,
+            roleName: collection.roleName,
+            hasNft: false
+          });
+        }
+      } catch (nftCheckError) {
+        console.error(`❌ NFT check failed for collection ${collection.name}:`, nftCheckError);
+        
+        // NFTチェックが失敗した場合、ユーザーに適切なエラーメッセージを送信
+        await notifyDiscordBot(c, discordId, 'verification_failed', {
+          address,
+          discordId,
+          reason: `NFT check failed: ${nftCheckError.message}`,
+          errorCode: 'NFT_CHECK_ERROR',
+          timestamp: new Date().toISOString()
+        }, { isBatch: false, kind: 'failed' });
+        
+        return c.json({
+          success: false,
+          error: 'NFT check failed due to network or API issues. Please try again later.',
+          errorCode: 'NFT_CHECK_ERROR'
+        }, 500);
       }
     }
 
@@ -1962,12 +2099,14 @@ app.post('/api/verify', async (c) => {
       // 通常の失敗通知
       await notifyDiscordBot(c, discordId, 'verification_failed', {
         ...notificationData,
-        reason: 'No NFTs found in any selected collections'
+        reason: 'No NFTs found in any selected collections',
+        errorCode: 'NO_NFTS'
       }, { isBatch: false, kind: 'failed' });
       
       return c.json({
         success: false,
-        error: 'No NFTs found in selected collections'
+        error: 'No NFTs found in selected collections',
+        errorCode: 'NO_NFTS'
       }, 400);
     }
 

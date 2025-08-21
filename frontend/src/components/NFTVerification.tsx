@@ -62,7 +62,7 @@ export const NFTVerification: React.FC = () => {
             fontSize: '1rem',
             lineHeight: '1.5'
           }}>
-            Join the exclusive NFT community by verifying your Sui wallet ownership
+            Verify your SXT NFT and automatically receive your Discord role.
           </p>
         </div>
 

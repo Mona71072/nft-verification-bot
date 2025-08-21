@@ -182,25 +182,7 @@ export async function grantRoleToUser(discordId: string, options?: { disableChan
       }
     }
     
-    // チャンネル投稿（disableChannelPostがfalseの場合のみ）
-    if (!options?.disableChannelPost) {
-      try {
-        const channel = await guild.channels.fetch(config.VERIFICATION_CHANNEL_ID) as TextChannel;
-        if (channel) {
-          await channel.send({
-            embeds: [
-              new EmbedBuilder()
-                .setTitle('🎉 認証完了')
-                .setDescription(`<@${discordId}> のNFT認証が完了しました！`)
-                .setColor(0x57F287)
-                .setTimestamp()
-            ]
-          });
-        }
-      } catch (channelError) {
-        console.log('Could not send channel message:', channelError);
-      }
-    }
+    // チャンネル投稿を無効化（DMのみ）
     
     return true;
   } catch (error) {
@@ -254,25 +236,7 @@ export async function revokeRoleFromUser(discordId: string, options?: { disableC
       }
     }
 
-    // チャンネル投稿（disableChannelPostがfalseの場合のみ）
-    if (!options?.disableChannelPost) {
-      try {
-        const channel = await guild.channels.fetch(config.VERIFICATION_CHANNEL_ID) as TextChannel;
-        if (channel) {
-          await channel.send({
-            embeds: [
-              new EmbedBuilder()
-                .setTitle('⚠️ ロール削除')
-                .setDescription(`<@${discordId}> のNFT保有が確認できなくなったため、ロールが削除されました。`)
-                .setColor(0xED4245)
-                .setTimestamp()
-            ]
-          });
-        }
-      } catch (channelError) {
-        console.log('Could not send channel message:', channelError);
-      }
-    }
+    // チャンネル投稿を無効化（DMのみ）
 
     return true;
   } catch (error) {
@@ -415,25 +379,7 @@ export async function grantMultipleRolesToUser(
       }
     }
 
-    // チャンネル投稿（disableChannelPostがfalseの場合のみ）
-    if (!options?.disableChannelPost) {
-      try {
-        const channel = await guild.channels.fetch(config.VERIFICATION_CHANNEL_ID) as TextChannel;
-        if (channel && grantedRoles.length > 0) {
-          await channel.send({
-            embeds: [
-              new EmbedBuilder()
-                .setTitle('🎉 認証完了')
-                .setDescription(`<@${discordId}> のNFT認証が完了しました！\n\n付与されたロール: ${grantedRoles.map(role => role.roleName).join(', ')}`)
-                .setColor(0x57F287)
-                .setTimestamp()
-            ]
-          });
-        }
-      } catch (channelError) {
-        console.log('Could not send channel message:', channelError);
-      }
-    }
+    // チャンネル投稿を無効化（DMのみ）
 
     return grantedRoles.length > 0;
   } catch (error) {
@@ -510,25 +456,7 @@ export async function revokeMultipleRolesFromUser(
       }
     }
 
-    // チャンネル投稿（disableChannelPostがfalseの場合のみ）
-    if (!options?.disableChannelPost && revokedRoles.length > 0) {
-      try {
-        const channel = await guild.channels.fetch(config.VERIFICATION_CHANNEL_ID) as TextChannel;
-        if (channel) {
-          await channel.send({
-            embeds: [
-              new EmbedBuilder()
-                .setTitle('⚠️ ロール削除')
-                .setDescription(`<@${discordId}> のNFT保有が確認できなくなったため、以下のロールが削除されました:\n\n${revokedRoles.map(role => `• ${role.roleName}`).join('\n')}`)
-                .setColor(0xED4245)
-                .setTimestamp()
-            ]
-          });
-        }
-      } catch (channelError) {
-        console.log('Could not send channel message:', channelError);
-      }
-    }
+    // チャンネル投稿を無効化（DMのみ）
 
     return revokedRoles.length > 0;
   } catch (error) {
@@ -616,11 +544,11 @@ export async function sendVerificationFailedMessage(discordId: string, verificat
           if (isVerified) {
             title = '認証更新完了';
             embed.setColor(0x57F287);
-            description = `NFT認証の更新が完了しました。\n\n以下のコレクションでNFTが確認されました:\n\n${successful.map((result: any) => `• ${result.collectionName}`).join('\n')}\n\n対応するロールが更新されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。`;
+            description = `NFT認証の更新が完了しました。\n\n以下のコレクションでNFTが確認されました:\n\n${successful.map((result: any) => `${result.collectionName}`).join('\n')}\n\n対応するロールが更新されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。`;
           } else {
             title = '認証完了';
             embed.setColor(0x57F287);
-            description = `NFT認証が完了しました。\n\n以下のコレクションでNFTが確認されました:\n\n${successful.map((result: any) => `• ${result.collectionName}`).join('\n')}\n\n対応するロールが付与されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。`;
+            description = `NFT認証が完了しました。\n\n以下のコレクションでNFTが確認されました:\n\n${successful.map((result: any) => `${result.collectionName}`).join('\n')}\n\n対応するロールが付与されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。`;
           }
         } else if (successful.length > 0 && failed.length > 0) {
           title = '部分的な認証完了';

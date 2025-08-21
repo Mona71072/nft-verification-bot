@@ -53,3 +53,6 @@ export interface BatchConfig {
   retryAttempts: number;
 }
 
+// 型定義を明示的にエクスポート
+export type { NFTCollection, VerifiedUser, VerificationResult, DiscordRole, BatchStats, BatchConfig };
+
