@@ -690,7 +690,9 @@ async function getDmSettings(c: Context<{ Bindings: Env }>): Promise<DmSettings>
       }
     }
   };
+  // Force initialize DM settings to ensure they are properly set
   await c.env.COLLECTION_STORE.put(DM_SETTINGS_KEY, JSON.stringify(defaults));
+  console.log('✅ DM settings initialized with defaults:', JSON.stringify(defaults, null, 2));
   return defaults;
 }
 
@@ -825,12 +827,17 @@ async function notifyDiscordBot(
     const dmSettings = await getDmSettings(c);
     const kind: NotifyKind | undefined = options?.kind;
 
+    console.log('🔍 DM Settings:', JSON.stringify(dmSettings, null, 2));
+    console.log('🔍 Notification kind:', kind);
+    console.log('🔍 Is batch process:', isBatchProcess);
+
     let notifyUser = true;
     let customMessage: DmTemplate | undefined;
     if (kind) {
       // バッチ処理時と通常認証時で異なるDM通知モードを使用
       const dmMode = isBatchProcess ? dmSettings.batchMode : dmSettings.mode;
       notifyUser = shouldSendDm(dmMode, kind);
+      console.log('🔍 DM Mode:', dmMode, 'Should send DM:', notifyUser);
       if (notifyUser) {
         const tpl =
           kind === 'success_new' ? dmSettings.templates.successNew :
@@ -881,6 +888,8 @@ async function notifyDiscordBot(
       // 常にチャンネル投稿を無効化（DMのみ）
       disable_channel_post: true
     };
+    
+    console.log('🔍 Final request body:', JSON.stringify(requestBody, null, 2));
     
     console.log('📤 Sending request to Discord Bot API:', requestBody);
     
