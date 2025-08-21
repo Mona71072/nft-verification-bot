@@ -36,7 +36,7 @@ export const WalletConnection: React.FC<WalletConnectionProps> = ({
               color: '#dc2626',
               fontSize: '0.875rem'
             }}>
-              ウォレット接続エラーが発生しました。ページを再読み込みしてください。
+              A wallet connection error occurred. Please reload the page.
             </div>
           );
         }
@@ -55,7 +55,7 @@ export const WalletConnection: React.FC<WalletConnectionProps> = ({
             alignItems: 'center',
             flexWrap: 'wrap'
           }}>
-            <span style={{ fontSize: '0.875rem', color: '#666' }}>接続済み:</span>
+            <span style={{ fontSize: '0.875rem', color: '#666' }}>Connected:</span>
             <span
               title={account.address}
               style={{
@@ -90,7 +90,7 @@ export const WalletConnection: React.FC<WalletConnectionProps> = ({
                   cursor: 'pointer'
                 }}
               >
-                {copied ? 'コピー済み' : 'コピー'}
+                {copied ? 'Copied' : 'Copy'}
               </button>
               <button
                 onClick={() => setShowFullAddress(!showFullAddress)}
@@ -104,7 +104,7 @@ export const WalletConnection: React.FC<WalletConnectionProps> = ({
                   cursor: 'pointer'
                 }}
               >
-                {showFullAddress ? '省略表示' : '全表示'}
+                {showFullAddress ? 'Shorten' : 'Show full'}
               </button>
             </div>
           </div>

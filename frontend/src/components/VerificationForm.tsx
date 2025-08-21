@@ -20,7 +20,7 @@ export const VerificationForm: React.FC<VerificationFormProps> = ({
 }) => {
   const { account, connected, signPersonalMessage } = useWalletWithErrorHandling();
 
-  // URLパラメータからDiscord IDが取得されたかどうかを判定
+  // Determine if Discord ID was retrieved from URL parameters
   const isDiscordIdFromUrl = () => {
     try {
       const urlParams = new URLSearchParams(window.location.search);
@@ -53,14 +53,14 @@ export const VerificationForm: React.FC<VerificationFormProps> = ({
           <p style={{ fontSize: '0.875rem', color: '#666' }}>
             {isDiscordIdFromUrl()
               ? 'Your Discord ID has been automatically retrieved.'
-              : 'Discord IDを入力してください'}
+              : 'Please enter your Discord ID.'}
           </p>
         </div>
         <input
           type="text"
           value={discordId}
           onChange={(e) => setDiscordId(e.target.value)}
-          placeholder={isDiscordIdFromUrl() ? 'URLから自動取得' : '123456789012345678'}
+          placeholder={isDiscordIdFromUrl() ? 'Auto-filled from URL' : '123456789012345678'}
           style={{
             width: '100%',
             padding: '0.75rem',
@@ -114,7 +114,7 @@ export const VerificationForm: React.FC<VerificationFormProps> = ({
                 animation: 'spin 1s linear infinite',
                 marginRight: '0.5rem'
               }}></div>
-              確認中...
+              Verifying...
             </div>
           ) : (
             'Start Verification'
@@ -134,7 +134,7 @@ export const VerificationForm: React.FC<VerificationFormProps> = ({
         }}>
           <p style={{ fontSize: '0.875rem' }}>{verificationResult.message}</p>
           <p style={{ fontSize: '0.75rem', marginTop: '0.5rem', opacity: 0.7 }}>
-            認証結果はDiscordチャンネルに通知されました
+            The verification result has been sent to your Discord via DM.
           </p>
         </div>
       )}

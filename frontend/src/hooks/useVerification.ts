@@ -31,7 +31,7 @@ export const useVerification = (apiBaseUrl: string) => {
     if (!account || !signPersonalMessage) {
       setVerificationResult({
         success: false,
-        message: 'ウォレットが接続されていません。ウォレットを接続してください。'
+        message: 'Wallet is not connected. Please connect your wallet.'
       });
       return;
     }
@@ -39,7 +39,7 @@ export const useVerification = (apiBaseUrl: string) => {
     if (!discordId.trim()) {
       setVerificationResult({
         success: false,
-        message: 'Discord IDを入力してください。'
+        message: 'Please enter your Discord ID.'
       });
       return;
     }
@@ -61,7 +61,7 @@ export const useVerification = (apiBaseUrl: string) => {
 
       const nonceData = await nonceResponse.json();
       if (!nonceData.success) {
-        throw new Error(nonceData.error || 'ナンス生成に失敗しました。');
+        throw new Error(nonceData.error || 'Failed to generate nonce.');
       }
 
       const nonce = nonceData.data.nonce;
@@ -79,7 +79,7 @@ export const useVerification = (apiBaseUrl: string) => {
         message: messageBytes
       }).catch((error: unknown) => {
         console.error('Signature error:', error);
-        throw new Error('署名に失敗しました。ウォレットで署名を承認してください。');
+        throw new Error('Signature failed. Please approve the signature in your wallet.');
       });
 
       console.log('Signature result:', signatureResult);
@@ -115,12 +115,12 @@ export const useVerification = (apiBaseUrl: string) => {
         if (isAlreadyVerified) {
           setVerificationResult({
             success: true,
-            message: `認証の更新が完了しました！ロール "${data.data?.roleName || 'NFT Holder'}" が更新されました。`
+            message: `Verification updated! Role "${data.data?.roleName || 'NFT Holder'}" has been updated.`
           });
         } else {
           setVerificationResult({
             success: true,
-            message: `認証が完了しました！ロール "${data.data?.roleName || 'NFT Holder'}" がアカウントに割り当てられました。`
+            message: `Verification completed! Role "${data.data?.roleName || 'NFT Holder'}" has been assigned to your account.`
           });
         }
       } else {
@@ -132,10 +132,10 @@ export const useVerification = (apiBaseUrl: string) => {
         setVerificationResult({
           success: false,
           message: notOwned
-            ? '対象コレクションのNFTを保有していません。ウォレット内の保有状況をご確認ください。'
+            ? 'No NFTs from the target collection were found in your wallet.'
             : invalidSig
-              ? '署名の確認に失敗しました。別のウォレット（Suiet / Surf など）またはブラウザでお試しください。改善しない場合は管理者にお問い合わせください。'
-              : (data.error || '認証に失敗しました。')
+              ? 'Signature validation failed. Please try another wallet or browser. If the issue persists, contact an administrator.'
+              : (data.error || 'Verification failed.')
         });
       }
 
@@ -143,7 +143,7 @@ export const useVerification = (apiBaseUrl: string) => {
       console.error('Verification error:', error);
       setVerificationResult({
         success: false,
-        message: `エラーが発生しました: ${error instanceof Error ? error.message : 'Unknown error'}`
+        message: `An error occurred: ${error instanceof Error ? error.message : 'Unknown error'}`
       });
     } finally {
       setIsVerifying(false);

@@ -665,27 +665,27 @@ async function getDmSettings(c: Context<{ Bindings: Env }>): Promise<DmSettings>
     console.log('⚠️ getDmSettings error, using defaults:', e);
   }
   const defaults: DmSettings = {
-    mode: 'all', // 通常認証時は全ての通知
-    batchMode: 'new_and_revoke', // バッチ処理時は新規とロール削除のみ
+    mode: 'all', // send all notifications on normal verification
+    batchMode: 'new_and_revoke', // on batch, send only new and revoke
     templates: {
       successNew: {
-        title: '🎉 認証完了',
-        description: 'NFT認証が完了しました！\n\n以下のコレクションでNFTが確認されました:\n{collectionName}\n\n対応するロールが付与されました。\n{roles}\n\nサーバーでロールが表示されるまで少し時間がかかる場合があります。\n\nご利用ありがとうございます！',
+        title: '🎉 Verification Completed',
+        description: 'Your NFT verification is complete!\n\n**Verified NFT Collection:**\n{collectionName}\n\n**Granted Roles:**\n{roles}\n\nIt may take a moment for roles to appear in the server.\n\nThank you for verifying!',
         color: 0x57F287
       },
       successUpdate: {
-        title: '🔄 認証更新完了',
-        description: 'NFT認証が更新されました！\n\n以下のコレクションでNFTが確認されました:\n{collectionName}\n\n対応するロールが更新されました。\n{roles}\n\nサーバーでロールが表示されるまで少し時間がかかる場合があります。\n\n引き続きご利用ください！',
+        title: '🔄 Verification Updated',
+        description: 'Your NFT verification has been updated.\n\n**Verified NFT Collection:**\n{collectionName}\n\n**Updated Roles:**\n{roles}\n\nIt may take a moment for roles to appear in the server.\n\nThank you!',
         color: 0x57F287
       },
       failed: {
-        title: '❌ 認証失敗',
-        description: 'NFT認証に失敗しました。\n\n**失敗理由:**\n{reason}\n\n以下の点をご確認ください：\n• 正しいウォレットで接続しているか\n• 指定されたコレクションのNFTを保有しているか\n• ネットワーク接続に問題がないか\n\n問題が解決しない場合は、管理者にお問い合わせください。',
+        title: '❌ Verification Failed',
+        description: 'Verification failed.\n\nPlease check the following and try again:\n• You hold the target collection NFT\n• You are connected with the correct wallet\n• Your network connection is stable\n\nIf the issue persists, please contact an administrator.',
         color: 0xED4245
       },
       revoked: {
-        title: '⚠️ ロール削除通知',
-        description: 'NFTの保有が確認できなくなったため、以下のロールが削除されました：\n\n**削除されたロール:**\n{roles}\n\n**対処方法：**\n• 再度NFTを取得された場合は、認証チャンネルから再認証を行ってください\n• ウォレットの変更がある場合は、新しいウォレットで認証してください\n\nご不明な点がございましたら、管理者にお問い合わせください。',
+        title: '⚠️ Role Revoked',
+        description: 'Your role has been revoked because your NFT ownership could not be confirmed.\n\n**Revoked Roles:**\n{roles}\n\n**How to restore:**\n• If you reacquire the NFT, please re-verify from the verification channel\n• If you changed wallets, please verify with the new wallet\n\nIf you have any questions, please contact an administrator.',
         color: 0xED4245
       }
     }
@@ -741,16 +741,15 @@ function buildMessageFromTemplate(template: DmTemplate, data: VerificationData):
   // コレクション名が取得できない場合、grantedRolesから推測
   let fallbackCollectionName = '';
   if (!collectionNames && data?.grantedRoles && Array.isArray(data.grantedRoles)) {
-    // ロール名から推測されるコレクション名を取得
-    // 現在は実際のコレクション名が取得できないため、分かりやすい表示にする
-    fallbackCollectionName = '確認されたNFTコレクション';
+    // Fallback label when collection name is unavailable
+    fallbackCollectionName = 'Verified NFT Collection';
   }
   
   const map: Record<string, string> = {
     '{discordId}': String(data?.discordId ?? ''),
     '{roles}': roles,
     '{collections}': String(collections ?? ''),
-    '{collectionName}': collectionNames || (fallbackCollectionName ? `• ${fallbackCollectionName}` : '• コレクション情報を取得中...'),
+    '{collectionName}': collectionNames || (fallbackCollectionName ? `• ${fallbackCollectionName}` : '• Fetching collection info...'),
     '{reason}': String(data?.reason ?? ''),
     '{timestamp}': new Date().toISOString()
   };
@@ -840,32 +839,32 @@ async function notifyDiscordBot(
           dmSettings.templates.revoked;
         customMessage = buildMessageFromTemplate(tpl, verificationData);
 
-        // 失敗時はユーザーが対応可能な文面に強制上書き（Discord ID/署名など技術項目は非表示）
+        // Force user-actionable copy on failure (hide technical details)
         if (kind === 'failed') {
           const reasonText = String((verificationData as any)?.reason ?? '').toLowerCase();
           const errorCode = String((verificationData as any)?.errorCode ?? '').toUpperCase();
           if (errorCode === 'NO_NFTS' || reasonText.includes('no nfts')) {
             customMessage = {
-              title: '❌ 認証失敗',
-              description: '対象コレクションのNFTが確認できませんでした。ウォレットの保有状況をご確認のうえ、保有後に再度認証してください。',
+              title: '❌ Verification Failed',
+              description: 'No NFTs from the target collection were found. Please check your wallet holdings and try verifying again after you own the NFT.',
               color: 0xED4245
             };
           } else if (errorCode === 'INVALID_SIGNATURE' || reasonText.includes('invalid signature')) {
             customMessage = {
-              title: '❌ 認証失敗',
-              description: '署名の確認に失敗しました。別のウォレット（Suiet / Surf など）またはブラウザで再度お試しください。改善しない場合は管理者にお問い合わせください。',
+              title: '❌ Verification Failed',
+              description: 'Signature validation failed. Please try another wallet (e.g., Suiet/Surf) or a different browser. If the issue persists, contact an administrator.',
               color: 0xED4245
             };
           } else if (errorCode === 'NFT_CHECK_ERROR' || reasonText.includes('nft check failed')) {
             customMessage = {
-              title: '❌ 認証失敗',
-              description: 'NFTの確認処理でエラーが発生しました。ネットワーク接続をご確認のうえ、しばらく時間をおいて再度お試しください。',
+              title: '❌ Verification Failed',
+              description: 'An error occurred while checking NFT ownership. Please check your network connection and try again later.',
               color: 0xED4245
             };
           } else {
             customMessage = {
-              title: '❌ 認証失敗',
-              description: 'エラーが発生しました。ウォレットを再接続して再度お試しください。解消しない場合は管理者にお問い合わせください。',
+              title: '❌ Verification Failed',
+              description: 'An error occurred. Please reconnect your wallet and try again. If the issue persists, contact an administrator.',
               color: 0xED4245
             };
           }

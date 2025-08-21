@@ -29,7 +29,7 @@ export const CollectionSelector: React.FC<CollectionSelectorProps> = ({
       </div>
       <div style={{ marginBottom: '0.5rem' }}>
         <label style={{ fontSize: '0.875rem', color: '#666', marginRight: '0.5rem' }}>
-          すべて選択
+          Select all
         </label>
         <input
           type="checkbox"
@@ -60,7 +60,7 @@ export const CollectionSelector: React.FC<CollectionSelectorProps> = ({
           fontSize: '0.75rem',
           color: '#666'
         }}>
-          選択中: {selectedCollections.map(id => collections.find(c => c.id === id)?.name).join(', ')}
+          Selected: {selectedCollections.map(id => collections.find(c => c.id === id)?.name).join(', ')}
         </div>
       )}
     </div>

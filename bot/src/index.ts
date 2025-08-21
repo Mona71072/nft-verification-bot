@@ -28,18 +28,18 @@ client.once(Events.ClientReady, async (readyClient) => {
   console.log(`✅ Bot logged in as ${readyClient.user.tag}!`);
   console.log(`🆔 Bot ID: ${readyClient.user.id}`);
   
-  // 設定のバリデーション
+  // Validate configuration
   console.log('🔍 Validating configuration...');
   if (!validateConfig()) {
     console.error('❌ Configuration validation failed. Bot will not function properly.');
     return;
   }
   
-  // APIサーバーを開始
+  // Start API server
   console.log('🚀 Starting API server...');
   const apiApp = startApiServer();
   
-  // Discordクライアントを設定
+  // Attach Discord client to API app
   if (apiApp.setDiscordClient) {
     apiApp.setDiscordClient(readyClient);
     console.log('✅ Discord client attached to API server');
@@ -49,7 +49,7 @@ client.once(Events.ClientReady, async (readyClient) => {
   await setupVerificationChannel();
 });
 
-// 認証チャンネルの設定
+// Setup verification channel
 async function setupVerificationChannel() {
   try {
     const guild = await client.guilds.fetch(config.DISCORD_GUILD_ID);
@@ -62,20 +62,20 @@ async function setupVerificationChannel() {
     
     console.log(`✅ Verification channel found: ${channel.name}`);
     
-    // チャンネルのメッセージをクリア
+    // Clear channel messages
     const messages = await channel.messages.fetch({ limit: 100 });
     if (messages.size > 0) {
       await channel.bulkDelete(messages);
       console.log('🧹 Cleared verification channel messages');
     }
     
-    // 認証メッセージを送信
+    // Send verification message
     const embed = new EmbedBuilder()
-      .setTitle('🎫 NFT認証システム')
-      .setDescription('SuiネットワークのNFTを保有しているユーザーにロールを付与します。\n\n下のボタンをクリックして認証を開始してください。')
+      .setTitle('🎫 NFT Verification System')
+      .setDescription('Users who hold NFTs on the Sui network will be granted roles.\n\nClick the button below to start verification.')
       .setColor(0x57F287)
       .addFields(
-        { name: '📋 認証手順', value: '1. ボタンをクリック\n2. ウォレットで署名\n3. NFT保有確認\n4. ロール付与', inline: false }
+        { name: '📋 Steps', value: '1. Click the button\n2. Sign with your wallet\n3. NFT ownership check\n4. Role granted', inline: false }
       )
       .setTimestamp()
       .setFooter({ text: 'NFT Verification Bot' });
@@ -84,7 +84,7 @@ async function setupVerificationChannel() {
       .addComponents(
         new ButtonBuilder()
           .setCustomId('verify_nft')
-          .setLabel('NFT認証を開始')
+          .setLabel('Start NFT Verification')
           .setStyle(ButtonStyle.Primary)
           .setEmoji('🎫')
       );
@@ -116,12 +116,12 @@ async function handleVerifyNFT(interaction: ButtonInteraction) {
     const personalizedUrl = `${baseUrl}?user_id=${interaction.user.id}`;
     
     const embed = new EmbedBuilder()
-      .setTitle('🎫 NFT認証')
-      .setDescription('認証を開始します。')
+      .setTitle('🎫 NFT Verification')
+      .setDescription('Starting verification...')
       .setColor(0x57F287)
       .addFields(
-        { name: '🔗 認証URL', value: personalizedUrl, inline: false },
-        { name: '⚠️ 注意', value: 'ウォレットの署名は安全です。NFTの所有権のみを確認し、資産の移動は行われません。', inline: false }
+        { name: '🔗 Verification URL', value: personalizedUrl, inline: false },
+        { name: '⚠️ Note', value: 'Wallet signatures are safe. We only verify NFT ownership and do not move any assets.', inline: false }
       )
       .setTimestamp()
       .setFooter({ text: 'NFT Verification Bot' });
@@ -131,7 +131,7 @@ async function handleVerifyNFT(interaction: ButtonInteraction) {
   } catch (error) {
     console.error('❌ Error handling NFT verification:', error);
     await interaction.reply({ 
-      content: '❌ 認証処理中にエラーが発生しました。しばらく時間をおいて再度お試しください。', 
+      content: '❌ An error occurred during verification. Please try again later.', 
       ephemeral: true 
     });
   }
@@ -170,8 +170,8 @@ export async function grantRoleToUser(discordId: string, options?: { disableChan
           await member.send({
             embeds: [
               new EmbedBuilder()
-                .setTitle('認証完了')
-                .setDescription(`NFT認証が完了しました。\n\nロール "${role.name}" が付与されました。\n\nサーバーでロールが表示されるまで少し時間がかかる場合があります。`)
+                .setTitle('Verification Completed')
+                .setDescription(`Your NFT verification is complete.\n\nRole "${role.name}" has been granted.\n\nIt may take a moment for roles to appear in the server.`)
                 .setColor(0x57F287)
                 .setTimestamp()
             ]
@@ -352,20 +352,20 @@ export async function grantMultipleRolesToUser(
           if (grantedRoles.length > 0) {
             if (isVerified) {
               console.log(`🔄 User ${discordId} is already verified, sending update message`);
-              title = '認証更新完了';
+              title = 'Verification Updated';
               embed.setColor(0x57F287);
-              description = `NFT認証の更新が完了しました。\n\n以下のコレクションでNFTが確認されました:\n\n${grantedRoles.map(role => `• ${role.roleName}`).join('\n')}\n\n対応するロールが更新されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。`;
+              description = `Your NFT verification has been updated.\n\nNFTs were confirmed for the following collections:\n\n${grantedRoles.map(role => `• ${role.roleName}`).join('\n')}\n\nAssociated roles have been updated. It may take a moment for roles to appear in the server.`;
             } else {
               console.log(`🆕 User ${discordId} is new, sending completion message`);
-              title = '認証完了';
+              title = 'Verification Completed';
               embed.setColor(0x57F287);
-              description = `NFT認証が完了しました。\n\n以下のコレクションでNFTが確認されました:\n\n${grantedRoles.map(role => `• ${role.roleName}`).join('\n')}\n\n対応するロールが付与されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。`;
+              description = `Your NFT verification is complete.\n\nNFTs were confirmed for the following collections:\n\n${grantedRoles.map(role => `• ${role.roleName}`).join('\n')}\n\nAssociated roles have been granted. It may take a moment for roles to appear in the server.`;
             }
           }
 
           if (failedRoles.length > 0) {
             embed.addFields({
-              name: '付与できなかったロール',
+              name: 'Roles that could not be granted',
               value: failedRoles.map(name => `• ${name}`).join('\n'),
               inline: false
             });
@@ -435,17 +435,17 @@ export async function revokeMultipleRolesFromUser(
           });
         } else {
           const embed = new EmbedBuilder()
-            .setTitle('ロール更新通知')
+            .setTitle('Role Update Notice')
             .setColor(0xED4245)
             .setTimestamp()
             .setFooter({ text: 'NFT Verification Bot' });
 
-          let description = 'NFTの保有が確認できなくなったため、以下のロールが削除されました:\n\n';
+          let description = 'Your NFT ownership could not be confirmed, so the following roles were revoked:\n\n';
           description += revokedRoles.map(role => `• ${role.roleName}`).join('\n');
-          description += '\n\n再度NFTを取得された場合は、認証チャンネルから再認証を行ってください。';
+          description += '\n\nIf you reacquire the NFT, please re-verify from the verification channel.';
 
           if (failedRoles.length > 0) {
-            description += `\n\n⚠️ 以下のロールの削除に失敗しました:\n${failedRoles.map(name => `• ${name}`).join('\n')}`;
+            description += `\n\n⚠️ Failed to revoke the following roles:\n${failedRoles.map(name => `• ${name}`).join('\n')}`;
           }
 
           embed.setDescription(description);
@@ -529,7 +529,7 @@ export async function sendVerificationFailedMessage(discordId: string, verificat
         .setTimestamp()
         .setFooter({ text: 'NFT Verification Bot' });
 
-      let title = '認証失敗';
+      let title = 'Verification Failed';
       let description = '';
       
       if (verificationData && verificationData.verificationResults) {
@@ -542,25 +542,25 @@ export async function sendVerificationFailedMessage(discordId: string, verificat
           const isVerified = await isVerifiedUser(discordId);
           
           if (isVerified) {
-            title = '認証更新完了';
+            title = 'Verification Updated';
             embed.setColor(0x57F287);
-            description = `NFT認証の更新が完了しました。\n\n以下のコレクションでNFTが確認されました:\n\n${successful.map((result: any) => `${result.collectionName}`).join('\n')}\n\n対応するロールが更新されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。`;
+            description = `Your NFT verification has been updated.\n\nNFTs were confirmed for the following collections:\n\n${successful.map((result: any) => `${result.collectionName}`).join('\n')}\n\nAssociated roles have been updated. It may take a moment for roles to appear in the server.`;
           } else {
-            title = '認証完了';
+            title = 'Verification Completed';
             embed.setColor(0x57F287);
-            description = `NFT認証が完了しました。\n\n以下のコレクションでNFTが確認されました:\n\n${successful.map((result: any) => `${result.collectionName}`).join('\n')}\n\n対応するロールが付与されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。`;
+            description = `Your NFT verification is complete.\n\nNFTs were confirmed for the following collections:\n\n${successful.map((result: any) => `${result.collectionName}`).join('\n')}\n\nAssociated roles have been granted. It may take a moment for roles to appear in the server.`;
           }
         } else if (successful.length > 0 && failed.length > 0) {
-          title = '部分的な認証完了';
+          title = 'Partial Verification Completed';
           embed.setColor(0xFAA61A);
-          description = `一部のコレクションでのみNFTが確認されました。\n\n✅ **認証成功:**\n${successful.map((result: any) => `• ${result.collectionName}`).join('\n')}\n\n❌ **認証失敗:**\n${failed.map((result: any) => `• ${result.collectionName}`).join('\n')}`;
+          description = `NFTs were confirmed only for some collections.\n\n✅ **Verified:**\n${successful.map((result: any) => `• ${result.collectionName}`).join('\n')}\n\n❌ **Failed:**\n${failed.map((result: any) => `• ${result.collectionName}`).join('\n')}`;
         } else {
-          title = '認証失敗';
+          title = 'Verification Failed';
           embed.setColor(0xED4245);
-          description = `選択されたコレクションでNFTが見つかりませんでした。\n\n以下のコレクションを確認しました:\n${failed.map((result: any) => `• ${result.collectionName}`).join('\n')}\n\nNFTを保有していることを確認してから再度お試しください。`;
+          description = `No NFTs were found for the selected collections.\n\nChecked collections:\n${failed.map((result: any) => `• ${result.collectionName}`).join('\n')}\n\nPlease confirm you own the NFT before trying again.`;
         }
       } else {
-        description = verificationData?.reason || 'NFT認証に失敗しました。再度お試しください。';
+        description = verificationData?.reason || 'NFT verification failed. Please try again.';
       }
 
       embed.setTitle(title).setDescription(description);
