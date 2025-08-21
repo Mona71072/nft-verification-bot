@@ -20,8 +20,8 @@ services:
       - key: NFT_COLLECTION_ID
         value: 0x2::coin::Coin<0x2::sui::SUI>
       - key: API_BASE_URL
-        value: https://nft-verification-production.mona-syndicatextokyo.workers.dev
+        value: https://main.nft-verification-frontend.pages.dev
       - key: VERIFICATION_URL
-        value: https://syndicatextokyo.app
+        value: https://main.nft-verification-frontend.pages.dev
       - key: ADMIN_USER_ID
         value: 1060224603663896577 

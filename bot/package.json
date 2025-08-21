@@ -24,14 +24,11 @@
     "@types/express": "^5.0.3",
     "discord.js": "^14.21.0",
     "dotenv": "^16.3.1",
-    "express": "^5.1.0",
-    "hono": "^4.8.12"
+    "express": "^5.1.0"
   },
   "devDependencies": {
     "@types/node": "^20.19.9",
     "ts-node": "^10.9.2",
-    "typescript": "^5.3.3",
-    "@cloudflare/workers-types": "^4.20250803.0",
-    "wrangler": "^4.27.0"
+    "typescript": "^5.3.3"
   }
 }
