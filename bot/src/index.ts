@@ -224,8 +224,8 @@ export async function revokeRoleFromUser(discordId: string, options?: { disableC
           await member.send({
             embeds: [
               new EmbedBuilder()
-                .setTitle('ロール更新通知')
-                .setDescription(`NFTの保有が確認できなくなったため、ロール "${role.name}" が削除されました。\n再度NFTを取得された場合は、認証チャンネルから再認証を行ってください。`)
+                .setTitle('Role Update Notice')
+                .setDescription(`Your role "${role.name}" has been revoked because your NFT ownership could not be confirmed.\nIf you reacquire the NFT, please re-verify from the verification channel.`)
                 .setColor(0xED4245)
                 .setTimestamp()
             ]
@@ -341,7 +341,7 @@ export async function grantMultipleRolesToUser(
             .setTimestamp()
             .setFooter({ text: 'NFT Verification Bot' });
 
-          let title = '認証完了';
+          let title = 'Verification Completed';
           let description = '';
           
           // 認証済みユーザーかどうかをチェック
@@ -473,21 +473,21 @@ export async function sendBatchProcessNotification(discordId: string, batchData:
 
     try {
       const embed = new EmbedBuilder()
-        .setTitle('バッチ処理完了通知')
+        .setTitle('Batch Process Completed')
         .setColor(0x57F287)
         .setTimestamp()
         .setFooter({ text: 'NFT Verification Bot' });
 
       const { summary } = batchData;
-      let description = 'バッチ処理が完了しました。\n\n';
-      description += `📊 **処理結果:**\n`;
-      description += `• 総ユーザー数: ${summary.totalUsers}\n`;
-      description += `• 処理済み: ${summary.processed}\n`;
-      description += `• ロール剥奪: ${summary.revoked}\n`;
-      description += `• エラー: ${summary.errors}\n`;
+      let description = 'Batch process has been completed.\n\n';
+      description += `📊 **Results:**\n`;
+      description += `• Total users: ${summary.totalUsers}\n`;
+      description += `• Processed: ${summary.processed}\n`;
+      description += `• Roles revoked: ${summary.revoked}\n`;
+      description += `• Errors: ${summary.errors}\n`;
 
       if (summary.revoked > 0) {
-        description += `\n⚠️ ${summary.revoked}人のユーザーからロールが剥奪されました。`;
+        description += `\n⚠️ Roles have been revoked from ${summary.revoked} users.`;
       }
 
       embed.setDescription(description);
