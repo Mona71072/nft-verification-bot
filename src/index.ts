@@ -2805,23 +2805,23 @@ app.post('/api/admin/dm-settings/initialize', async (c) => {
       batchMode: 'new_and_revoke', // バッチ処理時は新規とロール削除のみ
       templates: {
         successNew: {
-          title: '🎉 認証完了（新規）',
-          description: '**NFT認証が完了しました！**\n\n以下のコレクションでNFTが確認されました:\n• {collectionName}\n\n対応するロールが付与されました。サーバーでロールが表示されるまで少し時間がかかる場合があります。',
+          title: '🎉 Verification Completed',
+          description: '**Your NFT verification is complete!**\n\n**Verified NFT Collection:**\n• {collectionName}\n\n**Granted Roles:**\n• {roles}\n\nIt may take a moment for roles to appear in the server.\n\nThank you for verifying!',
           color: 0x00ff00
         },
         successUpdate: {
-          title: '🔄 認証更新完了',
-          description: '**NFT認証が更新されました！**\n\n以下のコレクションでNFTが確認されました:\n• {collectionName}\n\n対応するロールが更新されました。',
+          title: '🔄 Verification Updated',
+          description: '**Your NFT verification has been updated!**\n\n**Verified NFT Collection:**\n• {collectionName}\n\n**Updated Roles:**\n• {roles}\n\nIt may take a moment for roles to appear in the server.\n\nThank you!',
           color: 0x0099ff
         },
         failed: {
-          title: '❌ 認証失敗',
-          description: '**NFT認証に失敗しました。**\n\n以下の理由が考えられます:\n• 指定されたコレクションのNFTを保有していない\n• Discord IDが正しくない\n• 署名が無効\n\n正しい情報で再度お試しください。',
+          title: '❌ Verification Failed',
+          description: '**Verification failed.**\n\nPlease check the following and try again:\n• You hold the target collection NFT\n• You are connected with the correct wallet\n• Your network connection is stable\n\nIf the issue persists, please contact an administrator.',
           color: 0xff0000
         },
         revoked: {
-          title: '🚫 ロール削除通知',
-          description: '**ロールが削除されました。**\n\n以下のコレクションのNFTが確認できなくなったため、対応するロールが削除されました:\n• {collectionName}\n\nNFTを再取得した場合は、再度認証を行ってください。',
+          title: '⚠️ Role Revoked',
+          description: '**Your role has been revoked because your NFT ownership could not be confirmed.**\n\n**Revoked Roles:**\n• {roles}\n\n**How to restore:**\n• If you reacquire the NFT, please re-verify from the verification channel\n• If you changed wallets, please verify with the new wallet\n\nIf you have any questions, please contact an administrator.',
           color: 0xff6600
         }
       }
