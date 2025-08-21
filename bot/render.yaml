@@ -22,6 +22,6 @@ services:
       - key: API_BASE_URL
         value: https://nft-verification-production.mona-syndicatextokyo.workers.dev
       - key: VERIFICATION_URL
-        value: https://nft-verification-production.mona-syndicatextokyo.workers.dev/verify.html
+        value: https://syndicatextokyo.app
       - key: ADMIN_USER_ID
         value: 1060224603663896577 

@@ -35,7 +35,7 @@ Discord → フロントエンド → Cloudflare Workers → Discord Bot → Dis
 ## 🚀 デプロイ済みURL
 
 ### 本番環境
-- **フロントエンド**: https://main.nft-verification-frontend.pages.dev
+- **フロントエンド**: https://syndicatextokyo.app
 - **Cloudflare Workers API**: https://nft-verification-production.mona-syndicatextokyo.workers.dev
 - **Discord Bot API**: https://nft-verification-bot.onrender.com
 
@@ -143,7 +143,7 @@ envVars:
   - key: NFT_COLLECTION_ID
     value: 0x2::coin::Coin<0x2::sui::SUI>
   - key: VERIFICATION_URL
-    value: https://main.nft-verification-frontend.pages.dev
+    value: https://syndicatextokyo.app
 ```
 
 ### 2. Discord Bot設定
