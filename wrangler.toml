@@ -18,6 +18,10 @@ id = "dfd1a07f0e704320bd5324fc3102f3ba"
 binding = "COLLECTION_STORE"
 id = "73186a10a62946718119aa112e87dba9"
 
+[[kv_namespaces]]
+binding = "DM_TEMPLATE_STORE"
+id = "38a39feef0d049e6b9f7a9d959ce73c1"
+
 [env.production]
 name = "nft-verification-production"
 

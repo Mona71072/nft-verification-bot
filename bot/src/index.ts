@@ -370,7 +370,7 @@ async function handleVerifyNFT(interaction: ButtonInteraction) {
 
 
 // ロール付与関数（APIから呼び出される）
-export async function grantRoleToUser(discordId: string, collectionId?: string, roleName?: string): Promise<boolean> {
+export async function grantRoleToUser(discordId: string, collectionId?: string, roleName?: string, customMessage?: { title?: string; description?: string; color?: number }): Promise<boolean> {
   try {
     console.log(`🔄 Attempting to grant role to Discord ID: ${discordId}`);
     console.log(`📋 Collection ID: ${collectionId || 'default'}`);
@@ -430,10 +430,14 @@ export async function grantRoleToUser(discordId: string, collectionId?: string, 
 
     // ユーザーにDM送信（成功通知）
     try {
+      const title = customMessage?.title || '🎉 NFT Verification Successful!';
+      const description = customMessage?.description || `**Congratulations! Your NFT verification has been completed successfully!**\\n\\n🌟 **What you've received:**\\n• **Exclusive Discord Role:** "${role.name}"\\n• **Premium Access:** Special channels and features\\n• **Community Status:** Verified NFT holder\\n• **Future Benefits:** Early access to upcoming features\\n\\n🎯 **Your Benefits:**\\n• Access to exclusive channels\\n• Special community recognition\\n• Priority support and assistance\\n• Early access to new features\\n\\n💎 **Security Confirmation:**\\n• Your NFT ownership has been verified on the blockchain\\n• All verification was done securely without accessing private keys\\n• Your wallet data remains completely private\\n\\n*Welcome to the exclusive NFT community! Enjoy your new privileges!*`;
+      const color = customMessage?.color ?? 0x57F287;
+
       const successEmbed = new EmbedBuilder()
-        .setTitle('🎉 NFT Verification Successful!')
-        .setDescription(`**Congratulations! Your NFT verification has been completed successfully!**\\n\\n🌟 **What you've received:**\\n• **Exclusive Discord Role:** "${role.name}"\\n• **Premium Access:** Special channels and features\\n• **Community Status:** Verified NFT holder\\n• **Future Benefits:** Early access to upcoming features\\n\\n🎯 **Your Benefits:**\\n• Access to exclusive channels\\n• Special community recognition\\n• Priority support and assistance\\n• Early access to new features\\n\\n💎 **Security Confirmation:**\\n• Your NFT ownership has been verified on the blockchain\\n• All verification was done securely without accessing private keys\\n• Your wallet data remains completely private\\n\\n*Welcome to the exclusive NFT community! Enjoy your new privileges!*`)
-        .setColor(0x57F287)
+        .setTitle(title)
+        .setDescription(description)
+        .setColor(color)
         .setThumbnail('https://i.imgur.com/8tBXd6L.png')
         .addFields(
           { name: '🎁 Role Granted', value: role.name, inline: true },
@@ -530,19 +534,11 @@ export async function sendVerificationFailureMessage(discordId: string, verifica
       return false;
     }
 
+    const cm = verificationData?.custom_message || {};
     const failureEmbed = new EmbedBuilder()
-      .setTitle('❌ NFT Verification Failed')
-      .setDescription(`**NFT verification failed for user <@${discordId}>**
-
-**Wallet Address:** \`${verificationData?.address || 'Unknown'}\`
-**Reason:** ${verificationData?.reason || 'NFT not found in wallet'}
-**Timestamp:** ${new Date().toLocaleString()}
-
-**Next Steps:**
-• Ensure you own the required NFTs
-• Check your wallet connection
-• Try the verification process again`)
-      .setColor(0xED4245)
+      .setTitle(cm.title || '❌ NFT Verification Failed')
+      .setDescription(cm.description || `**NFT verification failed for user <@${discordId}>**\n\n**Wallet Address:** \`${verificationData?.address || 'Unknown'}\`\n**Reason:** ${verificationData?.reason || 'NFT not found in wallet'}\n**Timestamp:** ${new Date().toLocaleString()}\n\n**Next Steps:**\n• Ensure you own the required NFTs\n• Check your wallet connection\n• Try the verification process again`)
+      .setColor(cm.color ?? 0xED4245)
       .setFooter({ 
         text: 'Sui NFT Verification • Professional System'
       })
@@ -580,7 +576,7 @@ export async function sendVerificationFailureMessage(discordId: string, verifica
 }
 
 // ロール剥奪関数（Cronから呼び出される）
-export async function revokeRoleFromUser(discordId: string): Promise<boolean> {
+export async function revokeRoleFromUser(discordId: string, customMessage?: { title?: string; description?: string; color?: number }): Promise<boolean> {
   try {
     const guild = await client.guilds.fetch(config.DISCORD_GUILD_ID);
     const member = await guild.members.fetch(discordId);
@@ -596,12 +592,16 @@ export async function revokeRoleFromUser(discordId: string): Promise<boolean> {
 
     // ユーザーにDM送信
     try {
+      const title = customMessage?.title || '📋 Role Update Notification';
+      const description = customMessage?.description || `**Your NFT verification status has been updated**\\n\\n⚠️ **Role Removed:** The "${role.name}" role has been removed from your account.\\n\\n🔍 **Reason:** Your NFT ownership could not be verified on the blockchain.\\n\\n🔄 **How to restore your role:**\\n1. Ensure you still own the required NFTs\\n2. Visit the verification channel\\n3. Click "Start Verification" to re-verify\\n4. Complete the verification process again\\n\\n💡 **Tips:**\\n• Make sure your wallet is properly connected\\n• Verify that you still own the required NFTs\\n• Check that your NFTs are on the correct network\\n\\n*If you believe this is an error, please contact server administrators for assistance.*`;
+      const color = customMessage?.color ?? 0xED4245;
+
       await member.send({
         embeds: [
           new EmbedBuilder()
-            .setTitle('📋 Role Update Notification')
-            .setDescription(`**Your NFT verification status has been updated**\\n\\n⚠️ **Role Removed:** The "${role.name}" role has been removed from your account.\\n\\n🔍 **Reason:** Your NFT ownership could not be verified on the blockchain.\\n\\n🔄 **How to restore your role:**\\n1. Ensure you still own the required NFTs\\n2. Visit the verification channel\\n3. Click "Start Verification" to re-verify\\n4. Complete the verification process again\\n\\n💡 **Tips:**\\n• Make sure your wallet is properly connected\\n• Verify that you still own the required NFTs\\n• Check that your NFTs are on the correct network\\n\\n*If you believe this is an error, please contact server administrators for assistance.*`)
-            .setColor(0xED4245)
+            .setTitle(title)
+            .setDescription(description)
+            .setColor(color)
             .setThumbnail('https://i.imgur.com/8tBXd6L.png')
             .addFields(
               { name: '🎭 Role Removed', value: role.name, inline: true },

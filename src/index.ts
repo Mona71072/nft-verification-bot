@@ -28,6 +28,7 @@ interface NFTCollection {
 interface Env {
   NONCE_STORE: KVNamespace;
   COLLECTION_STORE: KVNamespace;
+  DM_TEMPLATE_STORE?: KVNamespace;
   NFT_COLLECTION_ID: string;
   DISCORD_BOT_API_URL: string;
   [key: string]: any;
@@ -658,41 +659,65 @@ interface DmSettings {
 const DM_SETTINGS_KEY = 'dm_settings';
 
 async function getDmSettings(c: Context<{ Bindings: Env }>): Promise<DmSettings> {
+  const dmStore = (c.env.DM_TEMPLATE_STORE || c.env.COLLECTION_STORE) as KVNamespace;
+  // 1) 新KVから読み取り
   try {
-    const v = await c.env.COLLECTION_STORE.get(DM_SETTINGS_KEY);
+    const v = await dmStore.get(DM_SETTINGS_KEY);
     if (v) return JSON.parse(v) as DmSettings;
   } catch (e) {
-    console.log('⚠️ getDmSettings error, using defaults:', e);
+    console.log('⚠️ getDmSettings read error (primary store), will try migrate:', e);
   }
+
+  // 2) 旧KVからの移行を試行
+  try {
+    if (c.env.DM_TEMPLATE_STORE) {
+      const legacy = await c.env.COLLECTION_STORE.get(DM_SETTINGS_KEY);
+      if (legacy) {
+        await (c.env.DM_TEMPLATE_STORE as KVNamespace).put(DM_SETTINGS_KEY, legacy);
+        await c.env.COLLECTION_STORE.delete(DM_SETTINGS_KEY);
+        console.log('✅ Migrated DM settings from COLLECTION_STORE to DM_TEMPLATE_STORE');
+        return JSON.parse(legacy) as DmSettings;
+      }
+    }
+  } catch (migrateErr) {
+    console.log('⚠️ DM settings migration failed (non-fatal):', migrateErr);
+  }
+
+  // 3) どこにも無ければデフォルト初期化（可能なら新KVに）
   const defaults: DmSettings = {
-    mode: 'all', // send all notifications on normal verification
-    batchMode: 'new_and_revoke', // on batch, send only new and revoke
+    mode: 'all',
+    batchMode: 'new_and_revoke',
     templates: {
       successNew: {
         title: '🎉 Verification Completed',
-        description: 'Your NFT verification is complete!\n\n**Verified NFT Collection:**\n{collectionName}\n\n**Granted Roles:**\n{roles}\n\nIt may take a moment for roles to appear in the server.\n\nThank you for verifying!',
-        color: 0x57F287
+        description: '**Your NFT verification is complete!**\\n\\n**Verified NFT Collection:**\\n• {collectionName}\\n\\n**Granted Roles:**\\n• {roles}\\n\\nIt may take a moment for roles to appear in the server.\\n\\nThank you for verifying!',
+        color: 0x00ff00
       },
       successUpdate: {
         title: '🔄 Verification Updated',
-        description: 'Your NFT verification has been updated.\n\n**Verified NFT Collection:**\n{collectionName}\n\n**Updated Roles:**\n{roles}\n\nIt may take a moment for roles to appear in the server.\n\nThank you!',
-        color: 0x57F287
+        description: '**Your NFT verification has been updated!**\\n\\n**Verified NFT Collection:**\\n• {collectionName}\\n\\n**Updated Roles:**\\n• {roles}\\n\\nIt may take a moment for roles to appear in the server.\\n\\nThank you!',
+        color: 0x0099ff
       },
       failed: {
         title: '❌ Verification Failed',
-        description: 'Verification failed.\n\nPlease check the following and try again:\n• You hold the target collection NFT\n• You are connected with the correct wallet\n• Your network connection is stable\n\nIf the issue persists, please contact an administrator.',
-        color: 0xED4245
+        description: '**Verification failed.**\\n\\nPlease check the following and try again:\\n• You hold the target collection NFT\\n• You are connected with the correct wallet\\n• Your network connection is stable\\n\\nIf the issue persists, please contact an administrator.',
+        color: 0xff0000
       },
       revoked: {
         title: '⚠️ Role Revoked',
-        description: 'Your role has been revoked because your NFT ownership could not be confirmed.\n\n**Revoked Roles:**\n{roles}\n\n**How to restore:**\n• If you reacquire the NFT, please re-verify from the verification channel\n• If you changed wallets, please verify with the new wallet\n\nIf you have any questions, please contact an administrator.',
-        color: 0xED4245
+        description: '**Your role has been revoked because your NFT ownership could not be confirmed.**\\n\\n**Revoked Roles:**\\n• {roles}\\n\\n**How to restore:**\\n• If you reacquire the NFT, please re-verify from the verification channel\\n• If you changed wallets, please verify with the new wallet\\n\\nIf you have any questions, please contact an administrator.',
+        color: 0xff6600
       }
     }
   };
-  // Force initialize DM settings to ensure they are properly set
-  await c.env.COLLECTION_STORE.put(DM_SETTINGS_KEY, JSON.stringify(defaults));
-  console.log('✅ DM settings initialized with defaults:', JSON.stringify(defaults, null, 2));
+  try {
+    await dmStore.put(DM_SETTINGS_KEY, JSON.stringify(defaults));
+    console.log('✅ DM settings initialized with defaults (primary store)');
+  } catch {
+    // 最後のフォールバック
+    await c.env.COLLECTION_STORE.put(DM_SETTINGS_KEY, JSON.stringify(defaults));
+    console.log('✅ DM settings initialized with defaults (legacy store)');
+  }
   return defaults;
 }
 
@@ -708,7 +733,12 @@ async function updateDmSettings(c: Context<{ Bindings: Env }>, patch: Partial<Dm
       revoked: patch.templates?.revoked ?? current.templates.revoked
     }
   };
-  await c.env.COLLECTION_STORE.put(DM_SETTINGS_KEY, JSON.stringify(next));
+  const dmStore = (c.env.DM_TEMPLATE_STORE || c.env.COLLECTION_STORE) as KVNamespace;
+  await dmStore.put(DM_SETTINGS_KEY, JSON.stringify(next));
+  // 旧ストアに存在していれば掃除
+  if (c.env.DM_TEMPLATE_STORE) {
+    try { await c.env.COLLECTION_STORE.delete(DM_SETTINGS_KEY); } catch {}
+  }
   return next;
 }
 
@@ -846,36 +876,34 @@ async function notifyDiscordBot(
           dmSettings.templates.revoked;
         customMessage = buildMessageFromTemplate(tpl, verificationData);
 
-        // Force user-actionable copy on failure (hide technical details)
+        // Respect admin-panel template on failure: keep title/color, override description only
         if (kind === 'failed') {
           const reasonText = String((verificationData as any)?.reason ?? '').toLowerCase();
           const errorCode = String((verificationData as any)?.errorCode ?? '').toUpperCase();
+          const base = dmSettings.templates.failed;
+          let overrideDescription = '';
           if (errorCode === 'NO_NFTS' || reasonText.includes('no nfts')) {
-            customMessage = {
-              title: '❌ Verification Failed',
-              description: 'No NFTs from the target collection were found. Please check your wallet holdings and try verifying again after you own the NFT.',
-              color: 0xED4245
-            };
+            overrideDescription = 'No NFTs from the target collection were found. Please check your wallet holdings and try verifying again after you own the NFT.';
           } else if (errorCode === 'INVALID_SIGNATURE' || reasonText.includes('invalid signature')) {
-            customMessage = {
-              title: '❌ Verification Failed',
-              description: 'Signature validation failed. Please try another wallet (e.g., Suiet/Surf) or a different browser. If the issue persists, contact an administrator.',
-              color: 0xED4245
-            };
+            overrideDescription = 'Signature validation failed. Please try another wallet (e.g., Suiet/Surf) or a different browser. If the issue persists, contact an administrator.';
           } else if (errorCode === 'NFT_CHECK_ERROR' || reasonText.includes('nft check failed')) {
-            customMessage = {
-              title: '❌ Verification Failed',
-              description: 'An error occurred while checking NFT ownership. Please check your network connection and try again later.',
-              color: 0xED4245
-            };
+            overrideDescription = 'An error occurred while checking NFT ownership. Please check your network connection and try again later.';
           } else {
-            customMessage = {
-              title: '❌ Verification Failed',
-              description: 'An error occurred. Please reconnect your wallet and try again. If the issue persists, contact an administrator.',
-              color: 0xED4245
-            };
+            overrideDescription = base.description;
           }
+          customMessage = { title: base.title, description: overrideDescription, color: base.color };
         }
+
+        // Structured summary log for observability
+        try {
+          console.log('🔔 DM notify summary:', JSON.stringify({
+            dmMode,
+            kind,
+            isBatchProcess,
+            title: customMessage?.title,
+            preview: (customMessage?.description || '').slice(0, 80)
+          }));
+        } catch {}
       }
     }
 
@@ -2827,7 +2855,12 @@ app.post('/api/admin/dm-settings/initialize', async (c) => {
       }
     };
     
-    await c.env.COLLECTION_STORE.put('dm_settings', JSON.stringify(defaultSettings));
+    const dmStore = (c.env.DM_TEMPLATE_STORE || c.env.COLLECTION_STORE) as KVNamespace;
+    await dmStore.put('dm_settings', JSON.stringify(defaultSettings));
+    // 旧ストアをクリーンアップ
+    if (c.env.DM_TEMPLATE_STORE) {
+      try { await c.env.COLLECTION_STORE.delete('dm_settings'); } catch {}
+    }
     
     return c.json({
       success: true,
