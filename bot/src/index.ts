@@ -85,6 +85,45 @@ client.once(Events.ClientReady, async (readyClient) => {
   await setupVerificationChannel();
 });
 
+// チャンネルテンプレート取得
+async function getChannelTemplates() {
+  try {
+    const response = await fetch(`${config.CLOUDFLARE_WORKERS_API_URL}/api/channel-templates`);
+    const data = await response.json() as any;
+    if (data.success) {
+      return data.data;
+    } else {
+      console.log('⚠️ Failed to get channel templates, using fallback');
+      return data.fallback || {
+        verificationChannel: {
+          title: '🎫 NFT Verification System',
+          description: 'This system grants roles to users who hold NFTs on the Sui network.\n\nClick the button below to start verification.',
+          color: 0x57F287
+        },
+        verificationStart: {
+          title: '🎫 NFT Verification',
+          description: 'Starting verification...\n\n⚠️ **Note:** Wallet signatures are safe. We only verify NFT ownership and do not move any assets.',
+          color: 0x57F287
+        }
+      };
+    }
+  } catch (error) {
+    console.log('⚠️ Error fetching channel templates:', error);
+    return {
+      verificationChannel: {
+        title: '🎫 NFT Verification System',
+        description: 'This system grants roles to users who hold NFTs on the Sui network.\n\nClick the button below to start verification.',
+        color: 0x57F287
+      },
+      verificationStart: {
+        title: '🎫 NFT Verification',
+        description: 'Starting verification...\n\n⚠️ **Note:** Wallet signatures are safe. We only verify NFT ownership and do not move any assets.',
+        color: 0x57F287
+      }
+    };
+  }
+}
+
 // 認証チャンネルとメッセージのセットアップ
 async function setupVerificationChannel() {
   try {
@@ -163,14 +202,18 @@ async function setupVerificationChannel() {
 
     console.log('🔄 Creating new verification messages...');
 
+    // テンプレートを取得
+    const templates = await getChannelTemplates();
+    const channelTemplate = templates.verificationChannel;
+
     // シンプルな認証メッセージ
     const verificationEmbed = new EmbedBuilder()
-      .setTitle('🎫 NFT Verification System')
-      .setDescription('This system grants roles to users who hold NFTs on the Sui network.\n\nClick the button below to start verification.')
+      .setTitle(channelTemplate.title)
+      .setDescription(channelTemplate.description)
       .addFields(
         { name: '📋 Verification Steps', value: '1. Click the button\n2. Sign with your wallet\n3. NFT ownership check\n4. Role assignment', inline: false }
       )
-      .setColor(0x57F287)
+      .setColor(channelTemplate.color || 0x57F287)
       .setFooter({ 
         text: 'NFT Verification Bot'
       })
@@ -295,14 +338,17 @@ async function handleVerifyNFT(interaction: ButtonInteraction) {
     const verificationUrl = `${config.VERIFICATION_URL}?discord_id=${interaction.user.id}`;
     console.log(`🔗 Verification URL: ${verificationUrl}`);
 
+    // テンプレートを取得
+    const templates = await getChannelTemplates();
+    const startTemplate = templates.verificationStart;
+
     const verifyEmbed = new EmbedBuilder()
-      .setTitle('🎫 NFT Verification')
-      .setDescription('Starting verification...')
+      .setTitle(startTemplate.title)
+      .setDescription(startTemplate.description)
       .addFields(
-        { name: '🔗 Verification URL', value: verificationUrl, inline: false },
-        { name: '⚠️ Note', value: 'Wallet signatures are safe. We only verify NFT ownership and do not move any assets.', inline: false }
+        { name: '🔗 Verification URL', value: verificationUrl, inline: false }
       )
-      .setColor(0x57F287)
+      .setColor(startTemplate.color || 0x57F287)
       .setFooter({ 
         text: 'NFT Verification Bot'
       })

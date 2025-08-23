@@ -650,10 +650,17 @@ interface DmTemplates {
   failed: DmTemplate;
   revoked: DmTemplate;
 }
+
+interface ChannelTemplates {
+  verificationChannel: DmTemplate;
+  verificationStart: DmTemplate;
+}
+
 interface DmSettings {
   mode: DmMode; // 通常認証時のDM通知モード
   batchMode: DmMode; // バッチ処理時のDM通知モード
   templates: DmTemplates;
+  channelTemplates: ChannelTemplates;
 }
 
 const DM_SETTINGS_KEY = 'dm_settings';
@@ -708,6 +715,18 @@ async function getDmSettings(c: Context<{ Bindings: Env }>): Promise<DmSettings>
         description: '**Your role has been revoked because your NFT ownership could not be confirmed.**\\n\\n**Revoked Roles:**\\n• {roles}\\n\\n**How to restore:**\\n• If you reacquire the NFT, please re-verify from the verification channel\\n• If you changed wallets, please verify with the new wallet\\n\\nIf you have any questions, please contact an administrator.',
         color: 0xff6600
       }
+    },
+    channelTemplates: {
+      verificationChannel: {
+        title: '🎫 NFT Verification System',
+        description: 'This system grants roles to users who hold NFTs on the Sui network.\\n\\nClick the button below to start verification.',
+        color: 0x57F287
+      },
+      verificationStart: {
+        title: '🎫 NFT Verification',
+        description: 'Starting verification...\\n\\n⚠️ **Note:** Wallet signatures are safe. We only verify NFT ownership and do not move any assets.',
+        color: 0x57F287
+      }
     }
   };
   try {
@@ -731,6 +750,10 @@ async function updateDmSettings(c: Context<{ Bindings: Env }>, patch: Partial<Dm
       successUpdate: patch.templates?.successUpdate ?? current.templates.successUpdate,
       failed: patch.templates?.failed ?? current.templates.failed,
       revoked: patch.templates?.revoked ?? current.templates.revoked
+    },
+    channelTemplates: {
+      verificationChannel: patch.channelTemplates?.verificationChannel ?? current.channelTemplates.verificationChannel,
+      verificationStart: patch.channelTemplates?.verificationStart ?? current.channelTemplates.verificationStart
     }
   };
   const dmStore = (c.env.DM_TEMPLATE_STORE || c.env.COLLECTION_STORE) as KVNamespace;
@@ -2852,6 +2875,18 @@ app.post('/api/admin/dm-settings/initialize', async (c) => {
           description: '**Your role has been revoked because your NFT ownership could not be confirmed.**\n\n**Revoked Roles:**\n• {roles}\n\n**How to restore:**\n• If you reacquire the NFT, please re-verify from the verification channel\n• If you changed wallets, please verify with the new wallet\n\nIf you have any questions, please contact an administrator.',
           color: 0xff6600
         }
+      },
+      channelTemplates: {
+        verificationChannel: {
+          title: '🎫 NFT Verification System',
+          description: 'This system grants roles to users who hold NFTs on the Sui network.\n\nClick the button below to start verification.',
+          color: 0x57F287
+        },
+        verificationStart: {
+          title: '🎫 NFT Verification',
+          description: 'Starting verification...\n\n⚠️ **Note:** Wallet signatures are safe. We only verify NFT ownership and do not move any assets.',
+          color: 0x57F287
+        }
       }
     };
     
@@ -2871,6 +2906,34 @@ app.post('/api/admin/dm-settings/initialize', async (c) => {
     return c.json({
       success: false,
       error: 'Failed to initialize DM settings'
+    }, 500);
+  }
+});
+
+// チャンネルテンプレート取得API（Bot用）
+app.get('/api/channel-templates', async (c) => {
+  try {
+    const dmSettings = await getDmSettings(c);
+    return c.json({ 
+      success: true, 
+      data: dmSettings.channelTemplates 
+    });
+  } catch (e) {
+    return c.json({ 
+      success: false, 
+      error: 'Failed to get channel templates',
+      fallback: {
+        verificationChannel: {
+          title: '🎫 NFT Verification System',
+          description: 'This system grants roles to users who hold NFTs on the Sui network.\n\nClick the button below to start verification.',
+          color: 0x57F287
+        },
+        verificationStart: {
+          title: '🎫 NFT Verification',
+          description: 'Starting verification...\n\n⚠️ **Note:** Wallet signatures are safe. We only verify NFT ownership and do not move any assets.',
+          color: 0x57F287
+        }
+      }
     }, 500);
   }
 });

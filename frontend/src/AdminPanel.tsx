@@ -43,10 +43,12 @@ interface BatchStats {
 type DmMode = 'all' | 'new_and_revoke' | 'update_and_revoke' | 'revoke_only' | 'none';
 interface DmTemplate { title: string; description: string; color?: number }
 interface DmTemplates { successNew: DmTemplate; successUpdate: DmTemplate; failed: DmTemplate; revoked: DmTemplate }
+interface ChannelTemplates { verificationChannel: DmTemplate; verificationStart: DmTemplate }
 interface DmSettings { 
   mode: DmMode; // 通常認証時のDM通知モード
   batchMode: DmMode; // バッチ処理時のDM通知モード
-  templates: DmTemplates 
+  templates: DmTemplates;
+  channelTemplates: ChannelTemplates;
 }
 
 interface VerifiedUser {
@@ -158,8 +160,11 @@ function AdminPanel() {
             !data.data.templates.successNew?.title || 
             !data.data.templates.successUpdate?.title || 
             !data.data.templates.failed?.title || 
-            !data.data.templates.revoked?.title) {
-          console.log('⚠️ DM templates are empty, attempting to initialize...');
+            !data.data.templates.revoked?.title ||
+            !data.data.channelTemplates ||
+            !data.data.channelTemplates.verificationChannel?.title ||
+            !data.data.channelTemplates.verificationStart?.title) {
+          console.log('⚠️ DM templates or channel templates are empty, attempting to initialize...');
           await initializeDmSettings();
         }
       }
@@ -1395,6 +1400,7 @@ function AdminPanel() {
                   </div>
                   
                   <div style={{ display: 'grid', gap: '1rem' }}>
+                    <h4 style={{ marginBottom: '0.5rem' }}>📱 DMテンプレート</h4>
                     <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
                       <h5>🎉 新規認証</h5>
                       <div><strong>タイトル:</strong> {dmSettings.templates.successNew.title}</div>
@@ -1414,6 +1420,18 @@ function AdminPanel() {
                       <h5>🚫 ロール削除</h5>
                       <div><strong>タイトル:</strong> {dmSettings.templates.revoked.title}</div>
                       <div><strong>内容:</strong> {dmSettings.templates.revoked.description}</div>
+                    </div>
+                    
+                    <h4 style={{ marginBottom: '0.5rem', marginTop: '1rem' }}>📺 チャンネルテンプレート</h4>
+                    <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
+                      <h5>🎫 認証チャンネル</h5>
+                      <div><strong>タイトル:</strong> {dmSettings.channelTemplates?.verificationChannel?.title || 'Not set'}</div>
+                      <div><strong>内容:</strong> {dmSettings.channelTemplates?.verificationChannel?.description || 'Not set'}</div>
+                    </div>
+                    <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
+                      <h5>▶️ 認証開始</h5>
+                      <div><strong>タイトル:</strong> {dmSettings.channelTemplates?.verificationStart?.title || 'Not set'}</div>
+                      <div><strong>内容:</strong> {dmSettings.channelTemplates?.verificationStart?.description || 'Not set'}</div>
                     </div>
                   </div>
                 </div>
@@ -1608,6 +1626,78 @@ function AdminPanel() {
                               templates: {
                                 ...editingDm.templates,
                                 revoked: { ...editingDm.templates.revoked, description: e.target.value }
+                              }
+                            })}
+                            style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', minHeight: '100px' }}
+                          />
+                        </div>
+                        
+                        <h4 style={{ marginTop: '1rem', marginBottom: '0.5rem' }}>📺 チャンネルテンプレート</h4>
+                        
+                        <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
+                          <h5>🎫 認証チャンネル</h5>
+                          <input
+                            type="text"
+                            placeholder="タイトル"
+                            value={editingDm.channelTemplates?.verificationChannel?.title || ''}
+                            onChange={(e) => setEditingDm({
+                              ...editingDm,
+                              channelTemplates: {
+                                ...editingDm.channelTemplates,
+                                verificationChannel: { 
+                                  ...editingDm.channelTemplates?.verificationChannel, 
+                                  title: e.target.value 
+                                }
+                              }
+                            })}
+                            style={{ width: '100%', padding: '0.5rem', marginBottom: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                          />
+                          <textarea
+                            placeholder="内容"
+                            value={editingDm.channelTemplates?.verificationChannel?.description || ''}
+                            onChange={(e) => setEditingDm({
+                              ...editingDm,
+                              channelTemplates: {
+                                ...editingDm.channelTemplates,
+                                verificationChannel: { 
+                                  ...editingDm.channelTemplates?.verificationChannel, 
+                                  description: e.target.value 
+                                }
+                              }
+                            })}
+                            style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', minHeight: '100px' }}
+                          />
+                        </div>
+                        
+                        <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
+                          <h5>▶️ 認証開始</h5>
+                          <input
+                            type="text"
+                            placeholder="タイトル"
+                            value={editingDm.channelTemplates?.verificationStart?.title || ''}
+                            onChange={(e) => setEditingDm({
+                              ...editingDm,
+                              channelTemplates: {
+                                ...editingDm.channelTemplates,
+                                verificationStart: { 
+                                  ...editingDm.channelTemplates?.verificationStart, 
+                                  title: e.target.value 
+                                }
+                              }
+                            })}
+                            style={{ width: '100%', padding: '0.5rem', marginBottom: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                          />
+                          <textarea
+                            placeholder="内容"
+                            value={editingDm.channelTemplates?.verificationStart?.description || ''}
+                            onChange={(e) => setEditingDm({
+                              ...editingDm,
+                              channelTemplates: {
+                                ...editingDm.channelTemplates,
+                                verificationStart: { 
+                                  ...editingDm.channelTemplates?.verificationStart, 
+                                  description: e.target.value 
+                                }
                               }
                             })}
                             style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', minHeight: '100px' }}
