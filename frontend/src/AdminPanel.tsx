@@ -1730,7 +1730,7 @@ function AdminPanel() {
                           />
                           <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.5rem' }}>
                             実際のURLは「ベースURL?discord_id=ユーザーID」の形式で生成されます<br/>
-                            ユーザーにはクリック可能なリンクとコピー用のコードブロックで表示されます
+                            ユーザーにはクリック可能なリンクと短縮表示付きのコピー用URLで表示されます
                           </div>
                         </div>
                       </div>
