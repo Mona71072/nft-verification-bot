@@ -367,7 +367,7 @@ async function handleVerifyNFT(interaction: ButtonInteraction) {
       .addFields(
         { 
           name: '🔗 Verification URL', 
-          value: `[クリックして認証ページを開く](${verificationUrl})`, 
+          value: `[Click to open verification page](${verificationUrl})`, 
           inline: false 
         },
         {
