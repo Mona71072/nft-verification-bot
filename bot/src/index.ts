@@ -361,7 +361,16 @@ async function handleVerifyNFT(interaction: ButtonInteraction) {
       .setTitle(startTemplate.title)
       .setDescription(startTemplate.description)
       .addFields(
-        { name: '🔗 Verification URL', value: verificationUrl, inline: false }
+        { 
+          name: '🔗 Verification URL', 
+          value: `[クリックして認証ページを開く](${verificationUrl})`, 
+          inline: false 
+        },
+        {
+          name: '📋 URL for Copy',
+          value: `\`\`\`${verificationUrl}\`\`\``,
+          inline: false
+        }
       )
       .setColor(startTemplate.color || 0x57F287)
       .setFooter({ 
