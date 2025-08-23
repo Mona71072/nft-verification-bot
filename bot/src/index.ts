@@ -88,40 +88,45 @@ client.once(Events.ClientReady, async (readyClient) => {
 // チャンネルテンプレート取得
 async function getChannelTemplates() {
   try {
+    console.log(`🌐 Fetching from: ${config.CLOUDFLARE_WORKERS_API_URL}/api/channel-templates`);
     const response = await fetch(`${config.CLOUDFLARE_WORKERS_API_URL}/api/channel-templates`);
+    console.log(`📡 Response status: ${response.status}`);
+    
+    if (!response.ok) {
+      console.error(`❌ HTTP Error: ${response.status} ${response.statusText}`);
+      throw new Error(`HTTP ${response.status}`);
+    }
+    
     const data = await response.json() as any;
+    console.log('📥 Raw response data:', JSON.stringify(data, null, 2));
+    
     if (data.success) {
+      console.log('✅ Successfully got channel templates from Workers');
       return data.data;
     } else {
-      console.log('⚠️ Failed to get channel templates, using fallback');
-      return data.fallback || {
-        verificationChannel: {
-          title: '🎫 NFT Verification System',
-          description: 'This system grants roles to users who hold NFTs on the Sui network.\n\nClick the button below to start verification.',
-          color: 0x57F287
-        },
-        verificationStart: {
-          title: '🎫 NFT Verification',
-          description: 'Starting verification...\n\n⚠️ **Note:** Wallet signatures are safe. We only verify NFT ownership and do not move any assets.',
-          color: 0x57F287
-        }
-      };
+      console.log('⚠️ Workers returned failure, using fallback');
+      return data.fallback || getDefaultChannelTemplates();
     }
   } catch (error) {
-    console.log('⚠️ Error fetching channel templates:', error);
-    return {
-      verificationChannel: {
-        title: '🎫 NFT Verification System',
-        description: 'This system grants roles to users who hold NFTs on the Sui network.\n\nClick the button below to start verification.',
-        color: 0x57F287
-      },
-      verificationStart: {
-        title: '🎫 NFT Verification',
-        description: 'Starting verification...\n\n⚠️ **Note:** Wallet signatures are safe. We only verify NFT ownership and do not move any assets.',
-        color: 0x57F287
-      }
-    };
+    console.error('❌ Error fetching channel templates:', error);
+    console.log('🔄 Using default fallback templates');
+    return getDefaultChannelTemplates();
   }
+}
+
+function getDefaultChannelTemplates() {
+  return {
+    verificationChannel: {
+      title: '🎫 NFT Verification System',
+      description: 'This system grants roles to users who hold NFTs on the Sui network.\n\nClick the button below to start verification.',
+      color: 0x57F287
+    },
+    verificationStart: {
+      title: '🎫 NFT Verification',
+      description: 'Starting verification...\n\n⚠️ **Note:** Wallet signatures are safe. We only verify NFT ownership and do not move any assets.',
+      color: 0x57F287
+    }
+  };
 }
 
 // 認証チャンネルとメッセージのセットアップ
@@ -203,7 +208,9 @@ async function setupVerificationChannel() {
     console.log('🔄 Creating new verification messages...');
 
     // テンプレートを取得
+    console.log('📡 Fetching channel templates from Workers...');
     const templates = await getChannelTemplates();
+    console.log('📥 Received templates:', JSON.stringify(templates, null, 2));
     const channelTemplate = templates.verificationChannel;
 
     // シンプルな認証メッセージ
@@ -240,6 +247,11 @@ async function setupVerificationChannel() {
   } catch (error) {
     console.error('❌ Error setting up verification channel:', error);
     console.error('❌ Error stack:', (error as Error).stack);
+    console.error('❌ Error details:', {
+      guildId: config.DISCORD_GUILD_ID,
+      channelId: config.VERIFICATION_CHANNEL_ID,
+      workersUrl: config.CLOUDFLARE_WORKERS_API_URL
+    });
   }
 }
 
