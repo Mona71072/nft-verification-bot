@@ -43,7 +43,11 @@ interface BatchStats {
 type DmMode = 'all' | 'new_and_revoke' | 'update_and_revoke' | 'revoke_only' | 'none';
 interface DmTemplate { title: string; description: string; color?: number }
 interface DmTemplates { successNew: DmTemplate; successUpdate: DmTemplate; failed: DmTemplate; revoked: DmTemplate }
-interface ChannelTemplates { verificationChannel: DmTemplate; verificationStart: DmTemplate }
+interface ChannelTemplates { 
+  verificationChannel: DmTemplate; 
+  verificationStart: DmTemplate;
+  verificationUrl?: string;
+}
 interface DmSettings { 
   mode: DmMode; // 通常認証時のDM通知モード
   batchMode: DmMode; // バッチ処理時のDM通知モード
@@ -163,7 +167,8 @@ function AdminPanel() {
             !data.data.templates.revoked?.title ||
             !data.data.channelTemplates ||
             !data.data.channelTemplates.verificationChannel?.title ||
-            !data.data.channelTemplates.verificationStart?.title) {
+            !data.data.channelTemplates.verificationStart?.title ||
+            !data.data.channelTemplates.verificationUrl) {
           console.log('⚠️ DM templates or channel templates are empty, attempting to initialize...');
           await initializeDmSettings();
         }
@@ -1433,6 +1438,10 @@ function AdminPanel() {
                       <div><strong>タイトル:</strong> {dmSettings.channelTemplates?.verificationStart?.title || 'Not set'}</div>
                       <div><strong>内容:</strong> {dmSettings.channelTemplates?.verificationStart?.description || 'Not set'}</div>
                     </div>
+                    <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
+                      <h5>🔗 認証URL</h5>
+                      <div><strong>ベースURL:</strong> {dmSettings.channelTemplates?.verificationUrl || 'Not set'}</div>
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -1702,6 +1711,26 @@ function AdminPanel() {
                             })}
                             style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', minHeight: '100px' }}
                           />
+                        </div>
+                        
+                        <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
+                          <h5>🔗 認証URL</h5>
+                          <input
+                            type="text"
+                            placeholder="ベースURL (例: https://syndicatextokyo.app)"
+                            value={editingDm.channelTemplates?.verificationUrl || ''}
+                            onChange={(e) => setEditingDm({
+                              ...editingDm,
+                              channelTemplates: {
+                                ...editingDm.channelTemplates,
+                                verificationUrl: e.target.value
+                              }
+                            })}
+                            style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                          />
+                          <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.5rem' }}>
+                            実際のURLは「ベースURL?discord_id=ユーザーID」の形式で生成されます
+                          </div>
                         </div>
                       </div>
                     </div>

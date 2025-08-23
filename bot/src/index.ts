@@ -125,7 +125,8 @@ function getDefaultChannelTemplates() {
       title: '🎫 NFT Verification',
       description: 'Starting verification...\n\n⚠️ **Note:** Wallet signatures are safe. We only verify NFT ownership and do not move any assets.',
       color: 0x57F287
-    }
+    },
+    verificationUrl: 'https://syndicatextokyo.app'
   };
 }
 
@@ -347,12 +348,14 @@ async function handleVerifyNFT(interaction: ButtonInteraction) {
       return;
     }
     
-    const verificationUrl = `${config.VERIFICATION_URL}?discord_id=${interaction.user.id}`;
-    console.log(`🔗 Verification URL: ${verificationUrl}`);
-
     // テンプレートを取得
     const templates = await getChannelTemplates();
     const startTemplate = templates.verificationStart;
+    
+    // URLをテンプレートから取得、フォールバックはconfigから
+    const baseUrl = templates.verificationUrl || config.VERIFICATION_URL;
+    const verificationUrl = `${baseUrl}?discord_id=${interaction.user.id}`;
+    console.log(`🔗 Verification URL: ${verificationUrl}`);
 
     const verifyEmbed = new EmbedBuilder()
       .setTitle(startTemplate.title)
