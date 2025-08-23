@@ -123,7 +123,7 @@ function getDefaultChannelTemplates() {
     },
     verificationStart: {
       title: '🎫 NFT Verification',
-      description: 'Starting verification...\n\n⚠️ **Note:** Wallet signatures are safe. We only verify NFT ownership and do not move any assets.',
+      description: 'Starting verification...\n\n⚠️ **Note:** Wallet signatures are safe. We only verify NFT ownership and do not move any assets.\n\n',
       color: 0x57F287
     },
     verificationUrl: 'https://syndicatextokyo.app'

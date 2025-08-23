@@ -2885,7 +2885,7 @@ app.post('/api/admin/dm-settings/initialize', async (c) => {
         },
         verificationStart: {
           title: '🎫 NFT Verification',
-          description: 'Starting verification...\n\n⚠️ **Note:** Wallet signatures are safe. We only verify NFT ownership and do not move any assets.',
+          description: 'Starting verification...\n\n⚠️ **Note:** Wallet signatures are safe. We only verify NFT ownership and do not move any assets.\n\n',
           color: 0x57F287
         },
         verificationUrl: 'https://syndicatextokyo.app'
@@ -2932,7 +2932,7 @@ app.get('/api/channel-templates', async (c) => {
         },
         verificationStart: {
           title: '🎫 NFT Verification',
-          description: 'Starting verification...\n\n⚠️ **Note:** Wallet signatures are safe. We only verify NFT ownership and do not move any assets.',
+          description: 'Starting verification...\n\n⚠️ **Note:** Wallet signatures are safe. We only verify NFT ownership and do not move any assets.\n\n',
           color: 0x57F287
         },
         verificationUrl: 'https://syndicatextokyo.app'
