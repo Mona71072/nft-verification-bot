@@ -355,13 +355,7 @@ async function handleVerifyNFT(interaction: ButtonInteraction) {
     // URLをテンプレートから取得、フォールバックはconfigから
     const baseUrl = templates.verificationUrl || config.VERIFICATION_URL;
     const verificationUrl = `${baseUrl}?discord_id=${interaction.user.id}`;
-    
-    // 短縮表示用のURL（Discord IDを短縮）
-    const shortDiscordId = interaction.user.id.slice(-6); // 最後の6文字
-    const shortUrl = `${baseUrl}?discord_id=...${shortDiscordId}`;
-    
     console.log(`🔗 Verification URL: ${verificationUrl}`);
-    console.log(`🔗 Short URL: ${shortUrl}`);
 
     console.log('🔧 Creating embed with new format...');
     console.log('📋 Template data:', JSON.stringify(startTemplate, null, 2));
@@ -377,8 +371,8 @@ async function handleVerifyNFT(interaction: ButtonInteraction) {
           inline: false 
         },
         {
-          name: '📋 Copy URL',
-          value: `\`${shortUrl}\`\n\n**Full URL:**\n\`${verificationUrl}\``,
+          name: '📋 URL for Copy',
+          value: `\`\`\`${verificationUrl}\`\`\``,
           inline: false
         }
       )
