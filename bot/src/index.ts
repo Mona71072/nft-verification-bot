@@ -357,6 +357,10 @@ async function handleVerifyNFT(interaction: ButtonInteraction) {
     const verificationUrl = `${baseUrl}?discord_id=${interaction.user.id}`;
     console.log(`🔗 Verification URL: ${verificationUrl}`);
 
+    console.log('🔧 Creating embed with new format...');
+    console.log('📋 Template data:', JSON.stringify(startTemplate, null, 2));
+    console.log('🔗 URL:', verificationUrl);
+    
     const verifyEmbed = new EmbedBuilder()
       .setTitle(startTemplate.title)
       .setDescription(startTemplate.description)
