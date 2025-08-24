@@ -163,24 +163,20 @@ async function setupVerificationChannel() {
       }
     }
 
-    // 既存のBotメッセージをチェック（すべてのBotメッセージを削除）
+    // 既存のBotメッセージをチェック（権限を確認してから実行）
     console.log('🔍 Checking existing bot messages...');
-    const messages = await verificationChannel.messages.fetch({ limit: 50 });
-    const botMessages = messages.filter(msg => 
-      msg.author.id === client.user!.id
-    );
+    try {
+      const permissions = verificationChannel.permissionsFor(client.user!);
+      if (permissions?.has('ReadMessageHistory')) {
+        const messages = await verificationChannel.messages.fetch({ limit: 50 });
+        const botMessages = messages.filter(msg => 
+          msg.author.id === client.user!.id
+        );
 
-    console.log(`📊 Found ${botMessages.size} existing bot messages`);
-    console.log('📋 Bot message titles:', botMessages.map(msg => 
-      msg.embeds.length > 0 ? msg.embeds[0].title : 'No embed'
-    ));
+        console.log(`📊 Found ${botMessages.size} existing bot messages`);
 
-    // 古いメッセージを削除（権限があれば）
-    if (botMessages.size > 0) {
-      try {
-        const permissions = verificationChannel.permissionsFor(client.user!);
-        if (permissions?.has('ManageMessages')) {
-          // 一括削除を試行
+        // 古いメッセージを削除（権限があれば）
+        if (botMessages.size > 0 && permissions?.has('ManageMessages')) {
           try {
             await verificationChannel.bulkDelete(botMessages);
             console.log(`🧹 Bulk deleted ${botMessages.size} old bot messages`);
@@ -196,14 +192,15 @@ async function setupVerificationChannel() {
               }
             }
           }
-        } else {
+        } else if (botMessages.size > 0) {
           console.log('⚠️ No permission to delete messages, keeping existing ones');
-          // 権限がない場合は既存メッセージを削除せずに新しいメッセージを送信
         }
-      } catch (error) {
-        console.log('⚠️ Could not delete old messages:', error);
-        // エラーが発生しても新しいメッセージを送信
+      } else {
+        console.log('⚠️ No permission to read message history, skipping message cleanup');
       }
+    } catch (error) {
+      console.log('⚠️ Could not check existing messages:', error);
+      // エラーが発生しても新しいメッセージを送信
     }
 
     console.log('🔄 Creating new verification messages...');

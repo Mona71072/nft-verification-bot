@@ -139,18 +139,16 @@ async function setupVerificationChannel() {
                 return;
             }
         }
-        // 既存のBotメッセージをチェック（すべてのBotメッセージを削除）
+        // 既存のBotメッセージをチェック（権限を確認してから実行）
         console.log('🔍 Checking existing bot messages...');
-        const messages = await verificationChannel.messages.fetch({ limit: 50 });
-        const botMessages = messages.filter(msg => msg.author.id === client.user.id);
-        console.log(`📊 Found ${botMessages.size} existing bot messages`);
-        console.log('📋 Bot message titles:', botMessages.map(msg => msg.embeds.length > 0 ? msg.embeds[0].title : 'No embed'));
-        // 古いメッセージを削除（権限があれば）
-        if (botMessages.size > 0) {
-            try {
-                const permissions = verificationChannel.permissionsFor(client.user);
-                if (permissions?.has('ManageMessages')) {
-                    // 一括削除を試行
+        try {
+            const permissions = verificationChannel.permissionsFor(client.user);
+            if (permissions?.has('ReadMessageHistory')) {
+                const messages = await verificationChannel.messages.fetch({ limit: 50 });
+                const botMessages = messages.filter(msg => msg.author.id === client.user.id);
+                console.log(`📊 Found ${botMessages.size} existing bot messages`);
+                // 古いメッセージを削除（権限があれば）
+                if (botMessages.size > 0 && permissions?.has('ManageMessages')) {
                     try {
                         await verificationChannel.bulkDelete(botMessages);
                         console.log(`🧹 Bulk deleted ${botMessages.size} old bot messages`);
@@ -169,15 +167,17 @@ async function setupVerificationChannel() {
                         }
                     }
                 }
-                else {
+                else if (botMessages.size > 0) {
                     console.log('⚠️ No permission to delete messages, keeping existing ones');
-                    // 権限がない場合は既存メッセージを削除せずに新しいメッセージを送信
                 }
             }
-            catch (error) {
-                console.log('⚠️ Could not delete old messages:', error);
-                // エラーが発生しても新しいメッセージを送信
+            else {
+                console.log('⚠️ No permission to read message history, skipping message cleanup');
             }
+        }
+        catch (error) {
+            console.log('⚠️ Could not check existing messages:', error);
+            // エラーが発生しても新しいメッセージを送信
         }
         console.log('🔄 Creating new verification messages...');
         // テンプレートを取得
@@ -438,42 +438,39 @@ async function grantRoleToUser(discordId, collectionId, roleName, customMessage)
         else {
             console.log(`ℹ️ User ${discordId} (${member.user.username}) already has the role ${role.name}`);
         }
-        // ユーザーにDM送信（成功通知）
+        // ユーザーにDM送信（Cloudflare Workersから送信されたメッセージを使用）
         try {
-            const title = customMessage?.title || '🎉 NFT Verification Successful!';
-            const description = customMessage?.description || `**Congratulations! Your NFT verification has been completed successfully!**\\n\\n🌟 **What you've received:**\\n• **Exclusive Discord Role:** "${role.name}"\\n• **Premium Access:** Special channels and features\\n• **Community Status:** Verified NFT holder\\n• **Future Benefits:** Early access to upcoming features\\n\\n🎯 **Your Benefits:**\\n• Access to exclusive channels\\n• Special community recognition\\n• Priority support and assistance\\n• Early access to new features\\n\\n💎 **Security Confirmation:**\\n• Your NFT ownership has been verified on the blockchain\\n• All verification was done securely without accessing private keys\\n• Your wallet data remains completely private\\n\\n*Welcome to the exclusive NFT community! Enjoy your new privileges!*`;
-            const color = customMessage?.color ?? 0x57F287;
-            const successEmbed = new discord_js_1.EmbedBuilder()
-                .setTitle(title)
-                .setDescription(description)
-                .setColor(color)
-                .setThumbnail('https://i.imgur.com/8tBXd6L.png')
-                .addFields({ name: '🎁 Role Granted', value: role.name, inline: true }, { name: '🆔 Discord ID', value: discordId, inline: true }, { name: '⏰ Verified At', value: new Date().toLocaleString(), inline: true }, { name: '🔒 Security Level', value: 'Maximum Protection', inline: true }, { name: '⚡ Process Speed', value: 'Instant Verification', inline: true }, { name: '🎯 Status', value: 'Active & Verified', inline: true })
-                .setFooter({
-                text: 'Sui NFT Verification • Professional & Secure',
-                iconURL: 'https://i.imgur.com/8tBXd6L.png'
-            })
-                .setTimestamp();
-            console.log('📤 Sending success embed to user DM...');
-            // ユーザーにDMを送信（自分以外には見られない）
-            const message = await member.send({
-                embeds: [successEmbed]
-            });
-            console.log(`✅ Success message sent for Discord ID: ${discordId}`);
-            // 5分後にメッセージを自動削除
-            setTimeout(async () => {
-                try {
-                    console.log(`🔄 Auto-deleting success message for Discord ID: ${discordId}...`);
-                    await message.delete();
-                    console.log(`✅ Auto-deleted success message for Discord ID: ${discordId}`);
-                }
-                catch (error) {
-                    console.log('❌ Failed to auto-delete message:', error);
-                    console.log('Message may have been deleted manually or expired');
-                }
-            }, 5 * 60 * 1000); // 5分 = 300秒
-            console.log(`⏰ Auto-delete scheduled for Discord ID: ${discordId} in 5 minutes`);
-            console.log(`✅ DM sent to user ${member.user.username}`);
+            // カスタムメッセージ（Cloudflare Workersから送信）をそのまま使用
+            if (customMessage?.title && customMessage?.description) {
+                const successEmbed = new discord_js_1.EmbedBuilder()
+                    .setTitle(customMessage.title)
+                    .setDescription(customMessage.description)
+                    .setColor(customMessage.color ?? 0x57F287)
+                    .setTimestamp();
+                console.log('📤 Sending success embed to user DM...');
+                // ユーザーにDMを送信（自分以外には見られない）
+                const message = await member.send({
+                    embeds: [successEmbed]
+                });
+                console.log(`✅ Success message sent for Discord ID: ${discordId}`);
+                // 5分後にメッセージを自動削除
+                setTimeout(async () => {
+                    try {
+                        console.log(`🔄 Auto-deleting success message for Discord ID: ${discordId}...`);
+                        await message.delete();
+                        console.log(`✅ Auto-deleted success message for Discord ID: ${discordId}`);
+                    }
+                    catch (error) {
+                        console.log('❌ Failed to auto-delete message:', error);
+                        console.log('Message may have been deleted manually or expired');
+                    }
+                }, 5 * 60 * 1000); // 5分 = 300秒
+                console.log(`⏰ Auto-delete scheduled for Discord ID: ${discordId} in 5 minutes`);
+                console.log(`✅ DM sent to user ${member.user.username}`);
+            }
+            else {
+                console.log('📋 No custom message provided from Cloudflare Workers');
+            }
         }
         catch (dmError) {
             console.log('Could not send DM to user:', dmError);
@@ -530,34 +527,38 @@ async function sendVerificationFailureMessage(discordId, verificationData) {
             return false;
         }
         const cm = verificationData?.custom_message || {};
-        const failureEmbed = new discord_js_1.EmbedBuilder()
-            .setTitle(cm.title || '❌ NFT Verification Failed')
-            .setDescription(cm.description || `**NFT verification failed for user <@${discordId}>**\n\n**Wallet Address:** \`${verificationData?.address || 'Unknown'}\`\n**Reason:** ${verificationData?.reason || 'NFT not found in wallet'}\n**Timestamp:** ${new Date().toLocaleString()}\n\n**Next Steps:**\n• Ensure you own the required NFTs\n• Check your wallet connection\n• Try the verification process again`)
-            .setColor(cm.color ?? 0xED4245)
-            .setFooter({
-            text: 'Sui NFT Verification • Professional System'
-        })
-            .setTimestamp();
-        console.log('📤 Sending failure embed to user DM...');
-        // ユーザーにDMを送信（自分以外には見られない）
-        const message = await user.send({
-            embeds: [failureEmbed]
-        });
-        console.log(`✅ Verification failure message sent for Discord ID: ${discordId}`);
-        // 5分後にメッセージを自動削除
-        setTimeout(async () => {
-            try {
-                console.log(`🔄 Auto-deleting verification failure message for Discord ID: ${discordId}...`);
-                await message.delete();
-                console.log(`✅ Auto-deleted verification failure message for Discord ID: ${discordId}`);
-            }
-            catch (error) {
-                console.log('❌ Failed to auto-delete message:', error);
-                console.log('Message may have been deleted manually or expired');
-            }
-        }, 5 * 60 * 1000); // 5分 = 300秒
-        console.log(`⏰ Auto-delete scheduled for Discord ID: ${discordId} in 5 minutes`);
-        return true;
+        // カスタムメッセージ（Cloudflare Workersから送信）をそのまま使用
+        if (cm.title && cm.description) {
+            const failureEmbed = new discord_js_1.EmbedBuilder()
+                .setTitle(cm.title)
+                .setDescription(cm.description)
+                .setColor(cm.color ?? 0xED4245)
+                .setTimestamp();
+            console.log('📤 Sending failure embed to user DM...');
+            // ユーザーにDMを送信（自分以外には見られない）
+            const message = await user.send({
+                embeds: [failureEmbed]
+            });
+            console.log(`✅ Verification failure message sent for Discord ID: ${discordId}`);
+            // 5分後にメッセージを自動削除
+            setTimeout(async () => {
+                try {
+                    console.log(`🔄 Auto-deleting verification failure message for Discord ID: ${discordId}...`);
+                    await message.delete();
+                    console.log(`✅ Auto-deleted verification failure message for Discord ID: ${discordId}`);
+                }
+                catch (error) {
+                    console.log('❌ Failed to auto-delete message:', error);
+                    console.log('Message may have been deleted manually or expired');
+                }
+            }, 5 * 60 * 1000); // 5分 = 300秒
+            console.log(`⏰ Auto-delete scheduled for Discord ID: ${discordId} in 5 minutes`);
+            return true;
+        }
+        else {
+            console.log('📋 No custom message provided from Cloudflare Workers for failure');
+            return false;
+        }
     }
     catch (error) {
         console.error('❌ Error sending verification failure message:', error);
@@ -578,26 +579,38 @@ async function revokeRoleFromUser(discordId, customMessage) {
         }
         await member.roles.remove(role);
         console.log(`✅ Role revoked from user ${discordId}`);
-        // ユーザーにDM送信
+        // ユーザーにDM送信（Cloudflare Workersから送信されたメッセージを使用）
         try {
-            const title = customMessage?.title || '📋 Role Update Notification';
-            const description = customMessage?.description || `**Your NFT verification status has been updated**\\n\\n⚠️ **Role Removed:** The "${role.name}" role has been removed from your account.\\n\\n🔍 **Reason:** Your NFT ownership could not be verified on the blockchain.\\n\\n🔄 **How to restore your role:**\\n1. Ensure you still own the required NFTs\\n2. Visit the verification channel\\n3. Click "Start Verification" to re-verify\\n4. Complete the verification process again\\n\\n💡 **Tips:**\\n• Make sure your wallet is properly connected\\n• Verify that you still own the required NFTs\\n• Check that your NFTs are on the correct network\\n\\n*If you believe this is an error, please contact server administrators for assistance.*`;
-            const color = customMessage?.color ?? 0xED4245;
-            await member.send({
-                embeds: [
-                    new discord_js_1.EmbedBuilder()
-                        .setTitle(title)
-                        .setDescription(description)
-                        .setColor(color)
-                        .setThumbnail('https://i.imgur.com/8tBXd6L.png')
-                        .addFields({ name: '🎭 Role Removed', value: role.name, inline: true }, { name: '🆔 Discord ID', value: discordId, inline: true }, { name: '⏰ Updated At', value: new Date().toLocaleString(), inline: true }, { name: '🔍 Status', value: 'Verification Required', inline: true }, { name: '🔄 Action', value: 'Re-verify to restore', inline: true }, { name: '💬 Support', value: 'Contact administrators', inline: true })
-                        .setFooter({
-                        text: 'Sui NFT Verification • Professional System',
-                        iconURL: 'https://i.imgur.com/8tBXd6L.png'
-                    })
-                        .setTimestamp()
-                ]
-            });
+            // カスタムメッセージ（Cloudflare Workersから送信）をそのまま使用
+            if (customMessage?.title && customMessage?.description) {
+                const revokeEmbed = new discord_js_1.EmbedBuilder()
+                    .setTitle(customMessage.title)
+                    .setDescription(customMessage.description)
+                    .setColor(customMessage.color ?? 0xED4245)
+                    .setTimestamp();
+                console.log('📤 Sending revoke notification to user DM...');
+                // ユーザーにDMを送信
+                const message = await member.send({
+                    embeds: [revokeEmbed]
+                });
+                console.log(`✅ Revoke message sent for Discord ID: ${discordId}`);
+                // 5分後にメッセージを自動削除
+                setTimeout(async () => {
+                    try {
+                        console.log(`🔄 Auto-deleting revoke message for Discord ID: ${discordId}...`);
+                        await message.delete();
+                        console.log(`✅ Auto-deleted revoke message for Discord ID: ${discordId}`);
+                    }
+                    catch (error) {
+                        console.log('❌ Failed to auto-delete message:', error);
+                        console.log('Message may have been deleted manually or expired');
+                    }
+                }, 5 * 60 * 1000); // 5分 = 300秒
+                console.log(`⏰ Auto-delete scheduled for Discord ID: ${discordId} in 5 minutes`);
+            }
+            else {
+                console.log('📋 No custom message provided from Cloudflare Workers for revoke');
+            }
         }
         catch (dmError) {
             console.log('Could not send DM to user:', dmError);
