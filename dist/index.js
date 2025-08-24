@@ -70,6 +70,48 @@ client.once(discord_js_1.Events.ClientReady, async (readyClient) => {
     console.log('🔧 Setting up verification channel...');
     await setupVerificationChannel();
 });
+// チャンネルテンプレート取得
+async function getChannelTemplates() {
+    try {
+        console.log(`🌐 Fetching from: ${config_1.config.CLOUDFLARE_WORKERS_API_URL}/api/channel-templates`);
+        const response = await fetch(`${config_1.config.CLOUDFLARE_WORKERS_API_URL}/api/channel-templates`);
+        console.log(`📡 Response status: ${response.status}`);
+        if (!response.ok) {
+            console.error(`❌ HTTP Error: ${response.status} ${response.statusText}`);
+            throw new Error(`HTTP ${response.status}`);
+        }
+        const data = await response.json();
+        console.log('📥 Raw response data:', JSON.stringify(data, null, 2));
+        if (data.success) {
+            console.log('✅ Successfully got channel templates from Workers');
+            return data.data;
+        }
+        else {
+            console.log('⚠️ Workers returned failure, using fallback');
+            return data.fallback || getDefaultChannelTemplates();
+        }
+    }
+    catch (error) {
+        console.error('❌ Error fetching channel templates:', error);
+        console.log('🔄 Using default fallback templates');
+        return getDefaultChannelTemplates();
+    }
+}
+function getDefaultChannelTemplates() {
+    return {
+        verificationChannel: {
+            title: '🎫 NFT Verification System',
+            description: 'This system grants roles to users who hold NFTs on the Sui network.\n\nClick the button below to start verification.',
+            color: 0x57F287
+        },
+        verificationStart: {
+            title: '🎫 NFT Verification',
+            description: 'Starting verification...\n\n⚠️ **Note:** Wallet signatures are safe. We only verify NFT ownership and do not move any assets.\n\n',
+            color: 0x57F287
+        },
+        verificationUrl: 'https://syndicatextokyo.app'
+    };
+}
 // 認証チャンネルとメッセージのセットアップ
 async function setupVerificationChannel() {
     try {
@@ -138,100 +180,45 @@ async function setupVerificationChannel() {
             }
         }
         console.log('🔄 Creating new verification messages...');
-        // シンプルでカッコいいユーザー認証メッセージ
-        const userVerificationEmbed = new discord_js_1.EmbedBuilder()
-            .setTitle('🎯 SXT NFT Verification Portal')
-            .setDescription(`**Join the exclusive NFT community by verifying your Sui wallet ownership!**
-
-🌟 **What you'll get:**
-• **Exclusive Discord Role:** NFT Holder
-• **Premium Access:** Special channels and features
-• **Community Status:** Verified NFT holder
-• **Future Benefits:** Early access to upcoming features
-
-🎯 **How to verify:**
-1. **Click the verification button below**
-2. **Get your personalized verification URL**
-3. **Connect your Sui wallet** (Sui Wallet, Slush Wallet, etc.)
-4. **Complete the verification process**
-5. **Get your exclusive role automatically!**
-
-💎 **Security Features:**
-• Blockchain-verified NFT ownership
-• Secure message signing (no private key access)
-• Instant role assignment
-• Professional verification process`)
-            .setColor(0x6366f1)
+        // テンプレートを取得
+        console.log('📡 Fetching channel templates from Workers...');
+        const templates = await getChannelTemplates();
+        console.log('📥 Received templates:', JSON.stringify(templates, null, 2));
+        const channelTemplate = templates.verificationChannel;
+        // シンプルな認証メッセージ
+        const verificationEmbed = new discord_js_1.EmbedBuilder()
+            .setTitle(channelTemplate.title)
+            .setDescription(channelTemplate.description)
+            .addFields({ name: '📋 Verification Steps', value: '1. Click the button\n2. Sign with your wallet\n3. NFT ownership check\n4. Role assignment', inline: false })
+            .setColor(channelTemplate.color || 0x57F287)
             .setFooter({
-            text: 'Sui NFT Verification'
+            text: 'NFT Verification Bot'
         })
             .setTimestamp();
         // シンプルなボタン
         const verifyButton = new discord_js_1.ButtonBuilder()
             .setCustomId('verify_nft')
-            .setLabel('Verify NFT')
+            .setLabel('Start NFT Verification')
             .setStyle(discord_js_1.ButtonStyle.Primary)
-            .setEmoji('🚀');
-        const helpButton = new discord_js_1.ButtonBuilder()
-            .setCustomId('help_verification')
-            .setLabel('Help')
-            .setStyle(discord_js_1.ButtonStyle.Secondary)
-            .setEmoji('❓');
-        const userActionRow = new discord_js_1.ActionRowBuilder()
-            .addComponents(verifyButton, helpButton);
-        // 一般ユーザー向けメッセージ送信
-        console.log('📤 Sending user verification message...');
+            .setEmoji('🎫');
+        const actionRow = new discord_js_1.ActionRowBuilder()
+            .addComponents(verifyButton);
+        // 認証メッセージ送信
+        console.log('📤 Sending verification message...');
         await verificationChannel.send({
-            embeds: [userVerificationEmbed],
-            components: [userActionRow]
+            embeds: [verificationEmbed],
+            components: [actionRow]
         });
-        console.log('✅ User verification message sent');
-        // シンプルでカッコいい管理者パネル
-        const adminEmbed = new discord_js_1.EmbedBuilder()
-            .setTitle('⚙️ Admin Panel')
-            .setDescription(`**System Status: Online**
-
-Manage verification system and monitor performance.`)
-            .setColor(0x71717a)
-            .setFooter({
-            text: 'Admin Panel'
-        })
-            .setTimestamp();
-        // シンプルな管理ボタン
-        const statsButton = new discord_js_1.ButtonBuilder()
-            .setCustomId('admin_stats')
-            .setLabel('Stats')
-            .setStyle(discord_js_1.ButtonStyle.Secondary)
-            .setEmoji('📊');
-        const refreshButton = new discord_js_1.ButtonBuilder()
-            .setCustomId('admin_refresh')
-            .setLabel('Refresh')
-            .setStyle(discord_js_1.ButtonStyle.Secondary)
-            .setEmoji('🔄');
-        const statusButton = new discord_js_1.ButtonBuilder()
-            .setCustomId('admin_status')
-            .setLabel('Status')
-            .setStyle(discord_js_1.ButtonStyle.Secondary)
-            .setEmoji('🟢');
-        const collectionsButton = new discord_js_1.ButtonBuilder()
-            .setCustomId('admin_collections')
-            .setLabel('Collections')
-            .setStyle(discord_js_1.ButtonStyle.Secondary)
-            .setEmoji('🎨');
-        const adminActionRow = new discord_js_1.ActionRowBuilder()
-            .addComponents(statsButton, refreshButton, statusButton, collectionsButton);
-        // 管理者向けメッセージ送信
-        console.log('📤 Sending admin verification message...');
-        await verificationChannel.send({
-            embeds: [adminEmbed],
-            components: [adminActionRow]
-        });
-        console.log('✅ Admin verification message sent');
-        console.log('✅ User and Admin verification messages posted successfully');
+        console.log('✅ Verification message sent');
     }
     catch (error) {
         console.error('❌ Error setting up verification channel:', error);
         console.error('❌ Error stack:', error.stack);
+        console.error('❌ Error details:', {
+            guildId: config_1.config.DISCORD_GUILD_ID,
+            channelId: config_1.config.VERIFICATION_CHANNEL_ID,
+            workersUrl: config_1.config.CLOUDFLARE_WORKERS_API_URL
+        });
     }
 }
 // ボタンインタラクション処理
@@ -258,41 +245,10 @@ client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
             console.log('⚠️ Interaction already replied/deferred, skipping');
             return;
         }
-        // 一般ユーザー向けボタン
+        // 認証ボタン
         if (customId === 'verify_nft') {
             console.log(`✅ Processing verify_nft for user ${user.username}`);
             await handleVerifyNFT(interaction);
-        }
-        // ヘルプボタン
-        else if (customId === 'help_verification') {
-            console.log(`✅ Processing help_verification for user ${user.username}`);
-            await handleHelpVerification(interaction);
-        }
-        // サポートボタン
-        else if (customId === 'support_verification') {
-            console.log(`✅ Processing support_verification for user ${user.username}`);
-            await handleSupportVerification(interaction);
-        }
-        // 管理者向けボタン
-        else if (customId === 'admin_stats') {
-            console.log(`✅ Processing admin_stats for user ${user.username} (isAdmin: ${isAdmin})`);
-            await handleAdminStats(interaction, isAdmin);
-        }
-        else if (customId === 'admin_refresh') {
-            console.log(`✅ Processing admin_refresh for user ${user.username} (isAdmin: ${isAdmin})`);
-            await handleAdminRefresh(interaction, isAdmin);
-        }
-        else if (customId === 'admin_status') {
-            console.log(`✅ Processing admin_status for user ${user.username} (isAdmin: ${isAdmin})`);
-            await handleAdminStatus(interaction, isAdmin);
-        }
-        else if (customId === 'admin_logs') {
-            console.log(`✅ Processing admin_logs for user ${user.username} (isAdmin: ${isAdmin})`);
-            await handleAdminLogs(interaction, isAdmin);
-        }
-        else if (customId === 'admin_collections') {
-            console.log(`✅ Processing admin_collections for user ${user.username} (isAdmin: ${isAdmin})`);
-            await handleAdminCollections(interaction, isAdmin);
         }
         else {
             console.log(`❌ Unknown button interaction: ${customId}`);
@@ -350,15 +306,31 @@ async function handleVerifyNFT(interaction) {
             }
             return;
         }
-        const verificationUrl = `${config_1.config.VERIFICATION_URL}?discord_id=${interaction.user.id}`;
+        // テンプレートを取得
+        const templates = await getChannelTemplates();
+        const startTemplate = templates.verificationStart;
+        // URLをテンプレートから取得、フォールバックはconfigから
+        const baseUrl = templates.verificationUrl || config_1.config.VERIFICATION_URL;
+        const verificationUrl = `${baseUrl}?discord_id=${interaction.user.id}`;
         console.log(`🔗 Verification URL: ${verificationUrl}`);
+        console.log('🔧 Creating embed with new format...');
+        console.log('📋 Template data:', JSON.stringify(startTemplate, null, 2));
+        console.log('🔗 URL:', verificationUrl);
         const verifyEmbed = new discord_js_1.EmbedBuilder()
-            .setTitle('🔗 NFT Verification')
-            .setDescription(`**Starting NFT verification**
-[Open verification page](${verificationUrl})`)
-            .setColor(0x6366f1)
+            .setTitle(startTemplate.title)
+            .setDescription(startTemplate.description)
+            .addFields({
+            name: '🔗 Verification URL',
+            value: `[Click to open verification page](${verificationUrl})`,
+            inline: false
+        }, {
+            name: '📋 URL for Copy',
+            value: `\`\`\`${verificationUrl}\`\`\``,
+            inline: false
+        })
+            .setColor(startTemplate.color || 0x57F287)
             .setFooter({
-            text: 'Sui NFT Verification'
+            text: 'NFT Verification Bot'
         })
             .setTimestamp();
         console.log(`🔄 Sending verification reply...`);
@@ -412,92 +384,8 @@ async function handleVerifyNFT(interaction) {
         throw error; // 上位のエラーハンドラーで処理
     }
 }
-// ヘルプボタン処理
-async function handleHelpVerification(interaction) {
-    try {
-        console.log(`🔄 Handling help_verification for user ${interaction.user.username} (${interaction.user.id})`);
-        const helpEmbed = new discord_js_1.EmbedBuilder()
-            .setTitle('❓ Help')
-            .setDescription(`**How to verify your NFT:**
-
-1. Click "Verify NFT" button
-2. Open the verification page
-3. Connect your wallet
-4. Sign the message
-5. Get your role
-
-**Requirements:**
-• Sui wallet with NFTs
-• Wallet extension installed
-• Discord server membership`)
-            .setColor(0x57F287)
-            .setFooter({
-            text: 'Sui NFT Verification'
-        })
-            .setTimestamp();
-        if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({
-                embeds: [helpEmbed],
-                ephemeral: true
-            });
-        }
-    }
-    catch (error) {
-        console.error('❌ Error in handleHelpVerification:', error);
-        console.error('❌ Error stack:', error.stack);
-        if (!interaction.replied && !interaction.deferred) {
-            try {
-                await interaction.reply({
-                    content: '❌ 認証方法の説明に失敗しました。',
-                    ephemeral: true
-                });
-            }
-            catch (replyError) {
-                console.error('❌ Error sending help reply:', replyError);
-            }
-        }
-    }
-}
-// サポートボタン処理
-async function handleSupportVerification(interaction) {
-    try {
-        console.log(`🔄 Handling support_verification for user ${interaction.user.username} (${interaction.user.id})`);
-        const supportEmbed = new discord_js_1.EmbedBuilder()
-            .setTitle('🆘 Support & Assistance')
-            .setDescription(`**Need help with the NFT verification process?**\\n\\n🔗 **[🔐 Open Secure Verification Portal](${config_1.config.VERIFICATION_URL || 'Configured in system'})**\\n\\n📚 **Documentation:**\\n• Visit our official documentation for detailed guides: [Sui NFT Verification Docs](https://docs.sui.network/docs/learn/nft-verification)\\n\\n💬 **Discord Support:**\\n• Join our official Discord server for immediate assistance: [Sui NFT Verification Discord](https://discord.gg/sui)\\n\\n🔒 **Security:**\\n• All verification is done through secure signatures\\n• Your wallet data remains private\\n• Blockchain-verified ownership only\\n\\n❓ **Common Issues:**\\n• **Q: I can't connect my wallet.**\\n  A: Ensure your Sui Wallet extension is installed and up-to-date.\\n\\n• **Q: The verification link expired.**\\n  A: The verification link is valid for 5 minutes. If it expires, please request a new one.\\n\\n• **Q: My role isn't showing up.**\\n  A: Please check your wallet connection and try again. If the issue persists, contact support.`)
-            .setColor(0xFEE75C)
-            .setThumbnail('https://i.imgur.com/8tBXd6L.png')
-            .addFields({ name: '🌐 Verification Portal', value: config_1.config.VERIFICATION_URL || 'Configured in system', inline: true }, { name: '💬 Support Channel', value: 'https://discord.gg/sui', inline: true }, { name: '🔒 Security Level', value: 'Maximum Protection', inline: true }, { name: '⚡ Process Speed', value: 'Under 2 minutes', inline: true }, { name: '🎁 Benefits', value: 'Exclusive Access', inline: true })
-            .setFooter({
-            text: 'Sui NFT Verification Support • Professional Assistance',
-            iconURL: 'https://i.imgur.com/8tBXd6L.png'
-        })
-            .setTimestamp();
-        if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({
-                embeds: [supportEmbed],
-                ephemeral: true
-            });
-        }
-    }
-    catch (error) {
-        console.error('❌ Error in handleSupportVerification:', error);
-        console.error('❌ Error stack:', error.stack);
-        if (!interaction.replied && !interaction.deferred) {
-            try {
-                await interaction.reply({
-                    content: '❌ サポートに失敗しました。',
-                    ephemeral: true
-                });
-            }
-            catch (replyError) {
-                console.error('❌ Error sending support reply:', replyError);
-            }
-        }
-    }
-}
 // ロール付与関数（APIから呼び出される）
-async function grantRoleToUser(discordId, collectionId, roleName) {
+async function grantRoleToUser(discordId, collectionId, roleName, customMessage) {
     try {
         console.log(`🔄 Attempting to grant role to Discord ID: ${discordId}`);
         console.log(`📋 Collection ID: ${collectionId || 'default'}`);
@@ -552,10 +440,13 @@ async function grantRoleToUser(discordId, collectionId, roleName) {
         }
         // ユーザーにDM送信（成功通知）
         try {
+            const title = customMessage?.title || '🎉 NFT Verification Successful!';
+            const description = customMessage?.description || `**Congratulations! Your NFT verification has been completed successfully!**\\n\\n🌟 **What you've received:**\\n• **Exclusive Discord Role:** "${role.name}"\\n• **Premium Access:** Special channels and features\\n• **Community Status:** Verified NFT holder\\n• **Future Benefits:** Early access to upcoming features\\n\\n🎯 **Your Benefits:**\\n• Access to exclusive channels\\n• Special community recognition\\n• Priority support and assistance\\n• Early access to new features\\n\\n💎 **Security Confirmation:**\\n• Your NFT ownership has been verified on the blockchain\\n• All verification was done securely without accessing private keys\\n• Your wallet data remains completely private\\n\\n*Welcome to the exclusive NFT community! Enjoy your new privileges!*`;
+            const color = customMessage?.color ?? 0x57F287;
             const successEmbed = new discord_js_1.EmbedBuilder()
-                .setTitle('🎉 NFT Verification Successful!')
-                .setDescription(`**Congratulations! Your NFT verification has been completed successfully!**\\n\\n🌟 **What you've received:**\\n• **Exclusive Discord Role:** "${role.name}"\\n• **Premium Access:** Special channels and features\\n• **Community Status:** Verified NFT holder\\n• **Future Benefits:** Early access to upcoming features\\n\\n🎯 **Your Benefits:**\\n• Access to exclusive channels\\n• Special community recognition\\n• Priority support and assistance\\n• Early access to new features\\n\\n💎 **Security Confirmation:**\\n• Your NFT ownership has been verified on the blockchain\\n• All verification was done securely without accessing private keys\\n• Your wallet data remains completely private\\n\\n*Welcome to the exclusive NFT community! Enjoy your new privileges!*`)
-                .setColor(0x57F287)
+                .setTitle(title)
+                .setDescription(description)
+                .setColor(color)
                 .setThumbnail('https://i.imgur.com/8tBXd6L.png')
                 .addFields({ name: '🎁 Role Granted', value: role.name, inline: true }, { name: '🆔 Discord ID', value: discordId, inline: true }, { name: '⏰ Verified At', value: new Date().toLocaleString(), inline: true }, { name: '🔒 Security Level', value: 'Maximum Protection', inline: true }, { name: '⚡ Process Speed', value: 'Instant Verification', inline: true }, { name: '🎯 Status', value: 'Active & Verified', inline: true })
                 .setFooter({
@@ -638,19 +529,11 @@ async function sendVerificationFailureMessage(discordId, verificationData) {
             console.error('❌ User not found');
             return false;
         }
+        const cm = verificationData?.custom_message || {};
         const failureEmbed = new discord_js_1.EmbedBuilder()
-            .setTitle('❌ NFT Verification Failed')
-            .setDescription(`**NFT verification failed for user <@${discordId}>**
-
-**Wallet Address:** \`${verificationData?.address || 'Unknown'}\`
-**Reason:** ${verificationData?.reason || 'NFT not found in wallet'}
-**Timestamp:** ${new Date().toLocaleString()}
-
-**Next Steps:**
-• Ensure you own the required NFTs
-• Check your wallet connection
-• Try the verification process again`)
-            .setColor(0xED4245)
+            .setTitle(cm.title || '❌ NFT Verification Failed')
+            .setDescription(cm.description || `**NFT verification failed for user <@${discordId}>**\n\n**Wallet Address:** \`${verificationData?.address || 'Unknown'}\`\n**Reason:** ${verificationData?.reason || 'NFT not found in wallet'}\n**Timestamp:** ${new Date().toLocaleString()}\n\n**Next Steps:**\n• Ensure you own the required NFTs\n• Check your wallet connection\n• Try the verification process again`)
+            .setColor(cm.color ?? 0xED4245)
             .setFooter({
             text: 'Sui NFT Verification • Professional System'
         })
@@ -683,212 +566,8 @@ async function sendVerificationFailureMessage(discordId, verificationData) {
         return false;
     }
 }
-// 管理者統計表示（シンプル版）
-async function handleAdminStats(interaction, isAdmin) {
-    try {
-        if (!isAdmin) {
-            if (!interaction.replied && !interaction.deferred) {
-                await interaction.reply({
-                    content: '❌ Administrator privileges required.',
-                    ephemeral: true
-                });
-            }
-            return;
-        }
-        const statsEmbed = new discord_js_1.EmbedBuilder()
-            .setTitle('📊 Stats')
-            .setDescription(`**System Statistics**
-
-Bot ID: ${client.user?.id || 'Unknown'}
-Guild: ${interaction.guild?.name || 'Unknown'}
-Version: 2.0.0`)
-            .setColor(0x57F287)
-            .setFooter({
-            text: 'Admin Panel'
-        })
-            .setTimestamp();
-        if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({
-                embeds: [statsEmbed],
-                ephemeral: true
-            });
-        }
-    }
-    catch (error) {
-        console.error('Error in handleAdminStats:', error);
-        throw error;
-    }
-}
-// 管理者リフレッシュ（シンプル版）
-async function handleAdminRefresh(interaction, isAdmin) {
-    try {
-        if (!isAdmin) {
-            if (!interaction.replied && !interaction.deferred) {
-                await interaction.reply({
-                    content: '❌ Administrator privileges required.',
-                    ephemeral: true
-                });
-            }
-            return;
-        }
-        const refreshEmbed = new discord_js_1.EmbedBuilder()
-            .setTitle('🔄 Refresh')
-            .setDescription(`**System refreshed successfully**
-
-Status: Online
-Network: ${config_1.config.SUI_NETWORK}
-Time: ${new Date().toLocaleString()}`)
-            .setColor(0x57F287)
-            .setFooter({
-            text: 'Admin Panel'
-        })
-            .setTimestamp();
-        if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({
-                embeds: [refreshEmbed],
-                ephemeral: true
-            });
-        }
-    }
-    catch (error) {
-        console.error('Error in handleAdminRefresh:', error);
-        throw error;
-    }
-}
-// 管理者ステータス表示（シンプル版）
-async function handleAdminStatus(interaction, isAdmin) {
-    try {
-        if (!isAdmin) {
-            if (!interaction.replied && !interaction.deferred) {
-                await interaction.reply({
-                    content: '❌ Administrator privileges required.',
-                    ephemeral: true
-                });
-            }
-            return;
-        }
-        const statusEmbed = new discord_js_1.EmbedBuilder()
-            .setTitle('🟢 Status')
-            .setDescription(`**System Status: Online**
-
-Bot Service: Online
-API Connection: Connected
-Database: Healthy
-Verification: Active`)
-            .setColor(0x57F287)
-            .setFooter({
-            text: 'Admin Panel'
-        })
-            .setTimestamp();
-        if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({
-                embeds: [statusEmbed],
-                ephemeral: true
-            });
-        }
-    }
-    catch (error) {
-        console.error('Error in handleAdminStatus:', error);
-        throw error;
-    }
-}
-// 管理者ログ表示（プロフェッショナル版）
-async function handleAdminLogs(interaction, isAdmin) {
-    try {
-        if (!isAdmin) {
-            if (!interaction.replied && !interaction.deferred) {
-                await interaction.reply({
-                    content: '❌ Administrator privileges required.',
-                    ephemeral: true
-                });
-            }
-            return;
-        }
-        const logsEmbed = new discord_js_1.EmbedBuilder()
-            .setTitle('📋 System Logs')
-            .setDescription(`**Latest System Logs**\\n\\n*Logs will be implemented in future updates*`)
-            .setColor(0x57F287)
-            .setThumbnail('https://i.imgur.com/8tBXd6L.png')
-            .addFields({ name: '🆔 Bot ID', value: client.user?.id || 'Unknown', inline: true }, { name: '🏠 Guild', value: interaction.guild?.name || 'Unknown', inline: true }, { name: '📈 Version', value: '2.0.0', inline: true })
-            .setFooter({
-            text: 'System Logs • Real-time Monitoring',
-            iconURL: client.user?.displayAvatarURL()
-        })
-            .setTimestamp();
-        if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({
-                embeds: [logsEmbed],
-                ephemeral: true
-            });
-        }
-    }
-    catch (error) {
-        console.error('Error in handleAdminLogs:', error);
-        throw error;
-    }
-}
-// コレクション管理ボタン処理
-async function handleAdminCollections(interaction, isAdmin) {
-    try {
-        if (!isAdmin) {
-            if (!interaction.replied && !interaction.deferred) {
-                await interaction.reply({
-                    content: '❌ Administrator privileges required.',
-                    ephemeral: true
-                });
-            }
-            return;
-        }
-        const collectionsEmbed = new discord_js_1.EmbedBuilder()
-            .setTitle('🎨 Collections Management')
-            .setDescription(`**Manage your NFT collections and their associated roles.**
-
-\`\`\`
-Collection ID: ${config_1.config.NFT_COLLECTION_ID || 'Not set'}
-Role ID: ${config_1.config.DISCORD_ROLE_ID || 'Not set'}
-\`\`\`
-
-**Current Collections:**
-${config_1.config.NFT_COLLECTION_ID ? `• \`${config_1.config.NFT_COLLECTION_ID}\` (Active)` : '• No collections configured.'}
-
-**Add New Collection:**
-1. Create a new channel in Discord.
-2. Set its ID in \`VERIFICATION_CHANNEL_ID\` in \`config.ts\`.
-3. Set its \`collectionId\` in \`NFT_COLLECTION_ID\` in \`config.ts\`.
-4. Set its \`roleId\` in \`DISCORD_ROLE_ID\` in \`config.ts\`.
-
-**Note:**
-• \`VERIFICATION_CHANNEL_ID\` must be a text channel.
-• \`NFT_COLLECTION_ID\` must be a valid Sui Network collection ID.
-• \`DISCORD_ROLE_ID\` must be a role that exists in your Discord server.
-• The \`roleId\` in \`config.ts\` must match the role ID in your Discord server.`)
-            .setColor(0x57F287)
-            .setFooter({
-            text: 'Collections Management'
-        })
-            .setTimestamp();
-        const backButton = new discord_js_1.ButtonBuilder()
-            .setCustomId('admin_back_to_status')
-            .setLabel('Back to Status')
-            .setStyle(discord_js_1.ButtonStyle.Secondary)
-            .setEmoji('⬅️');
-        const actionRow = new discord_js_1.ActionRowBuilder()
-            .addComponents(backButton);
-        if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({
-                embeds: [collectionsEmbed],
-                components: [actionRow],
-                ephemeral: true
-            });
-        }
-    }
-    catch (error) {
-        console.error('Error in handleAdminCollections:', error);
-        throw error;
-    }
-}
 // ロール剥奪関数（Cronから呼び出される）
-async function revokeRoleFromUser(discordId) {
+async function revokeRoleFromUser(discordId, customMessage) {
     try {
         const guild = await client.guilds.fetch(config_1.config.DISCORD_GUILD_ID);
         const member = await guild.members.fetch(discordId);
@@ -901,12 +580,15 @@ async function revokeRoleFromUser(discordId) {
         console.log(`✅ Role revoked from user ${discordId}`);
         // ユーザーにDM送信
         try {
+            const title = customMessage?.title || '📋 Role Update Notification';
+            const description = customMessage?.description || `**Your NFT verification status has been updated**\\n\\n⚠️ **Role Removed:** The "${role.name}" role has been removed from your account.\\n\\n🔍 **Reason:** Your NFT ownership could not be verified on the blockchain.\\n\\n🔄 **How to restore your role:**\\n1. Ensure you still own the required NFTs\\n2. Visit the verification channel\\n3. Click "Start Verification" to re-verify\\n4. Complete the verification process again\\n\\n💡 **Tips:**\\n• Make sure your wallet is properly connected\\n• Verify that you still own the required NFTs\\n• Check that your NFTs are on the correct network\\n\\n*If you believe this is an error, please contact server administrators for assistance.*`;
+            const color = customMessage?.color ?? 0xED4245;
             await member.send({
                 embeds: [
                     new discord_js_1.EmbedBuilder()
-                        .setTitle('📋 Role Update Notification')
-                        .setDescription(`**Your NFT verification status has been updated**\\n\\n⚠️ **Role Removed:** The "${role.name}" role has been removed from your account.\\n\\n🔍 **Reason:** Your NFT ownership could not be verified on the blockchain.\\n\\n🔄 **How to restore your role:**\\n1. Ensure you still own the required NFTs\\n2. Visit the verification channel\\n3. Click "Start Verification" to re-verify\\n4. Complete the verification process again\\n\\n💡 **Tips:**\\n• Make sure your wallet is properly connected\\n• Verify that you still own the required NFTs\\n• Check that your NFTs are on the correct network\\n\\n*If you believe this is an error, please contact server administrators for assistance.*`)
-                        .setColor(0xED4245)
+                        .setTitle(title)
+                        .setDescription(description)
+                        .setColor(color)
                         .setThumbnail('https://i.imgur.com/8tBXd6L.png')
                         .addFields({ name: '🎭 Role Removed', value: role.name, inline: true }, { name: '🆔 Discord ID', value: discordId, inline: true }, { name: '⏰ Updated At', value: new Date().toLocaleString(), inline: true }, { name: '🔍 Status', value: 'Verification Required', inline: true }, { name: '🔄 Action', value: 'Re-verify to restore', inline: true }, { name: '💬 Support', value: 'Contact administrators', inline: true })
                         .setFooter({

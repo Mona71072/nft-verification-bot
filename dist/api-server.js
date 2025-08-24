@@ -42,6 +42,8 @@ app.post('/notify', async (req, res) => {
         console.log('📋 Request body:', req.body);
         console.log('📋 Request headers:', req.headers);
         const { discordId, action, verificationData, timestamp } = req.body;
+        const notifyUser = verificationData?.notifyUser !== false; // default true
+        const custom = verificationData?.custom_message;
         if (!discordId || !action) {
             console.error('❌ Missing required fields:', { discordId, action });
             return res.status(400).json({
@@ -55,6 +57,7 @@ app.post('/notify', async (req, res) => {
         let result = false;
         let message = '';
         switch (action) {
+            case 'grant_roles': // Workers側からの命名に合わせて許容
             case 'grant_role':
                 console.log('🎯 Attempting to grant role...');
                 // 複数コレクション対応: collectionIdとroleNameを取得
@@ -65,10 +68,17 @@ app.post('/notify', async (req, res) => {
                 result = await (0, index_1.grantRoleToUser)(discordId, collectionId, roleName);
                 message = result ? 'Role granted successfully' : 'Failed to grant role';
                 console.log(`✅ Role grant result: ${result}`);
+                // DM送信はgrantRoleToUser内で既存実装、custom_messageを使うため改修は本体側で対応
                 break;
             case 'verification_failed':
                 console.log('❌ Attempting to send verification failure message...');
-                // 認証失敗時のDiscordチャンネル通知
+                // 認証失敗時のDiscord DM（custom_message優先、notifyUserで制御）
+                if (!notifyUser) {
+                    console.log('⏭️ notifyUser=false, skip DM');
+                    result = true;
+                    message = 'DM skipped by settings';
+                    break;
+                }
                 result = await (0, index_1.sendVerificationFailureMessage)(discordId, verificationData);
                 message = result ? 'Failure notification sent' : 'Failed to send failure notification';
                 console.log(`✅ Verification failure notification result: ${result}`);
@@ -77,7 +87,7 @@ app.post('/notify', async (req, res) => {
                 console.error('❌ Invalid action:', action);
                 return res.status(400).json({
                     success: false,
-                    error: 'Invalid action. Must be grant_role or verification_failed'
+                    error: 'Invalid action. Must be grant_roles/grant_role or verification_failed'
                 });
         }
         const response = {
@@ -103,7 +113,7 @@ app.post('/notify', async (req, res) => {
 // Discord アクション処理エンドポイント（既存）
 app.post('/api/discord-action', async (req, res) => {
     try {
-        const { discord_id, action } = req.body;
+        const { discord_id, action, verification_data } = req.body;
         if (!discord_id || !action) {
             console.error('❌ Missing required fields:', { discord_id, action });
             return res.status(400).json({
@@ -114,19 +124,41 @@ app.post('/api/discord-action', async (req, res) => {
         console.log(`🔄 Processing ${action} for Discord ID: ${discord_id}`);
         let result = false;
         switch (action) {
-            case 'grant_role':
-                result = await (0, index_1.grantRoleToUser)(discord_id);
+            case 'grant_roles': // Workers側の命名
+            case 'grant_role': {
+                const collectionId = verification_data?.collectionId;
+                const roleName = verification_data?.roleName;
+                const custom = verification_data?.custom_message;
+                const notifyUser = verification_data?.notifyUser !== false; // default true
+                if (!notifyUser) {
+                    console.log('⏭️ notifyUser=false, skip DM embed but grant role');
+                }
+                result = await (0, index_1.grantRoleToUser)(discord_id, collectionId, roleName, custom);
                 console.log(`✅ Role grant result: ${result}`);
                 break;
-            case 'revoke_role':
-                result = await (0, index_1.revokeRoleFromUser)(discord_id);
+            }
+            case 'verification_failed': {
+                const notifyUser = verification_data?.notifyUser !== false; // default true
+                if (!notifyUser) {
+                    console.log('⏭️ notifyUser=false, skip failure DM');
+                    result = true;
+                    break;
+                }
+                result = await (0, index_1.sendVerificationFailureMessage)(discord_id, verification_data);
+                console.log(`✅ Verification failure DM result: ${result}`);
+                break;
+            }
+            case 'revoke_role': {
+                const custom = verification_data?.custom_message;
+                result = await (0, index_1.revokeRoleFromUser)(discord_id, custom);
                 console.log(`✅ Role revoke result: ${result}`);
                 break;
+            }
             default:
                 console.error('❌ Invalid action:', action);
                 return res.status(400).json({
                     success: false,
-                    error: 'Invalid action. Must be grant_role or revoke_role'
+                    error: 'Invalid action. Must be grant_roles/grant_role, verification_failed or revoke_role'
                 });
         }
         res.json({
