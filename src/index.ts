@@ -1115,9 +1115,9 @@ interface VerificationData {
 
 function buildMessageFromTemplate(template: DmTemplate, data: VerificationData): DmTemplate {
   const roles = (data?.grantedRoles || data?.revokedRoles || [])
-    .map((r: any) => `• ${r.roleName || r.name}`)
+    .map((r: any) => r.roleName || r.name)
     .filter(Boolean)
-    .join('\n');
+    .join('\n• ');
   const collections = Array.isArray(data?.collectionIds) ? data.collectionIds.join(', ') : (data?.collectionId || '');
   
   // コレクション名の取得（verificationResultsから） - 素の名前で保持
@@ -1126,7 +1126,7 @@ function buildMessageFromTemplate(template: DmTemplate, data: VerificationData):
     .map((r: any) => r.collectionName)
     .filter(Boolean) as string[];
   const collectionNames = collectionNamesRaw.length > 0
-    ? collectionNamesRaw.map(n => `• ${n}`).join('\n')
+    ? collectionNamesRaw.join('\n• ')
     : '';
   
   // コレクション名が取得できない場合、grantedRolesから推測
@@ -1138,9 +1138,9 @@ function buildMessageFromTemplate(template: DmTemplate, data: VerificationData):
   
   const map: Record<string, string> = {
     '{discordId}': String(data?.discordId ?? ''),
-    '{roles}': roles,
+    '{roles}': roles ? `• ${roles}` : '',
     '{collections}': String(collections ?? ''),
-    '{collectionName}': collectionNames || (fallbackCollectionName ? `• ${fallbackCollectionName}` : '• Fetching collection info...'),
+    '{collectionName}': collectionNames ? `• ${collectionNames}` : (fallbackCollectionName ? `• ${fallbackCollectionName}` : '• Fetching collection info...'),
     '{reason}': String(data?.reason ?? ''),
     '{timestamp}': new Date().toISOString()
   };
