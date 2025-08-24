@@ -158,44 +158,149 @@ interface SignatureData {
 }
 
 async function verifySignedMessage(signatureData: SignatureData, expectedMessageBytes: Uint8Array | null): Promise<boolean> {
+  const verificationStartTime = Date.now();
   try {
+    // 詳細なデバッグ情報を追加
+    logInfo('🔐 Starting signature verification');
+    
+    // 入力データの完全性チェック
+    if (!signatureData) {
+      logError('SignatureData is null or undefined');
+      return false;
+    }
+    
+    // ウォレット形式の推定
+    const walletHints = [];
+    if (signatureData?.signature) {
+      const sigStr = String(signatureData.signature);
+      if (sigStr.length === 88) walletHints.push('Slash (88 chars)');
+      if (sigStr.length === 128) walletHints.push('Suiet (128 chars)');
+      if (sigStr.length === 184) walletHints.push('SerializedSignature (184 chars)');
+    }
+    
+    logDebug('Signature data received', {
+      hasSignature: !!signatureData?.signature,
+      hasBytes: !!signatureData?.bytes,
+      hasPublicKey: !!signatureData?.publicKey,
+      signatureType: typeof signatureData?.signature,
+      bytesType: typeof signatureData?.bytes,
+      publicKeyType: typeof signatureData?.publicKey,
+      signatureLength: String(signatureData?.signature || '').length,
+      bytesLength: signatureData?.bytes ? 
+        (typeof signatureData.bytes === 'string' ? signatureData.bytes.length : signatureData.bytes.length) : 0,
+      estimatedWallet: walletHints.length > 0 ? walletHints.join(', ') : 'Unknown'
+    });
+
     // スラッシュウォレット対応: ウォレットから送信されたbytesを直接使用
     const { signature, bytes, publicKey } = signatureData ?? {};
 
     if (!signature || !bytes) {
-      logError('Missing signature or bytes');
+      logError('Missing signature or bytes', { 
+        hasSignature: !!signature, 
+        hasBytes: !!bytes 
+      });
       return false;
     }
 
     // ウォレットから送信されたbytesを直接使用
     const receivedDecoded = toUint8Array(bytes);
     if (!receivedDecoded) {
-      logError('Invalid bytes payload');
+      logError('Invalid bytes payload', { 
+        bytesType: typeof bytes, 
+        bytesLength: bytes?.length 
+      });
       return false;
     }
 
-    // 追加候補: bytesがBase64文字列そのもののASCIIとして署名されている可能性
-    let receivedAscii: Uint8Array | null = null;
+    logDebug('Bytes decoded successfully', {
+      originalLength: typeof bytes === 'string' ? bytes.length : bytes?.length,
+      decodedLength: receivedDecoded.length,
+      decodedFirst16: Array.from(receivedDecoded.slice(0, 16))
+    });
+
+    // メッセージ候補を生成（より多くのパターンに対応）
+    const candidateMessages: Array<{ name: string; data: Uint8Array }> = [];
+    
+    // 候補1: サーバーが期待するメッセージ
+    if (expectedMessageBytes) {
+      candidateMessages.push({ name: 'expectedBytes', data: expectedMessageBytes });
+    }
+    
+    // 候補2: ウォレットから受信したbytes（デコード済み）
+    candidateMessages.push({ name: 'receivedDecoded', data: receivedDecoded });
+    
+    // 候補3: bytesがBase64文字列としてASCIIエンコードされている場合
     if (typeof bytes === 'string') {
       try {
-        receivedAscii = new TextEncoder().encode(bytes);
-      } catch {}
+        const receivedAscii = new TextEncoder().encode(bytes);
+        candidateMessages.push({ name: 'receivedAscii', data: receivedAscii });
+      } catch {
+        logDebug('Failed to encode bytes as ASCII');
+      }
     }
-
-    // 署名検証で試すメッセージ候補（優先順）
-    const candidateMessages: Array<{ name: string; data: Uint8Array }> = [];
-    if (expectedMessageBytes) candidateMessages.push({ name: 'expectedBytes', data: expectedMessageBytes });
-    candidateMessages.push({ name: 'receivedDecoded', data: receivedDecoded });
-    if (receivedAscii) candidateMessages.push({ name: 'receivedAscii', data: receivedAscii });
+    
+    // 候補4: UTF-8エンコーディングの試行
+    if (typeof bytes === 'string') {
+      try {
+        const utf8Bytes = new TextEncoder().encode(bytes);
+        if (utf8Bytes.length !== receivedDecoded.length) { // 重複を避ける
+          candidateMessages.push({ name: 'receivedUTF8', data: utf8Bytes });
+        }
+      } catch {
+        logDebug('Failed to encode bytes as UTF-8');
+      }
+    }
+    
+    // 候補5: HEX文字列として解釈（0xプレフィックスありなし両方）
+    if (typeof bytes === 'string' && bytes.length > 2) {
+      try {
+        // HEX文字列をUint8Arrayに変換するヘルパー関数
+        const hexToBytes = (hex: string): Uint8Array => {
+          const cleanHex = hex.replace(/^0x/, '');
+          const bytes = new Uint8Array(cleanHex.length / 2);
+          for (let i = 0; i < cleanHex.length; i += 2) {
+            bytes[i / 2] = parseInt(cleanHex.substr(i, 2), 16);
+          }
+          return bytes;
+        };
+        
+        // 0xプレフィックス付きの場合
+        if (bytes.startsWith('0x') && bytes.length % 2 === 0) {
+          const hexBytes = hexToBytes(bytes);
+          candidateMessages.push({ name: 'receivedHex0x', data: hexBytes });
+        }
+        // 0xプレフィックスなしの場合
+        else if (!bytes.startsWith('0x') && bytes.length % 2 === 0 && /^[0-9a-fA-F]+$/.test(bytes)) {
+          const hexBytes = hexToBytes('0x' + bytes);
+          candidateMessages.push({ name: 'receivedHexPlain', data: hexBytes });
+        }
+      } catch {
+        logDebug('Failed to parse bytes as hex');
+      }
+    }
+    
+    logDebug('Generated message candidates', {
+      totalCandidates: candidateMessages.length,
+      candidateNames: candidateMessages.map(c => c.name),
+      candidateLengths: candidateMessages.map(c => c.data.length)
+    });
 
     // 署名・公開鍵の抽出（スラッシュウォレット対応）
     const rawSig = toUint8Array(signature);
     if (!rawSig || !(rawSig instanceof Uint8Array)) {
-      logError('Invalid signature format');
+      logError('Invalid signature format', {
+        signatureType: typeof signature,
+        rawSigExists: !!rawSig,
+        isUint8Array: rawSig instanceof Uint8Array
+      });
       return false;
     }
 
-    console.log(`Raw signature (first 16): ${Array.from(rawSig.slice(0, 16))}`);
+    logDebug('Raw signature extracted', {
+      length: rawSig.length,
+      first16: Array.from(rawSig.slice(0, 16)),
+      last16: Array.from(rawSig.slice(-16))
+    });
 
     let sigBytes: Uint8Array | null = null;
     let pubBytes: Uint8Array | null = null;
@@ -204,93 +309,219 @@ async function verifySignedMessage(signatureData: SignatureData, expectedMessage
     if (publicKey) {
       const pk = toUint8Array(publicKey);
       if (pk) {
-        console.log(`Public key length: ${pk.length}`);
+        logDebug('Public key extracted', {
+          length: pk.length,
+          first8: Array.from(pk.slice(0, 8)),
+          willTrimScheme: pk.length === 33
+        });
         // 先頭1バイトがスキームの場合(33bytes) → 取り除く
         pubBytes = pk.length === 33 ? pk.slice(1) : pk;
+      } else {
+        logWarning('Public key provided but could not be converted to Uint8Array');
       }
+    } else {
+      logDebug('No public key provided - will extract from signature');
     }
 
     // ケース1: 純粋な64byte署名（publicKeyは別途提供される必要あり）
     if (rawSig.length === 64) {
+      logDebug('Detected 64-byte signature format');
       if (!pubBytes) {
-        console.error('64-byte signature provided but publicKey is missing');
+        logError('64-byte signature provided but publicKey is missing', {
+          signatureLength: rawSig.length,
+          hasPublicKey: !!pubBytes
+        });
         return false;
       }
       sigBytes = rawSig;
+      logDebug('Using 64-byte signature directly');
     }
 
     // ケース2: scheme(1)+signature(64) の65byte（publicKeyは別途提供される必要あり）
     if (!sigBytes && rawSig.length === 65) {
       const scheme = rawSig[0];
+      logDebug('Detected 65-byte signature format', { scheme: `0x${scheme.toString(16)}` });
       if (scheme !== 0x00) {
-        console.error(`Unsupported signature scheme for 65-byte sig: ${scheme}`);
+        logError(`Unsupported signature scheme for 65-byte sig: ${scheme}`, {
+          schemeHex: `0x${scheme.toString(16)}`,
+          expected: '0x00 (Ed25519)'
+        });
         return false;
       }
       if (!pubBytes) {
-        console.error('65-byte (scheme+sig) provided but publicKey is missing');
+        logError('65-byte (scheme+sig) provided but publicKey is missing', {
+          signatureLength: rawSig.length,
+          hasPublicKey: !!pubBytes
+        });
         return false;
       }
       sigBytes = rawSig.slice(1, 65);
+      logDebug('Extracted signature from 65-byte format (trimmed scheme)');
     }
 
     // ケース3: SerializedSignature (scheme(1)+signature(64)+publicKey(32 or 33))
     if (!sigBytes && rawSig.length >= 1 + 64 + 32) {
       const scheme = rawSig[0];
-      console.log(`SerializedSignature scheme: ${scheme} (0x${scheme.toString(16)})`);
+      logDebug('Detected SerializedSignature format', { 
+        scheme: `0x${scheme.toString(16)}`,
+        totalLength: rawSig.length
+      });
       
       // 0x00: Ed25519 / 0x01: Secp256k1 / 0x02: Secp256r1
       if (scheme !== 0x00) {
-        console.error(`Unsupported signature scheme: ${scheme}`);
+        logError(`Unsupported signature scheme: ${scheme}`, {
+          schemeHex: `0x${scheme.toString(16)}`,
+          supportedSchemes: ['0x00 (Ed25519)', '0x01 (Secp256k1)', '0x02 (Secp256r1)'],
+          currentlySupported: '0x00 (Ed25519) only'
+        });
         return false;
       }
+      
       sigBytes = rawSig.slice(1, 65);
       const extractedPubAll = rawSig.slice(65);
-      console.log(`Extracted signature length: ${sigBytes.length}`);
-      console.log(`Extracted public key length: ${extractedPubAll.length}`);
+      
+      logDebug('SerializedSignature components extracted', {
+        signatureLength: sigBytes.length,
+        publicKeyLength: extractedPubAll.length,
+        publicKeyFirst8: Array.from(extractedPubAll.slice(0, 8))
+      });
       
       // 署名内の公開鍵を優先使用（スラッシュウォレット対応）
       if (extractedPubAll.length === 33) {
         pubBytes = extractedPubAll.slice(1);
+        logDebug('Using public key from SerializedSignature (trimmed scheme byte)');
       } else if (extractedPubAll.length === 32) {
         pubBytes = extractedPubAll;
+        logDebug('Using public key from SerializedSignature (direct)');
       } else {
-        console.error(`Unexpected public key length in serialized signature: ${extractedPubAll.length}`);
+        logError(`Unexpected public key length in serialized signature: ${extractedPubAll.length}`, {
+          expected: [32, 33],
+          actual: extractedPubAll.length
+        });
         return false;
       }
     }
 
     // ケース4: スラッシュウォレット形式（88文字Base64 = 66バイト）
     if (!sigBytes && rawSig.length === 66) {
-      console.log('Detected Slash wallet signature format (66 bytes)');
+      logDebug('Detected Slash wallet signature format (66 bytes)');
       
       // スラッシュウォレットの署名形式を試行
       // パターン1: 先頭2バイトがスキーム、残り64バイトが署名
       const scheme1 = rawSig[0];
       const scheme2 = rawSig[1];
-      console.log(`Scheme bytes: [${scheme1}, ${scheme2}]`);
+      
+      logDebug('Analyzing Slash wallet scheme bytes', {
+        scheme1: `0x${scheme1.toString(16)}`,
+        scheme2: `0x${scheme2.toString(16)}`,
+        schemePair: [scheme1, scheme2]
+      });
       
       if (scheme1 === 0x00 && scheme2 === 0x00) {
         sigBytes = rawSig.slice(2, 66); // 2バイトスキーム + 64バイト署名
+        logDebug('Using Slash wallet pattern: 2-byte scheme + 64-byte signature');
       } else if (scheme1 === 0x00) {
         sigBytes = rawSig.slice(1, 65); // 1バイトスキーム + 64バイト署名
+        logDebug('Using Slash wallet pattern: 1-byte scheme + 64-byte signature');
       } else {
         sigBytes = rawSig.slice(0, 64); // 先頭64バイトを署名として使用
+        logDebug('Using Slash wallet pattern: first 64 bytes as signature');
+      }
+    }
+
+    // ケース5: Suiet、Surf、その他のウォレット形式への対応
+    if (!sigBytes && rawSig.length > 64) {
+      logWarning('Unknown signature format detected, trying fallback patterns', {
+        signatureLength: rawSig.length,
+        availablePublicKey: !!pubBytes,
+        first8Bytes: Array.from(rawSig.slice(0, 8)),
+        last8Bytes: Array.from(rawSig.slice(-8))
+      });
+      
+      // Suiet/Surf ウォレット対応: 複数の一般的なパターンを試行
+      const commonPatterns = [
+        // パターン1: 最後の64バイトを署名として使用
+        { name: 'last64', start: -64, end: undefined },
+        // パターン2: 先頭1バイトを除いて64バイト
+        { name: 'skip1+64', start: 1, end: 65 },
+        // パターン3: 先頭2バイトを除いて64バイト
+        { name: 'skip2+64', start: 2, end: 66 },
+        // パターン4: 中央部分の64バイト（前後の余分なデータを除去）
+        { name: 'middle64', start: Math.max(0, Math.floor((rawSig.length - 64) / 2)), end: Math.max(64, Math.floor((rawSig.length - 64) / 2) + 64) }
+      ];
+      
+      for (const pattern of commonPatterns) {
+        if (pubBytes && rawSig.length >= 64) {
+          const candidateSig = rawSig.slice(pattern.start, pattern.end);
+          if (candidateSig.length === 64) {
+            logDebug(`Trying signature pattern: ${pattern.name}`, {
+              start: pattern.start,
+              end: pattern.end,
+              extractedLength: candidateSig.length
+            });
+            
+            // 簡単な整合性チェック: 署名が全て0でないことを確認
+            const isNotEmpty = candidateSig.some(b => b !== 0);
+            if (isNotEmpty) {
+              sigBytes = candidateSig;
+              logDebug(`Selected signature pattern: ${pattern.name}`);
+              break;
+            }
+          }
+        }
+      }
+      
+      // 最後の手段: Ed25519の既知のパターンに基づく推測
+      if (!sigBytes && pubBytes && rawSig.length >= 64) {
+        // Ed25519署名は通常ランダムに見える32+32バイト構造
+        // 先頭64バイトを試行（最も一般的）
+        const fallbackSig = rawSig.slice(0, 64);
+        const entropy = new Set(fallbackSig).size; // バイトの多様性をチェック
+        if (entropy > 16) { // 十分にランダムな場合
+          sigBytes = fallbackSig;
+          logDebug('Using first 64 bytes as last resort (entropy check passed)', { entropy });
+        }
       }
     }
 
     if (!sigBytes || !pubBytes || pubBytes.length !== 32) {
-      console.error(`Failed to extract signature/publicKey for Ed25519 verification (sigBytes? ${!!sigBytes}, pubBytesLen=${pubBytes?.length || 0}, rawSigLen=${rawSig?.length || 0})`);
+      logError('Failed to extract signature/publicKey for Ed25519 verification', {
+        hasSignatureBytes: !!sigBytes,
+        signatureBytesLength: sigBytes?.length || 0,
+        hasPublicKeyBytes: !!pubBytes,
+        publicKeyBytesLength: pubBytes?.length || 0,
+        rawSignatureLength: rawSig?.length || 0,
+        expectedPublicKeyLength: 32
+      });
       return false;
     }
 
+    logSuccess('Signature and public key extracted successfully', {
+      signatureLength: sigBytes.length,
+      publicKeyLength: pubBytes.length,
+      candidateMessagesCount: candidateMessages.length
+    });
+
     // 各候補メッセージに対して、複数モードで検証
-    for (const candidate of candidateMessages) {
+    for (let i = 0; i < candidateMessages.length; i++) {
+      const candidate = candidateMessages[i];
       const messageBytes = candidate.data;
+
+      logDebug(`Testing verification candidate ${i + 1}/${candidateMessages.length}: ${candidate.name}`, {
+        messageLength: messageBytes.length,
+        messageFirst16: Array.from(messageBytes.slice(0, 16))
+      });
 
       // まずは素のメッセージに対して検証
       let ok = await ed25519.verify(sigBytes, messageBytes, pubBytes);
       if (ok) {
-        console.log(`Ed25519 verification succeeded (raw mode, candidate=${candidate.name})`);
+        const verificationEndTime = Date.now();
+        const verificationDuration = verificationEndTime - verificationStartTime;
+        logSuccess(`Ed25519 verification succeeded (raw mode, candidate=${candidate.name})`, {
+          verificationDurationMs: verificationDuration,
+          candidateName: candidate.name,
+          mode: 'raw'
+        });
         return true;
       }
 
@@ -304,9 +535,24 @@ async function verifySignedMessage(signatureData: SignatureData, expectedMessage
       intentMessage.set(intent, 0);
       intentMessage.set(bcsMessage, intent.length);
       let digest = blake2b(intentMessage, { dkLen: 32 });
+      
+      logDebug(`Trying intent+BCS+blake2b mode for ${candidate.name}`, {
+        intentLength: intent.length,
+        lenPrefixLength: lenPrefix.length,
+        bcsMessageLength: bcsMessage.length,
+        intentMessageLength: intentMessage.length,
+        digestLength: digest.length
+      });
+      
       ok = await ed25519.verify(sigBytes, digest, pubBytes);
       if (ok) {
-        console.log(`Ed25519 verification succeeded (intent+BCS mode, candidate=${candidate.name})`);
+        const verificationEndTime = Date.now();
+        const verificationDuration = verificationEndTime - verificationStartTime;
+        logSuccess(`Ed25519 verification succeeded (intent+BCS mode, candidate=${candidate.name})`, {
+          verificationDurationMs: verificationDuration,
+          candidateName: candidate.name,
+          mode: 'intent+BCS'
+        });
         return true;
       }
 
@@ -315,25 +561,70 @@ async function verifySignedMessage(signatureData: SignatureData, expectedMessage
       intentMessage.set(intent, 0);
       intentMessage.set(messageBytes, intent.length);
       digest = blake2b(intentMessage, { dkLen: 32 });
+      
+      logDebug(`Trying intent-only+blake2b mode for ${candidate.name}`, {
+        intentMessageLength: intentMessage.length,
+        digestLength: digest.length
+      });
+      
       ok = await ed25519.verify(sigBytes, digest, pubBytes);
       if (ok) {
-        console.log(`Ed25519 verification succeeded (intent-only mode, candidate=${candidate.name})`);
+        const verificationEndTime = Date.now();
+        const verificationDuration = verificationEndTime - verificationStartTime;
+        logSuccess(`Ed25519 verification succeeded (intent-only mode, candidate=${candidate.name})`, {
+          verificationDurationMs: verificationDuration,
+          candidateName: candidate.name,
+          mode: 'intent-only'
+        });
         return true;
       }
 
       // フォールバック3: blake2b-256(message) のみ
       digest = blake2b(messageBytes, { dkLen: 32 });
+      
+      logDebug(`Trying blake2b-only mode for ${candidate.name}`, {
+        originalMessageLength: messageBytes.length,
+        digestLength: digest.length
+      });
+      
       ok = await ed25519.verify(sigBytes, digest, pubBytes);
       if (ok) {
-        console.log(`Ed25519 verification succeeded (blake2b-only mode, candidate=${candidate.name})`);
+        const verificationEndTime = Date.now();
+        const verificationDuration = verificationEndTime - verificationStartTime;
+        logSuccess(`Ed25519 verification succeeded (blake2b-only mode, candidate=${candidate.name})`, {
+          verificationDurationMs: verificationDuration,
+          candidateName: candidate.name,
+          mode: 'blake2b-only'
+        });
         return true;
       }
+      
+      logDebug(`All verification modes failed for candidate ${candidate.name}`);
     }
 
-    console.error('Ed25519 verification failed for all candidates and modes');
+    const verificationEndTime = Date.now();
+    const verificationDuration = verificationEndTime - verificationStartTime;
+    
+    logError('Ed25519 verification failed for all candidates and modes', {
+      totalCandidates: candidateMessages.length,
+      candidateNames: candidateMessages.map(c => c.name),
+      signatureLength: sigBytes?.length,
+      publicKeyLength: pubBytes?.length,
+      verificationModes: ['raw', 'intent+BCS+blake2b', 'intent-only+blake2b', 'blake2b-only'],
+      verificationDurationMs: verificationDuration,
+      timestamp: new Date().toISOString()
+    });
     return false;
   } catch (error) {
-    console.error('Signature verification error:', error);
+    const verificationEndTime = Date.now();
+    const verificationDuration = verificationEndTime - verificationStartTime;
+    
+    logError('Signature verification error (exception)', { 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      verificationDurationMs: verificationDuration,
+      timestamp: new Date().toISOString()
+    });
     return false;
   }
 }
@@ -384,9 +675,25 @@ async function verifyAdminToken(c: Context<{ Bindings: Env }>): Promise<AdminTok
 function validateNonce(nonce: string, storedNonceData: any): boolean {
   try {
     const now = Date.now();
-    return storedNonceData.nonce === nonce && now < storedNonceData.expiresAt;
+    const isValid = storedNonceData.nonce === nonce && now < storedNonceData.expiresAt;
+    
+    logDebug('Nonce validation', {
+      providedNonce: nonce,
+      storedNonce: storedNonceData.nonce,
+      currentTime: now,
+      expiresAt: storedNonceData.expiresAt,
+      isExpired: now >= storedNonceData.expiresAt,
+      nonceMatches: storedNonceData.nonce === nonce,
+      isValid
+    });
+    
+    return isValid;
   } catch (error) {
-    console.error('Nonce validation error:', error);
+    logError('Nonce validation error', { 
+      error: error instanceof Error ? error.message : String(error),
+      nonce,
+      storedNonceData
+    });
     return false;
   }
 }
@@ -445,103 +752,87 @@ async function hasTargetNft(address: string, collectionId: string): Promise<bool
     }
     
     // 方法1: 直接所有されているNFTを確認（タイムアウト延長）
-    const directResponse = await fetch(`${suiRpcUrl}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'suix_getOwnedObjects',
-        params: [
-          address,
-          {
-            filter: {
-              StructType: collectionId
-            }
-          },
-          null,
-          null,
-          true
-        ]
-      })
+    const directData = await rpcCall<any>(suiRpcUrl, {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'suix_getOwnedObjects',
+      params: [
+        address,
+        {
+          filter: {
+            StructType: collectionId
+          }
+        },
+        null,
+        null,
+        true
+      ]
+    }, 30000); // 30秒タイムアウト
+    
+    logDebug('Direct ownership Sui API response', {
+      hasResult: !!directData.result,
+      dataLength: directData.result?.data?.length || 0,
+      address,
+      collectionId
     });
-    
-    if (!directResponse.ok) {
-      throw new Error(`Sui API request failed: ${directResponse.status} ${directResponse.statusText}`);
-    }
-    
-    const directData = await directResponse.json() as any;
-    console.log(`📥 Direct ownership Sui API response:`, JSON.stringify(directData, null, 2));
     
     const hasDirectNft = directData.result && directData.result.data && directData.result.data.length > 0;
     
     if (hasDirectNft) {
-      console.log(`✅ Direct NFTs found: ${directData.result.data.length} NFTs for address ${address} in collection ${collectionId}`);
+      logSuccess(`Direct NFTs found: ${directData.result.data.length} NFTs for address ${address} in collection ${collectionId}`);
       return true;
     }
     
     // 方法2: 間接的に所有されているNFTを確認（オブジェクトを介して管理されている場合）
-    console.log(`🔍 Checking indirect ownership for address: ${address}`);
+    logDebug(`Checking indirect ownership for address: ${address}`);
     
     // アドレスが所有しているすべてのオブジェクトを取得（タイムアウト延長）
-    const allObjectsResponse = await fetch(`${suiRpcUrl}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 2,
-        method: 'suix_getOwnedObjects',
-        params: [
-          address,
-          null,
-          null,
-          null,
-          true
-        ]
-      })
+    const allObjectsData = await rpcCall<any>(suiRpcUrl, {
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'suix_getOwnedObjects',
+      params: [
+        address,
+        null,
+        null,
+        null,
+        true
+      ]
+    }, 30000); // 30秒タイムアウト
+    
+    logDebug('All objects response', {
+      hasResult: !!allObjectsData.result,
+      objectCount: allObjectsData.result?.data?.length || 0,
+      address
     });
-    
-    if (!allObjectsResponse.ok) {
-      throw new Error(`Sui API request failed: ${allObjectsResponse.status} ${allObjectsResponse.statusText}`);
-    }
-    
-    const allObjectsData = await allObjectsResponse.json() as any;
-    console.log(`📥 All objects response:`, JSON.stringify(allObjectsData, null, 2));
     
     if (allObjectsData.result && allObjectsData.result.data) {
       // 各オブジェクトの詳細を確認して、間接的に所有されているNFTを検索
       for (const obj of allObjectsData.result.data) {
         if (obj.data && obj.data.objectId) {
           try {
-            const objDetailResponse = await fetch(`${suiRpcUrl}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                jsonrpc: '2.0',
-                id: 3,
-                method: 'sui_getObject',
-                params: [
-                  obj.data.objectId,
-                  {
-                    showType: true,
-                    showContent: true,
-                    showOwner: true
-                  }
-                ]
-              })
+            const objDetail = await rpcCall<any>(suiRpcUrl, {
+              jsonrpc: '2.0',
+              id: 3,
+              method: 'sui_getObject',
+              params: [
+                obj.data.objectId,
+                {
+                  showType: true,
+                  showContent: true,
+                  showOwner: true
+                }
+              ]
+            }, 15000); // 15秒タイムアウト
+            
+            logDebug(`Object ${obj.data.objectId} type`, {
+              type: objDetail.result?.data?.type,
+              objectId: obj.data.objectId
             });
-            
-            if (!objDetailResponse.ok) {
-              console.log(`⚠️ Failed to fetch object ${obj.data.objectId}: ${objDetailResponse.status}`);
-              continue;
-            }
-            
-            const objDetail = await objDetailResponse.json() as any;
-            console.log(`🔍 Object ${obj.data.objectId} type:`, objDetail.result?.data?.type);
             
             // オブジェクトが指定されたコレクションのNFTを所有しているかチェック
             if (objDetail.result?.data?.type === collectionId) {
-              console.log(`✅ Indirect NFT found: ${obj.data.objectId} is a ${collectionId} NFT`);
+              logSuccess(`Indirect NFT found: ${obj.data.objectId} is a ${collectionId} NFT`);
               return true;
             }
             
@@ -626,12 +917,12 @@ async function hasTargetNft(address: string, collectionId: string): Promise<bool
       }
     }
     
-    console.log(`❌ No NFTs found for address ${address} in collection ${collectionId}`);
+    logWarning(`No NFTs found for address ${address} in collection ${collectionId}`);
     return false;
     
   } catch (apiError) {
-    console.error('❌ Sui API error:', apiError);
-    console.log('🔄 NFT check failed due to API error - returning false');
+    logError('Sui API error', apiError);
+    logWarning('NFT check failed due to API error - returning false');
     return false;
   }
 }
@@ -1865,28 +2156,59 @@ app.post('/api/verify', async (c) => {
     const { signature, address, discordId, nonce, authMessage, bytes, collectionIds } = body;
 
     // 必須パラメータチェック
-    if (!signature || !address || !discordId || !nonce) {
+    const missingParams = [];
+    if (!signature) missingParams.push('signature');
+    if (!address) missingParams.push('address');
+    if (!discordId) missingParams.push('discordId');
+    if (!nonce) missingParams.push('nonce');
+    
+    if (missingParams.length > 0) {
+      logError('Missing required parameters', {
+        missingParams,
+        hasSignature: !!signature,
+        hasAddress: !!address,
+        hasDiscordId: !!discordId,
+        hasNonce: !!nonce,
+        hasBytes: !!bytes,
+        hasAuthMessage: !!authMessage
+      });
       return c.json({
         success: false,
-        error: 'Missing required parameters'
+        error: `Missing required parameters: ${missingParams.join(', ')}`
       }, 400);
     }
 
-    console.log(`Verification request for ${address} (Discord: ${discordId})`);
-    console.log(`Collection IDs: ${collectionIds || 'default'}`);
+    logInfo(`Verification request for ${address} (Discord: ${discordId})`, {
+      collectionIds: collectionIds || 'default',
+      hasBytes: !!bytes,
+      hasAuthMessage: !!authMessage,
+      hasPublicKey: !!body.publicKey
+    });
 
     // ナンス検証
     const storedNonceDataStr = await c.env.NONCE_STORE.get(nonce);
     if (!storedNonceDataStr) {
+      logError('Nonce not found in store', { nonce });
       return c.json({
         success: false,
         error: 'Invalid or expired nonce'
       }, 400);
     }
 
-    const storedNonceData = JSON.parse(storedNonceDataStr);
+    let storedNonceData;
+    try {
+      storedNonceData = JSON.parse(storedNonceDataStr);
+    } catch (error) {
+      logError('Failed to parse stored nonce data', { nonce, error });
+      return c.json({
+        success: false,
+        error: 'Invalid nonce data'
+      }, 400);
+    }
+    
     const isValidNonce = validateNonce(nonce, storedNonceData);
     if (!isValidNonce) {
+      logError('Nonce validation failed', { nonce, storedNonceData });
       return c.json({
         success: false,
         error: 'Invalid or expired nonce'
@@ -1981,10 +2303,18 @@ app.post('/api/verify', async (c) => {
 
     // ウォレットから送信されたbytesを直接使用（スラッシュウォレット対応）
     const signatureData = { signature, bytes, publicKey: body.publicKey };
+
     const isValidSignature = await verifySignedMessage(signatureData, null); // bytesを直接使用
+    
     if (!isValidSignature) {
+      logError('Signature verification failed', {
+        address,
+        discordId,
+        reason: 'Invalid signature - stopping verification process'
+      });
+      
+      // 署名検証失敗時は適切なエラーメッセージでDM送信
       try {
-        // 署名不正でもユーザーにDMで通知
         await notifyDiscordBot(c, discordId, 'verification_failed', {
           address,
           discordId,
@@ -1993,8 +2323,9 @@ app.post('/api/verify', async (c) => {
           timestamp: new Date().toISOString()
         }, { isBatch: false, kind: 'failed' });
       } catch (e) {
-        console.log('⚠️ Failed to notify Discord bot for invalid signature:', e);
+        logWarning('Failed to notify Discord bot for invalid signature', e);
       }
+      
       return c.json({
         success: false,
         error: 'Invalid signature',
@@ -2010,12 +2341,10 @@ app.post('/api/verify', async (c) => {
     let targetCollections: NFTCollection[] = [];
     
     if (collectionIds && Array.isArray(collectionIds) && collectionIds.length > 0) {
-      // 指定されたコレクションIDに対応するコレクションを取得
       targetCollections = collections.filter((col: NFTCollection) => 
         collectionIds.includes(col.id) && col.isActive
       );
     } else {
-      // デフォルトコレクションを使用
       const defaultCollection: NFTCollection = {
         id: 'default',
         name: 'Popkins NFT',
@@ -2036,13 +2365,19 @@ app.post('/api/verify', async (c) => {
     const grantedRoles = [];
 
     for (const collection of targetCollections) {
-      console.log(`🔍 Checking NFT ownership for collection: ${collection.name} (${collection.packageId})`);
+      logDebug(`Checking NFT ownership for collection: ${collection.name} (${collection.packageId})`);
       
       try {
         const hasNft = await hasTargetNft(address, collection.packageId);
         
         if (hasNft) {
-          console.log(`✅ NFT found for collection: ${collection.name}`);
+          logSuccess(`NFT found for collection: ${collection.name}`, {
+            address,
+            collectionId: collection.id,
+            collectionName: collection.name,
+            roleId: collection.roleId,
+            roleName: collection.roleName
+          });
           verificationResults.push({
             collectionId: collection.id,
             collectionName: collection.name,
@@ -2055,7 +2390,11 @@ app.post('/api/verify', async (c) => {
             roleName: collection.roleName
           });
         } else {
-          console.log(`❌ No NFT found for collection: ${collection.name}`);
+          logWarning(`No NFT found for collection: ${collection.name}`, {
+            address,
+            collectionId: collection.id,
+            collectionName: collection.name
+          });
           verificationResults.push({
             collectionId: collection.id,
             collectionName: collection.name,
@@ -2065,21 +2404,29 @@ app.post('/api/verify', async (c) => {
           });
         }
       } catch (nftCheckError) {
-        console.error(`❌ NFT check failed for collection ${collection.name}:`, nftCheckError);
+        logError(`NFT check failed for collection ${collection.name}`, {
+          address,
+          collectionId: collection.id,
+          collectionName: collection.name,
+          error: nftCheckError instanceof Error ? nftCheckError.message : String(nftCheckError),
+          stack: nftCheckError instanceof Error ? nftCheckError.stack : undefined
+        });
         
         // NFTチェックが失敗した場合、ユーザーに適切なエラーメッセージを送信
         await notifyDiscordBot(c, discordId, 'verification_failed', {
           address,
           discordId,
-          reason: `NFT check failed: ${nftCheckError.message}`,
+          reason: `NFT ownership check failed due to network issues. Please try again in a few moments.`,
           errorCode: 'NFT_CHECK_ERROR',
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          notifyUser: true
         }, { isBatch: false, kind: 'failed' });
         
         return c.json({
           success: false,
-          error: 'NFT check failed due to network or API issues. Please try again later.',
-          errorCode: 'NFT_CHECK_ERROR'
+          error: 'NFT ownership check failed due to network or API issues. Please try again later.',
+          errorCode: 'NFT_CHECK_ERROR',
+          details: 'The Sui network may be experiencing high traffic. Please wait a moment and try again.'
         }, 500);
       }
     }
@@ -2480,27 +2827,28 @@ async function getBatchConfig(c: Context<{ Bindings: Env }>): Promise<BatchConfi
     if (configData) {
       return JSON.parse(configData as string);
     }
-    // デフォルト設定
-    const defaultConfig: BatchConfig = {
-      enabled: true,
-      interval: 60, // 60分間隔
+    
+    // KVに設定がない場合は、バッチ処理を無効化
+    console.log('⚠️ No batch config found in KV, batch processing is disabled by default');
+    return {
+      enabled: false, // デフォルトで無効
+      interval: 0, // 間隔なし
       lastRun: new Date(0).toISOString(),
-      nextRun: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-      maxUsersPerBatch: 50,
-      retryAttempts: 3,
-      enableDmNotifications: false // デフォルトでDM通知は無効
+      nextRun: new Date(0).toISOString(), // 実行なし
+      maxUsersPerBatch: 0, // 処理なし
+      retryAttempts: 0, // 再試行なし
+      enableDmNotifications: false
     };
-    await c.env.COLLECTION_STORE.put('batch_config', JSON.stringify(defaultConfig));
-    return defaultConfig;
   } catch (error) {
     console.error('Error getting batch config:', error);
+    // エラー時も無効化
     return {
-      enabled: true,
-      interval: 60,
+      enabled: false,
+      interval: 0,
       lastRun: new Date(0).toISOString(),
-      nextRun: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-      maxUsersPerBatch: 50,
-      retryAttempts: 3,
+      nextRun: new Date(0).toISOString(),
+      maxUsersPerBatch: 0,
+      retryAttempts: 0,
       enableDmNotifications: false
     };
   }
@@ -2793,6 +3141,54 @@ app.get('/api/admin/batch-config', async (c) => {
       success: false,
       error: 'Failed to get batch configuration',
       message: 'バッチ処理設定の取得に失敗しました'
+    }, 500);
+  }
+});
+
+// バッチ処理設定初期化API
+app.post('/api/admin/batch-init', async (c) => {
+  try {
+    const auth = await verifyAdminToken(c);
+    if (!auth.ok) {
+      const addr = c.req.header('X-Admin-Address');
+      if (!addr || !(await isAdmin(c, addr))) return c.json({ success: false, error: 'Unauthorized', reason: (auth as any).reason }, 401);
+    }
+    
+    const body = await c.req.json();
+    const { enabled = true, interval = 15, maxUsersPerBatch = 50, retryAttempts = 3, enableDmNotifications = false } = body;
+    
+    console.log('🚀 Initializing batch config:', body);
+    
+    const success = await updateBatchConfig(c, {
+      enabled,
+      interval,
+      maxUsersPerBatch,
+      retryAttempts,
+      enableDmNotifications
+    });
+    
+    if (success) {
+      const updatedConfig = await getBatchConfig(c);
+      console.log('✅ Batch config initialized successfully:', updatedConfig);
+      return c.json({
+        success: true,
+        data: updatedConfig,
+        message: 'バッチ処理設定が初期化されました'
+      });
+    } else {
+      console.error('❌ Failed to initialize batch config');
+      return c.json({
+        success: false,
+        error: 'Failed to initialize batch configuration',
+        message: 'バッチ処理設定の初期化に失敗しました'
+      }, 500);
+    }
+  } catch (error) {
+    console.error('Error initializing batch config:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to initialize batch configuration',
+      message: 'バッチ処理設定の初期化中にエラーが発生しました'
     }, 500);
   }
 });
