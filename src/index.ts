@@ -2756,18 +2756,43 @@ app.get('/api/admin/batch-config', async (c) => {
     const config = await getBatchConfig(c);
     const stats = await getBatchStats(c);
     
+    // 現在時刻と次回実行時刻の計算
+    const now = new Date();
+    const nextRun = new Date(config.nextRun);
+    const timeUntilNextRun = Math.max(0, nextRun.getTime() - now.getTime());
+    const minutesUntilNextRun = Math.round(timeUntilNextRun / 1000 / 60);
+    
+    // 実行可能かどうかの判定
+    const canRunNow = config.enabled && now >= nextRun;
+    
+    console.log('📋 Batch config retrieved:', {
+      enabled: config.enabled,
+      interval: config.interval,
+      nextRun: config.nextRun,
+      canRunNow,
+      minutesUntilNextRun
+    });
+    
     return c.json({
       success: true,
       data: {
         config,
-        stats
+        stats,
+        status: {
+          currentTime: now.toISOString(),
+          nextRun: config.nextRun,
+          minutesUntilNextRun,
+          canRunNow,
+          isEnabled: config.enabled
+        }
       }
     });
   } catch (error) {
     console.error('Error getting batch config:', error);
     return c.json({
       success: false,
-      error: 'Failed to get batch configuration'
+      error: 'Failed to get batch configuration',
+      message: 'バッチ処理設定の取得に失敗しました'
     }, 500);
   }
 });
@@ -2781,32 +2806,40 @@ app.put('/api/admin/batch-config', async (c) => {
       if (!addr || !(await isAdmin(c, addr))) return c.json({ success: false, error: 'Unauthorized', reason: (auth as any).reason }, 401);
     }
     const body = await c.req.json();
-    const { enabled, interval, maxUsersPerBatch, retryAttempts } = body;
+    const { enabled, interval, maxUsersPerBatch, retryAttempts, enableDmNotifications } = body;
+    
+    console.log('📝 Updating batch config:', body);
     
     const success = await updateBatchConfig(c, {
       enabled,
       interval,
       maxUsersPerBatch,
-      retryAttempts
+      retryAttempts,
+      enableDmNotifications
     });
     
     if (success) {
       const updatedConfig = await getBatchConfig(c);
+      console.log('✅ Batch config updated successfully:', updatedConfig);
       return c.json({
         success: true,
-        data: updatedConfig
+        data: updatedConfig,
+        message: 'バッチ処理設定が更新されました'
       });
     } else {
+      console.error('❌ Failed to update batch config');
       return c.json({
         success: false,
-        error: 'Failed to update batch configuration'
+        error: 'Failed to update batch configuration',
+        message: 'バッチ処理設定の更新に失敗しました'
       }, 500);
     }
   } catch (error) {
     console.error('Error updating batch config:', error);
     return c.json({
       success: false,
-      error: 'Failed to update batch configuration'
+      error: 'Failed to update batch configuration',
+      message: 'バッチ処理設定の更新中にエラーが発生しました'
     }, 500);
   }
 });
@@ -3177,11 +3210,42 @@ export default {
   fetch: app.fetch,
   scheduled: async (event: ScheduledEvent, env: Env, ctx: ExecutionContext) => {
     try {
+      console.log('🔄 Scheduled event triggered');
+      console.log(`📅 Scheduled time: ${new Date(event.scheduledTime).toISOString()}`);
+      
       const c = { env } as unknown as Context<{ Bindings: Env }>;
+      
+      // KVの設定を確認
+      const batchConfig = await getBatchConfig(c);
+      console.log('📋 Batch config from KV:', JSON.stringify(batchConfig, null, 2));
+      
+      // バッチ処理が無効の場合はスキップ
+      if (!batchConfig.enabled) {
+        console.log('⏭️ Batch processing is disabled in KV config, skipping...');
+        return;
+      }
+      
+      // 次回実行時刻をチェック
+      const now = new Date();
+      const nextRun = new Date(batchConfig.nextRun);
+      
+      console.log(`⏰ Current time: ${now.toISOString()}`);
+      console.log(`⏰ Next scheduled run: ${nextRun.toISOString()}`);
+      
+      if (now < nextRun) {
+        console.log(`⏭️ Next run scheduled for ${nextRun.toISOString()}, skipping...`);
+        console.log(`⏭️ Time until next run: ${Math.round((nextRun.getTime() - now.getTime()) / 1000 / 60)} minutes`);
+        return;
+      }
+      
+      console.log('✅ KV config validation passed, executing batch check...');
       const stats = await executeBatchCheck(c);
       console.log('✅ Scheduled batch executed:', stats);
+      
     } catch (e) {
       console.error('❌ Scheduled handler error:', e);
+      console.error('❌ Error details:', (e as Error).message);
+      console.error('❌ Error stack:', (e as Error).stack);
     }
   }
 };

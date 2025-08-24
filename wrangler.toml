@@ -41,5 +41,6 @@ binding = "COLLECTION_STORE"
 id = "73186a10a62946718119aa112e87dba9" 
 
 # Cron Schedules（バッチ自動実行）
+# より頻繁にチェックしてKV設定を優先する
 [triggers]
-crons = ["0 * * * *"] # 毎時 0 分
+crons = ["*/5 * * * *"] # 5分ごとにチェック（KV設定で実際の実行を制御）
