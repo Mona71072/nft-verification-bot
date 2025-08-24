@@ -942,6 +942,59 @@ async function updateBatchConfig(c: Context<{ Bindings: Env }>, config: Partial<
   return newConfig;
 }
 
+// KVクリーンアップ機能
+async function cleanupOldData(c: Context<{ Bindings: Env }>): Promise<void> {
+  try {
+    console.log('🧹 Starting KV cleanup process...');
+    
+    // 古いナンスのクリーンアップ（5分以上経過）
+    const nonceKeys = await c.env.NONCE_STORE.list();
+    const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+    
+    for (const key of nonceKeys.keys) {
+      try {
+        const nonceData = await c.env.NONCE_STORE.get(key.name);
+        if (nonceData) {
+          const nonce = JSON.parse(nonceData);
+          if (nonce.expiresAt && nonce.expiresAt < fiveMinutesAgo) {
+            await c.env.NONCE_STORE.delete(key.name);
+            console.log(`🗑️ Cleaned up expired nonce: ${key.name}`);
+          }
+        }
+      } catch (error) {
+        // 無効なデータは削除
+        await c.env.NONCE_STORE.delete(key.name);
+        console.log(`🗑️ Cleaned up invalid nonce: ${key.name}`);
+      }
+    }
+    
+    // 古い管理者トークンのクリーンアップ（24時間以上経過）
+    const adminTokenKeys = await c.env.COLLECTION_STORE.list({ prefix: 'admin_token:' });
+    const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+    
+    for (const key of adminTokenKeys.keys) {
+      try {
+        const tokenData = await c.env.COLLECTION_STORE.get(key.name);
+        if (tokenData) {
+          const token = JSON.parse(tokenData);
+          if (token.expiresAt && token.expiresAt < oneDayAgo) {
+            await c.env.COLLECTION_STORE.delete(key.name);
+            console.log(`🗑️ Cleaned up expired admin token: ${key.name}`);
+          }
+        }
+      } catch (error) {
+        // 無効なデータは削除
+        await c.env.COLLECTION_STORE.delete(key.name);
+        console.log(`🗑️ Cleaned up invalid admin token: ${key.name}`);
+      }
+    }
+    
+    console.log('✅ KV cleanup completed');
+  } catch (error) {
+    console.error('❌ KV cleanup error:', error);
+  }
+}
+
 async function getBatchStats(c: Context<{ Bindings: Env }>): Promise<BatchStats> {
   try {
     const v = await c.env.COLLECTION_STORE.get(BATCH_STATS_KEY);
@@ -967,6 +1020,19 @@ async function getBatchStats(c: Context<{ Bindings: Env }>): Promise<BatchStats>
 async function updateBatchStats(c: Context<{ Bindings: Env }>, stats: Partial<BatchStats>): Promise<BatchStats> {
   const currentStats = await getBatchStats(c);
   const newStats = { ...currentStats, ...stats };
+  
+  // 統計情報のサイズを制限（過去30日分のみ保持）
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  
+  // 古い統計情報をクリーンアップ
+  if (newStats.lastRun && new Date(newStats.lastRun) < thirtyDaysAgo) {
+    console.log('🧹 Cleaning up old batch statistics');
+    newStats.processed = 0;
+    newStats.revoked = 0;
+    newStats.errors = 0;
+    newStats.duration = 0;
+  }
   
   await c.env.COLLECTION_STORE.put(BATCH_STATS_KEY, JSON.stringify(newStats));
   return newStats;
@@ -2554,6 +2620,9 @@ app.post('/api/admin/batch-check', async (c) => {
     const startTime = Date.now();
     const config = await getBatchConfig(c);
     
+    // KVクリーンアップを実行
+    await cleanupOldData(c);
+    
     console.log('🔄 Starting batch check process...');
     const verifiedUsers = await getVerifiedUsers(c);
     console.log(`📊 Found ${verifiedUsers.length} verified users`);
@@ -2963,6 +3032,9 @@ app.post('/api/admin/batch-execute', async (c) => {
     const startTime = Date.now();
     const config = await getBatchConfig(c);
     
+    // KVクリーンアップを実行
+    await cleanupOldData(c);
+    
     if (!config.enabled) {
       return c.json({
         success: false,
@@ -3096,6 +3168,31 @@ app.post('/api/admin/batch-execute', async (c) => {
     return c.json({
       success: false,
       error: 'Failed to execute batch processing'
+    }, 500);
+  }
+});
+
+// KVクリーンアップAPI（管理者用）
+app.post('/api/admin/cleanup', async (c) => {
+  try {
+    // Adminトークン検証（フォールバック許容）
+    const auth = await verifyAdminToken(c);
+    if (!auth.ok) {
+      const addr = c.req.header('X-Admin-Address');
+      if (!addr || !(await isAdmin(c, addr))) return c.json({ success: false, error: 'Unauthorized', reason: (auth as any).reason }, 401);
+    }
+    
+    await cleanupOldData(c);
+    
+    return c.json({
+      success: true,
+      message: 'KV cleanup completed successfully'
+    });
+  } catch (error) {
+    console.error('❌ KV cleanup error:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to perform KV cleanup'
     }, 500);
   }
 });
