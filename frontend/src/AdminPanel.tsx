@@ -1,69 +1,7 @@
 import { useState, useEffect } from 'react';
+import type { DmSettings, DmMode } from './types';
 
-interface NFTCollection {
-  id: string;
-  name: string;
-  packageId: string;
-  roleId: string;
-  roleName: string;
-  description: string;
-  isActive: boolean;
-  createdAt: string;
-}
-
-interface DiscordRole {
-  id: string;
-  name: string;
-  color: number;
-  position: number;
-  permissions: string[];
-  mentionable: boolean;
-  hoist: boolean;
-}
-
-interface BatchConfig {
-  enabled: boolean;
-  interval: number;
-  lastRun: string;
-  nextRun: string;
-  maxUsersPerBatch: number;
-  retryAttempts: number;
-  enableDmNotifications: boolean;
-}
-
-interface BatchStats {
-  totalUsers: number;
-  processed: number;
-  revoked: number;
-  errors: number;
-  lastRun: string;
-  duration: number;
-}
-
-type DmMode = 'all' | 'new_and_revoke' | 'update_and_revoke' | 'revoke_only' | 'none';
-interface DmTemplate { title: string; description: string; color?: number }
-interface DmTemplates { successNew: DmTemplate; successUpdate: DmTemplate; failed: DmTemplate; revoked: DmTemplate }
-interface ChannelTemplates { 
-  verificationChannel: DmTemplate; 
-  verificationStart: DmTemplate;
-  verificationUrl?: string;
-}
-interface DmSettings { 
-  mode: DmMode; // 通常認証時のDM通知モード
-  batchMode: DmMode; // バッチ処理時のDM通知モード
-  templates: DmTemplates;
-  channelTemplates: ChannelTemplates;
-}
-
-interface VerifiedUser {
-  discordId: string;
-  address: string;
-  collectionId: string;
-  roleId: string;
-  roleName: string;
-  verifiedAt: string;
-  lastChecked?: string;
-}
+import type { NFTCollection, DiscordRole, BatchConfig, BatchStats, VerifiedUser } from './types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
 
@@ -1098,7 +1036,6 @@ function AdminPanel() {
               </div>
             )}
           </div>
-
 
         </div>
       )}

@@ -18,7 +18,7 @@ export interface VerifiedUser {
   roleId: string;
   roleName: string;
   verifiedAt: string;
-  lastChecked: string;
+  lastChecked?: string;
 }
 
 // 認証結果型定義
@@ -31,6 +31,11 @@ export interface VerificationResult {
 export interface DiscordRole {
   id: string;
   name: string;
+  color: number;
+  position: number;
+  permissions: string[];
+  mentionable: boolean;
+  hoist: boolean;
 }
 
 // バッチ処理統計型定義
@@ -51,8 +56,48 @@ export interface BatchConfig {
   nextRun: string;
   maxUsersPerBatch: number;
   retryAttempts: number;
+  enableDmNotifications: boolean;
 }
 
-// 型定義を明示的にエクスポート
-export type { NFTCollection, VerifiedUser, VerificationResult, DiscordRole, BatchStats, BatchConfig };
+// DM通知設定の型定義
+export type DmMode = 'all' | 'new_and_revoke' | 'update_and_revoke' | 'revoke_only' | 'none';
+
+export interface DmTemplate {
+  title: string;
+  description: string;
+  color?: number;
+}
+
+export interface DmTemplates {
+  successNew: DmTemplate;
+  successUpdate: DmTemplate;
+  failed: DmTemplate;
+  revoked: DmTemplate;
+}
+
+export interface ChannelTemplates {
+  verificationChannel: DmTemplate;
+  verificationStart: DmTemplate;
+  verificationUrl?: string;
+}
+
+export interface DmSettings {
+  mode: DmMode; // 通常認証時のDM通知モード
+  batchMode: DmMode; // バッチ処理時のDM通知モード
+  templates: DmTemplates;
+  channelTemplates: ChannelTemplates;
+}
+
+// デフォルトバッチ設定
+export const DEFAULT_BATCH_CONFIG: BatchConfig = {
+  enabled: false,
+  interval: 86400, // 24時間（秒）
+  lastRun: '',
+  nextRun: '',
+  maxUsersPerBatch: 100,
+  retryAttempts: 3,
+  enableDmNotifications: true
+};
+
+
 

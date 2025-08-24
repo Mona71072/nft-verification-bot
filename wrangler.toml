@@ -38,7 +38,11 @@ id = "dfd1a07f0e704320bd5324fc3102f3ba"
 
 [[env.production.kv_namespaces]]
 binding = "COLLECTION_STORE"
-id = "73186a10a62946718119aa112e87dba9" 
+id = "73186a10a62946718119aa112e87dba9"
+
+[[env.production.kv_namespaces]]
+binding = "DM_TEMPLATE_STORE"
+id = "38a39feef0d049e6b9f7a9d959ce73c1" 
 
 # Cron Schedules（バッチ自動実行）
 # より頻繁にチェックしてKV設定を優先する

@@ -18,7 +18,7 @@ export const config = {
   VERIFICATION_CHANNEL_NAME: 'nft-verification',
   VERIFICATION_URL: process.env.VERIFICATION_URL || 'https://main.nft-verification-frontend.pages.dev',
   
-  // 管理者ユーザーID（ボット作成者）
+  // 管理者ユーザーID
   ADMIN_USER_ID: process.env.ADMIN_USER_ID || 'test_admin_id',
   
   // 複数コレクション対応設定
@@ -39,13 +39,9 @@ export function validateConfig() {
   const missingFields = requiredFields.filter(field => !config[field as keyof typeof config]);
 
   if (missingFields.length > 0) {
-    console.error('❌ Missing required environment variables:', missingFields);
-    console.error('Please check your .env file or environment variables');
-    // テストモードでは警告のみで続行
-    console.log('⚠️ Running in test mode with default values');
-    return true;
+    console.error('Missing required environment variables:', missingFields);
+    return false;
   }
 
-  console.log('✅ All required configuration fields are set');
   return true;
 }

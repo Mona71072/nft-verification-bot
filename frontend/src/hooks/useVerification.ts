@@ -49,7 +49,6 @@ export const useVerification = (apiBaseUrl: string) => {
 
     try {
       // 1. ナンス生成
-      console.log('Requesting nonce...');
       const nonceResponse = await fetch(`${apiBaseUrl}/api/nonce`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -65,15 +64,12 @@ export const useVerification = (apiBaseUrl: string) => {
       }
 
       const nonce = nonceData.data.nonce;
-      console.log('Nonce received:', nonce);
 
       // 2. 署名メッセージの生成
       const timestamp = new Date().toISOString();
       const authMessage = `SXT NFT Verification\naddress=${account.address}\ndiscordId=${discordId.trim()}\nnonce=${nonce}\ntimestamp=${timestamp}`;
-      console.log('Auth message:', authMessage);
 
       // 3. メッセージを署名
-      console.log('Requesting signature...');
       const messageBytes = new TextEncoder().encode(authMessage);
       const signatureResult = await signPersonalMessage({
         message: messageBytes
@@ -82,12 +78,10 @@ export const useVerification = (apiBaseUrl: string) => {
         throw new Error('Signature failed. Please approve the signature in your wallet.');
       });
 
-      console.log('Signature result:', signatureResult);
-
       // 4. バックエンドに送信
       const requestBody = {
         signature: signatureResult.signature,
-        bytes: signatureResult.bytes, // ウォレットが実際に署名したbytesを使用
+        bytes: signatureResult.bytes,
         publicKey: (signatureResult as any)?.publicKey ?? (account as any)?.publicKey,
         address: account.address,
         discordId: discordId.trim(),
@@ -97,8 +91,6 @@ export const useVerification = (apiBaseUrl: string) => {
         collectionIds: selectedCollections
       };
 
-      console.log('Sending verification request:', requestBody);
-
       const response = await fetch(`${apiBaseUrl}/api/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -106,7 +98,6 @@ export const useVerification = (apiBaseUrl: string) => {
       });
 
       const data = await response.json();
-      console.log('Verification response:', data);
 
       if (data.success) {
         // 認証済みユーザーかどうかをチェック
@@ -124,7 +115,7 @@ export const useVerification = (apiBaseUrl: string) => {
           });
         }
       } else {
-        // サーバーからのエラーに応じたわかりやすい文言（errorCode優先）
+        // サーバーからのエラーに応じたわかりやすい文言
         const code = (data.errorCode as string) || '';
         const msg = typeof data.error === 'string' ? data.error : '';
         const notOwned = code === 'NO_NFTS' || msg.includes('No NFTs found');
