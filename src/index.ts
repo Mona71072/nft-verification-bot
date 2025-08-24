@@ -908,6 +908,7 @@ const DM_SETTINGS_KEY = 'dm_settings';
 
 // バッチ処理設定
 const BATCH_CONFIG_KEY = 'batch_config';
+const BATCH_STATS_KEY = 'batch_stats';
 
 async function getBatchConfig(c: Context<{ Bindings: Env }>): Promise<BatchConfig> {
   try {
@@ -939,6 +940,36 @@ async function updateBatchConfig(c: Context<{ Bindings: Env }>, config: Partial<
   
   await c.env.COLLECTION_STORE.put(BATCH_CONFIG_KEY, JSON.stringify(newConfig));
   return newConfig;
+}
+
+async function getBatchStats(c: Context<{ Bindings: Env }>): Promise<BatchStats> {
+  try {
+    const v = await c.env.COLLECTION_STORE.get(BATCH_STATS_KEY);
+    if (v) return JSON.parse(v) as BatchStats;
+  } catch (error) {
+    console.error('Failed to load batch stats:', error);
+  }
+  
+  // デフォルト統計を返す
+  const defaultStats: BatchStats = {
+    totalUsers: 0,
+    processed: 0,
+    revoked: 0,
+    errors: 0,
+    lastRun: '',
+    duration: 0
+  };
+  
+  await c.env.COLLECTION_STORE.put(BATCH_STATS_KEY, JSON.stringify(defaultStats));
+  return defaultStats;
+}
+
+async function updateBatchStats(c: Context<{ Bindings: Env }>, stats: Partial<BatchStats>): Promise<BatchStats> {
+  const currentStats = await getBatchStats(c);
+  const newStats = { ...currentStats, ...stats };
+  
+  await c.env.COLLECTION_STORE.put(BATCH_STATS_KEY, JSON.stringify(newStats));
+  return newStats;
 }
 
 async function getDmSettings(c: Context<{ Bindings: Env }>): Promise<DmSettings> {
@@ -2619,6 +2650,16 @@ app.post('/api/admin/batch-check', async (c) => {
       lastRun: new Date().toISOString()
     });
     
+    // バッチ統計を更新
+    await updateBatchStats(c, {
+      totalUsers: verifiedUsers.length,
+      processed: processedCount,
+      revoked: revokedCount,
+      errors: errorCount,
+      lastRun: new Date().toISOString(),
+      duration
+    });
+    
     console.log(`✅ Batch check completed: ${processedCount} processed, ${revokedCount} revoked, ${errorCount} errors in ${duration}s`);
     
     return c.json({
@@ -2861,17 +2902,11 @@ app.get('/api/admin/batch-config', async (c) => {
     }
     
     const config = await getBatchConfig(c);
+    const stats = await getBatchStats(c);
     
-    // 統計情報も一緒に取得
+    // 総ユーザー数を最新の状態に更新
     const users = await getVerifiedUsers(c);
-    const stats: BatchStats = {
-      totalUsers: users.length,
-      processed: 0,
-      revoked: 0,
-      errors: 0,
-      lastRun: config.lastRun,
-      duration: 0
-    };
+    stats.totalUsers = users.length;
     
     return c.json({
       success: true,
@@ -3031,6 +3066,16 @@ app.post('/api/admin/batch-execute', async (c) => {
     // バッチ設定を更新（最終実行時刻）
     await updateBatchConfig(c, {
       lastRun: new Date().toISOString()
+    });
+    
+    // バッチ統計を更新
+    await updateBatchStats(c, {
+      totalUsers: verifiedUsers.length,
+      processed: processedCount,
+      revoked: revokedCount,
+      errors: errorCount,
+      lastRun: new Date().toISOString(),
+      duration
     });
     
     console.log(`✅ Batch execution completed: ${processedCount} processed, ${revokedCount} revoked, ${errorCount} errors in ${duration}s`);
