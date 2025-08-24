@@ -2304,7 +2304,9 @@ app.post('/api/verify', async (c) => {
     // ウォレットから送信されたbytesを直接使用（スラッシュウォレット対応）
     const signatureData = { signature, bytes, publicKey: body.publicKey };
 
-    const isValidSignature = await verifySignedMessage(signatureData, null); // bytesを直接使用
+    // authMessageをUint8Arrayに変換
+    const expectedMessageBytes = new TextEncoder().encode(authMessage);
+    const isValidSignature = await verifySignedMessage(signatureData, expectedMessageBytes);
     
     if (!isValidSignature) {
       logError('Signature verification failed', {
