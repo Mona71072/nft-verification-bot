@@ -177,7 +177,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (!interaction.replied && !interaction.deferred) {
         await interaction.reply({
           content: 'Unknown button interaction.',
-          ephemeral: true
+          flags: MessageFlags.Ephemeral
         });
       }
     }
@@ -196,7 +196,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (!interaction.replied && !interaction.deferred) {
         await interaction.reply({
           content: 'An error occurred while processing your request.',
-          ephemeral: true
+          flags: MessageFlags.Ephemeral
         });
       }
     } catch (replyError) {
@@ -213,7 +213,7 @@ async function handleVerifyNFT(interaction: ButtonInteraction) {
       if (!interaction.replied && !interaction.deferred) {
         await interaction.reply({
           content: '設定エラー: VERIFICATION_URLが設定されていません。',
-          ephemeral: true
+          flags: MessageFlags.Ephemeral
         });
       }
       return;
@@ -247,8 +247,8 @@ async function handleVerifyNFT(interaction: ButtonInteraction) {
     if (!interaction.replied && !interaction.deferred) {
       await interaction.reply({
         embeds: [verifyEmbed],
-        ephemeral: true,
-        fetchReply: true
+        flags: MessageFlags.Ephemeral,
+        withResponse: true
       });
 
       // 5分後に自動削除

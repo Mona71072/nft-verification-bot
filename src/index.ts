@@ -73,6 +73,7 @@ app.use('*', async (c, next) => {
   }
   
   await next();
+  return;
 });
 
 // ヘルスチェック
@@ -3021,6 +3022,8 @@ app.put('/api/admin/batch-config', async (c) => {
 
 // バッチ実行API
 app.post('/api/admin/batch-execute', async (c) => {
+  let syncResult = { collectionsUpdated: 0, usersUpdated: 0 };
+  
   try {
     // Adminトークン検証（フォールバック許容）
     const auth = await verifyAdminToken(c);
@@ -3042,7 +3045,16 @@ app.post('/api/admin/batch-execute', async (c) => {
       }, 400);
     }
     
-    // 認証済みユーザー一覧を取得
+    // ロール名同期を実行
+    try {
+      syncResult = await syncRoleNames(c);
+      console.log(`🔄 Role sync result: ${syncResult.collectionsUpdated} collections, ${syncResult.usersUpdated} users updated`);
+    } catch (syncError) {
+      console.error('⚠️ Role sync failed, continuing with batch processing:', syncError);
+      // ロール名同期が失敗してもバッチ処理は続行
+    }
+    
+    // 認証済みユーザー一覧を取得（同期後の最新データ）
     const verifiedUsers = await getVerifiedUsers(c);
     console.log(`🔄 Starting batch verification for ${verifiedUsers.length} users`);
     
@@ -3114,6 +3126,16 @@ app.post('/api/admin/batch-execute', async (c) => {
             .map((col: any) => ({ roleId: col.roleId, roleName: col.roleName }));
 
           if (regrantRoles.length > 0) {
+            // ユーザー情報のroleNameを最新のものに更新
+            const updatedUser = {
+              ...user,
+              roleName: regrantRoles[0].roleName, // 最初のロール名を更新
+              lastChecked: new Date().toISOString()
+            };
+            
+            // 更新されたユーザー情報を保存
+            await addVerifiedUser(c, updatedUser);
+            
             await notifyDiscordBot(c, user.discordId, 'grant_roles', {
               address: user.address,
               discordId: user.discordId,
@@ -3151,6 +3173,7 @@ app.post('/api/admin/batch-execute', async (c) => {
     });
     
     console.log(`✅ Batch execution completed: ${processedCount} processed, ${revokedCount} revoked, ${errorCount} errors in ${duration}s`);
+    console.log(`📊 Role sync summary: ${syncResult.collectionsUpdated} collections, ${syncResult.usersUpdated} users updated`);
     
     return c.json({
       success: true,
@@ -3159,6 +3182,10 @@ app.post('/api/admin/batch-execute', async (c) => {
         processed: processedCount,
         revoked: revokedCount,
         errors: errorCount,
+        roleSync: {
+          collectionsUpdated: syncResult.collectionsUpdated,
+          usersUpdated: syncResult.usersUpdated
+        },
         duration
       }
     });
@@ -3168,6 +3195,32 @@ app.post('/api/admin/batch-execute', async (c) => {
     return c.json({
       success: false,
       error: 'Failed to execute batch processing'
+    }, 500);
+  }
+});
+
+// ロール名同期API（管理者用）
+app.post('/api/admin/sync-roles', async (c) => {
+  try {
+    // Adminトークン検証（フォールバック許容）
+    const auth = await verifyAdminToken(c);
+    if (!auth.ok) {
+      const addr = c.req.header('X-Admin-Address');
+      if (!addr || !(await isAdmin(c, addr))) return c.json({ success: false, error: 'Unauthorized', reason: (auth as any).reason }, 401);
+    }
+    
+    const syncResult = await syncRoleNames(c);
+    
+    return c.json({
+      success: true,
+      message: 'Role name synchronization completed successfully',
+      result: syncResult
+    });
+  } catch (error) {
+    console.error('❌ Role sync error:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to perform role name synchronization'
     }, 500);
   }
 });
@@ -3197,4 +3250,283 @@ app.post('/api/admin/cleanup', async (c) => {
   }
 });
 
-export default app;
+// ロール名同期関数
+async function syncRoleNames(c: Context<{ Bindings: Env }>): Promise<{ collectionsUpdated: number; usersUpdated: number }> {
+  try {
+    console.log('🔄 Starting role name synchronization...');
+    
+    // Discord Bot APIから最新のロール情報を取得
+    const discordBotUrl = c.env.DISCORD_BOT_API_URL || 'https://nft-verification-bot.onrender.com';
+    const response = await fetch(`${discordBotUrl}/api/roles`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'NFT-Verification-API/1.0',
+        'Accept': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      console.log(`⚠️ Failed to fetch Discord roles: ${response.status} ${response.statusText}`);
+      return { collectionsUpdated: 0, usersUpdated: 0 };
+    }
+    
+    const rolesData = await response.json() as any;
+    const roles = rolesData.data || rolesData.roles || [];
+    console.log(`✅ Fetched ${roles.length} Discord roles for synchronization`);
+    
+    let collectionsUpdated = 0;
+    let usersUpdated = 0;
+    
+    // 1. コレクションのロール名を更新
+    try {
+      const collectionsData = await c.env.COLLECTION_STORE.get('collections');
+      if (collectionsData) {
+        const collections = JSON.parse(collectionsData);
+        const updatedCollections = collections.map((collection: NFTCollection) => {
+          const matchingRole = roles.find((role: any) => role.id === collection.roleId);
+          if (matchingRole && matchingRole.name !== collection.roleName) {
+            console.log(`🔄 Updating collection role name: ${collection.name} (${collection.roleName} → ${matchingRole.name})`);
+            collectionsUpdated++;
+            return {
+              ...collection,
+              roleName: matchingRole.name
+            };
+          }
+          return collection;
+        });
+        
+        if (collectionsUpdated > 0) {
+          await c.env.COLLECTION_STORE.put('collections', JSON.stringify(updatedCollections));
+          console.log(`✅ Updated ${collectionsUpdated} collection role names`);
+        }
+      }
+    } catch (collectionError) {
+      console.error('❌ Error updating collection role names:', collectionError);
+      // コレクション更新が失敗してもユーザー更新は続行
+    }
+    
+    // 2. 認証済みユーザーのロール名を更新
+    try {
+      const verifiedUsers = await getVerifiedUsers(c);
+      if (verifiedUsers.length > 0) {
+        const updatedUsers = verifiedUsers.map((user: VerifiedUser) => {
+          const matchingRole = roles.find((role: any) => role.id === user.roleId);
+          if (matchingRole && matchingRole.name !== user.roleName) {
+            console.log(`🔄 Updating user role name: ${user.discordId} (${user.roleName} → ${matchingRole.name})`);
+            usersUpdated++;
+            return {
+              ...user,
+              roleName: matchingRole.name,
+              lastChecked: new Date().toISOString()
+            };
+          }
+          return user;
+        });
+        
+        if (usersUpdated > 0) {
+          await c.env.COLLECTION_STORE.put(VERIFIED_USERS_KEY, JSON.stringify(updatedUsers));
+          console.log(`✅ Updated ${usersUpdated} user role names`);
+        }
+      }
+    } catch (userError) {
+      console.error('❌ Error updating user role names:', userError);
+      // ユーザー更新が失敗しても処理は続行
+    }
+    
+    console.log(`✅ Role name synchronization completed: ${collectionsUpdated} collections, ${usersUpdated} users updated`);
+    return { collectionsUpdated, usersUpdated };
+    
+  } catch (error) {
+    console.error('❌ Error during role name synchronization:', error);
+    return { collectionsUpdated: 0, usersUpdated: 0 };
+  }
+}
+
+// スケジュールされたバッチ処理のハンドラー
+export default {
+  fetch: app.fetch,
+  scheduled: async (event: ScheduledEvent, env: Env, ctx: ExecutionContext) => {
+    console.log('🕐 Scheduled batch processing triggered');
+    
+    try {
+      // バッチ設定を取得
+      const batchConfigData = await env.COLLECTION_STORE.get('batch_config');
+      if (!batchConfigData) {
+        console.log('⚠️ No batch configuration found, skipping scheduled execution');
+        return;
+      }
+      
+      const batchConfig: BatchConfig = JSON.parse(batchConfigData);
+      
+      // バッチ処理が無効化されている場合はスキップ
+      if (!batchConfig.enabled) {
+        console.log('⚠️ Batch processing is disabled, skipping scheduled execution');
+        return;
+      }
+      
+      // 最後の実行時刻をチェック
+      const now = new Date();
+      const lastRun = batchConfig.lastRun ? new Date(batchConfig.lastRun) : null;
+      
+      if (lastRun) {
+        const timeSinceLastRun = now.getTime() - lastRun.getTime();
+        const minInterval = batchConfig.interval * 1000; // 秒をミリ秒に変換
+        
+        if (timeSinceLastRun < minInterval) {
+          console.log(`⚠️ Too soon since last run (${Math.round(timeSinceLastRun / 1000 / 60)} minutes ago), skipping`);
+          return;
+        }
+      }
+      
+      console.log('✅ Starting scheduled batch processing');
+      
+      // ロール名同期を実行
+      let syncResult = { collectionsUpdated: 0, usersUpdated: 0 };
+      try {
+        // 一時的なコンテキストを作成
+        const tempContext = {
+          env,
+          req: new Request('http://localhost/scheduled'),
+          res: new Response()
+        } as any;
+        
+        syncResult = await syncRoleNames(tempContext);
+        console.log(`🔄 Role sync result: ${syncResult.collectionsUpdated} collections, ${syncResult.usersUpdated} users updated`);
+      } catch (syncError) {
+        console.error('⚠️ Role sync failed, continuing with batch processing:', syncError);
+      }
+      
+      // 認証済みユーザー一覧を取得
+      const verifiedUsersData = await env.COLLECTION_STORE.get(VERIFIED_USERS_KEY);
+      const verifiedUsers = verifiedUsersData ? JSON.parse(verifiedUsersData) : [];
+      console.log(`📊 Processing ${verifiedUsers.length} verified users`);
+      
+      let processedCount = 0;
+      let revokedCount = 0;
+      let errorCount = 0;
+      
+      // バッチサイズ制限
+      const usersToProcess = verifiedUsers.slice(0, batchConfig.maxUsersPerBatch);
+      
+      for (const user of usersToProcess) {
+        try {
+          console.log(`🔍 Checking user ${user.discordId} (${user.address})`);
+          
+          // NFT保有確認（複数コレクション対応）
+          let hasNft = false;
+          
+          if (user.collectionId.includes(',')) {
+            // 複数コレクションの場合
+            const collectionIds = user.collectionId.split(',');
+            for (const collectionId of collectionIds) {
+              const collectionsData = await env.COLLECTION_STORE.get('collections');
+              const collections = collectionsData ? JSON.parse(collectionsData) : [];
+              const collection = collections.find((col: any) => col.id === collectionId);
+              
+              if (collection && collection.packageId) {
+                const hasNftInCollection = await hasTargetNft(user.address, collection.packageId);
+                if (hasNftInCollection) {
+                  hasNft = true;
+                  break;
+                }
+              }
+            }
+          } else {
+            // 単一コレクションの場合
+            const collectionsData = await env.COLLECTION_STORE.get('collections');
+            const collections = collectionsData ? JSON.parse(collectionsData) : [];
+            const collection = collections.find((col: any) => col.id === user.collectionId);
+            
+            if (collection && collection.packageId) {
+              hasNft = await hasTargetNft(user.address, collection.packageId);
+            }
+          }
+          
+          if (!hasNft) {
+            console.log(`❌ User ${user.discordId} no longer has NFT, revoking role`);
+            
+            // バッチ処理時のDM通知設定に従う
+            const tempContext = {
+              env,
+              req: new Request('http://localhost/scheduled'),
+              res: new Response()
+            } as any;
+            
+            const revoked = await notifyDiscordBot(tempContext, user.discordId, 'revoke_role', {
+              address: user.address,
+              collectionId: user.collectionId,
+              reason: 'NFT no longer owned (バッチ処理)',
+              timestamp: new Date().toISOString()
+            }, { isBatch: true, kind: 'revoked' });
+            
+            if (revoked) {
+              // ユーザーを削除
+              const updatedUsers = verifiedUsers.filter((u: any) => !(u.discordId === user.discordId && u.collectionId === user.collectionId));
+              await env.COLLECTION_STORE.put(VERIFIED_USERS_KEY, JSON.stringify(updatedUsers));
+              revokedCount++;
+            }
+          } else {
+            console.log(`✅ User ${user.discordId} still has NFT`);
+            // 所有している場合でも、万一ロールが外れていた時のため再付与を試みる
+            const collectionsData = await env.COLLECTION_STORE.get('collections');
+            const allCollections = collectionsData ? JSON.parse(collectionsData) : [];
+            const regrantCollectionIds = user.collectionId.split(',').filter(Boolean);
+            const regrantRoles = regrantCollectionIds
+              .map((cid: string) => allCollections.find((col: any) => col.id === cid))
+              .filter((col: any) => col && col.roleId)
+              .map((col: any) => ({ roleId: col.roleId, roleName: col.roleName }));
+
+            if (regrantRoles.length > 0) {
+              // ユーザー情報のroleNameを最新のものに更新
+              const updatedUser = {
+                ...user,
+                roleName: regrantRoles[0].roleName, // 最初のロール名を更新
+                lastChecked: new Date().toISOString()
+              };
+              
+              // 更新されたユーザー情報を保存
+              const updatedUsers = verifiedUsers.map((u: any) => 
+                (u.discordId === user.discordId && u.collectionId === user.collectionId) ? updatedUser : u
+              );
+              await env.COLLECTION_STORE.put(VERIFIED_USERS_KEY, JSON.stringify(updatedUsers));
+              
+              const tempContext = {
+                env,
+                req: new Request('http://localhost/scheduled'),
+                res: new Response()
+              } as any;
+              
+              await notifyDiscordBot(tempContext, user.discordId, 'grant_roles', {
+                address: user.address,
+                discordId: user.discordId,
+                collectionIds: regrantCollectionIds,
+                grantedRoles: regrantRoles,
+                reason: 'Ensuring roles are granted for verified user (バッチ処理)',
+                timestamp: new Date().toISOString()
+              }, { isBatch: true, kind: 'success_update' });
+            }
+          }
+          
+          processedCount++;
+        } catch (error) {
+          console.error(`❌ Error processing user ${user.discordId}:`, error);
+          errorCount++;
+        }
+      }
+      
+      // バッチ設定を更新（最終実行時刻）
+      const updatedBatchConfig = {
+        ...batchConfig,
+        lastRun: now.toISOString()
+      };
+      await env.COLLECTION_STORE.put('batch_config', JSON.stringify(updatedBatchConfig));
+      
+      console.log(`✅ Scheduled batch processing completed: ${processedCount} processed, ${revokedCount} revoked, ${errorCount} errors`);
+      console.log(`📊 Role sync summary: ${syncResult.collectionsUpdated} collections, ${syncResult.usersUpdated} users updated`);
+      
+    } catch (error) {
+      console.error('❌ Error in scheduled batch processing:', error);
+    }
+  }
+};
