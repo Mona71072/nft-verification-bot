@@ -1090,7 +1090,8 @@ async function updateDmSettings(c: Context<{ Bindings: Env }>, patch: Partial<Dm
     },
     channelTemplates: {
       verificationChannel: patch.channelTemplates?.verificationChannel ?? current.channelTemplates.verificationChannel,
-      verificationStart: patch.channelTemplates?.verificationStart ?? current.channelTemplates.verificationStart
+      verificationStart: patch.channelTemplates?.verificationStart ?? current.channelTemplates.verificationStart,
+      verificationUrl: patch.channelTemplates?.verificationUrl ?? current.channelTemplates.verificationUrl
     }
   };
   const dmStore = (c.env.DM_TEMPLATE_STORE || c.env.COLLECTION_STORE) as KVNamespace;
@@ -1112,6 +1113,14 @@ interface VerificationData {
   discordId?: string;
   reason?: string;
   [key: string]: any;
+}
+
+function unescapeTemplateText(text: string): string {
+  // 管理画面から保存された "\\n" などのリテラルを実際の改行・タブに変換
+  return text
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\r')
+    .replace(/\\t/g, '\t');
 }
 
 function buildMessageFromTemplate(template: DmTemplate, data: VerificationData): DmTemplate {
@@ -1151,6 +1160,10 @@ function buildMessageFromTemplate(template: DmTemplate, data: VerificationData):
     title = title.split(k).join(map[k]);
     description = description.split(k).join(map[k]);
   }
+  // エスケープされた改行等を実体化
+  title = unescapeTemplateText(title);
+  description = unescapeTemplateText(description);
+
   const result: DmTemplate = { title, description };
   if (template.color !== undefined) {
     result.color = template.color;
@@ -1255,7 +1268,10 @@ async function notifyDiscordBot(
           } else {
             overrideDescription = base.description;
           }
-          const customMessageObj: DmTemplate = { title: base.title, description: overrideDescription };
+          // エスケープされた改行等を実体化
+          const titleUnescaped = unescapeTemplateText(base.title);
+          const descriptionUnescaped = unescapeTemplateText(overrideDescription);
+          const customMessageObj: DmTemplate = { title: titleUnescaped, description: descriptionUnescaped };
           if (base.color !== undefined) {
             customMessageObj.color = base.color;
           }

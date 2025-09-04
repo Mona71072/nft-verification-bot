@@ -133,7 +133,7 @@ async function setupVerificationChannel() {
       .setTitle(channelTemplate.title)
       .setDescription(channelTemplate.description)
       .addFields(
-        { name: '�� Verification Steps', value: '1. Click the button\n2. Sign with your wallet\n3. NFT ownership check\n4. Role assignment', inline: false }
+        { name: '📋 Verification Steps', value: '1. Click the button\n2. Sign with your wallet\n3. NFT ownership check\n4. Role assignment', inline: false }
       )
       .setColor(channelTemplate.color || 0x57F287)
       .setFooter({ text: 'NFT Verification Bot' })
