@@ -1346,34 +1346,64 @@ function AdminPanel() {
                     <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
                       <h5>🎉 新規認証</h5>
                       <div><strong>タイトル:</strong> {dmSettings.templates.successNew.title}</div>
-                      <div><strong>内容:</strong> {dmSettings.templates.successNew.description}</div>
+                      <div>
+                        <strong>内容:</strong>
+                        <div style={{ whiteSpace: 'pre-wrap' }}>
+                          {(dmSettings.templates.successNew.description || '').replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')}
+                        </div>
+                      </div>
                     </div>
                     <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
                       <h5>🔄 認証更新</h5>
                       <div><strong>タイトル:</strong> {dmSettings.templates.successUpdate.title}</div>
-                      <div><strong>内容:</strong> {dmSettings.templates.successUpdate.description}</div>
+                      <div>
+                        <strong>内容:</strong>
+                        <div style={{ whiteSpace: 'pre-wrap' }}>
+                          {(dmSettings.templates.successUpdate.description || '').replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')}
+                        </div>
+                      </div>
                     </div>
                     <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
                       <h5>❌ 認証失敗</h5>
                       <div><strong>タイトル:</strong> {dmSettings.templates.failed.title}</div>
-                      <div><strong>内容:</strong> {dmSettings.templates.failed.description}</div>
+                      <div>
+                        <strong>内容:</strong>
+                        <div style={{ whiteSpace: 'pre-wrap' }}>
+                          {(dmSettings.templates.failed.description || '').replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')}
+                        </div>
+                      </div>
                     </div>
                     <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
                       <h5>🚫 ロール削除</h5>
                       <div><strong>タイトル:</strong> {dmSettings.templates.revoked.title}</div>
-                      <div><strong>内容:</strong> {dmSettings.templates.revoked.description}</div>
+                      <div>
+                        <strong>内容:</strong>
+                        <div style={{ whiteSpace: 'pre-wrap' }}>
+                          {(dmSettings.templates.revoked.description || '').replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')}
+                        </div>
+                      </div>
                     </div>
                     
                     <h4 style={{ marginBottom: '0.5rem', marginTop: '1rem' }}>📺 チャンネルテンプレート</h4>
                     <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
                       <h5>🎫 認証チャンネル</h5>
                       <div><strong>タイトル:</strong> {dmSettings.channelTemplates?.verificationChannel?.title || 'Not set'}</div>
-                      <div><strong>内容:</strong> {dmSettings.channelTemplates?.verificationChannel?.description || 'Not set'}</div>
+                      <div>
+                        <strong>内容:</strong>
+                        <div style={{ whiteSpace: 'pre-wrap' }}>
+                          {(dmSettings.channelTemplates?.verificationChannel?.description || 'Not set').replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')}
+                        </div>
+                      </div>
                     </div>
                     <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
                       <h5>▶️ 認証開始</h5>
                       <div><strong>タイトル:</strong> {dmSettings.channelTemplates?.verificationStart?.title || 'Not set'}</div>
-                      <div><strong>内容:</strong> {dmSettings.channelTemplates?.verificationStart?.description || 'Not set'}</div>
+                      <div>
+                        <strong>内容:</strong>
+                        <div style={{ whiteSpace: 'pre-wrap' }}>
+                          {(dmSettings.channelTemplates?.verificationStart?.description || 'Not set').replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')}
+                        </div>
+                      </div>
                     </div>
                     <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
                       <h5>🔗 認証URL</h5>

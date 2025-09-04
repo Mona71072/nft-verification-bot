@@ -15,6 +15,14 @@ import {
 import { config, validateConfig } from './config';
 import { startApiServer } from './api-server';
 
+function unescapeText(text: string | undefined): string {
+  if (!text) return '';
+  return text
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\r')
+    .replace(/\\t/g, '\t');
+}
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -128,10 +136,12 @@ async function setupVerificationChannel() {
 
     const templates = await getChannelTemplates();
     const channelTemplate = templates.verificationChannel;
+    const channelTitle = unescapeText(channelTemplate?.title);
+    const channelDescription = unescapeText(channelTemplate?.description);
 
     const verificationEmbed = new EmbedBuilder()
-      .setTitle(channelTemplate.title)
-      .setDescription(channelTemplate.description)
+      .setTitle(channelTitle)
+      .setDescription(channelDescription)
       .addFields(
         { name: '📋 Verification Steps', value: '1. Click the button\n2. Sign with your wallet\n3. NFT ownership check\n4. Role assignment', inline: false }
       )
@@ -221,13 +231,15 @@ async function handleVerifyNFT(interaction: ButtonInteraction) {
     
     const templates = await getChannelTemplates();
     const startTemplate = templates.verificationStart;
+    const startTitle = unescapeText(startTemplate?.title);
+    const startDescription = unescapeText(startTemplate?.description);
     
     const baseUrl = templates.verificationUrl || config.VERIFICATION_URL;
     const verificationUrl = `${baseUrl}?discord_id=${interaction.user.id}`;
     
     const verifyEmbed = new EmbedBuilder()
-      .setTitle(startTemplate.title)
-      .setDescription(startTemplate.description)
+      .setTitle(startTitle)
+      .setDescription(startDescription)
       .addFields(
         { 
           name: '🔗 Verification URL', 
