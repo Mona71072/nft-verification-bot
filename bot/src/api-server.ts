@@ -198,12 +198,28 @@ app.post('/api/mint', async (req, res) => {
 
     const args = Array.isArray(moveCall.argumentsTemplate) ? moveCall.argumentsTemplate : [];
     const builtArgs = args.map((a: string) => {
-      if (a === '{recipient}') return tx.pure.address(recipient);
-      if (a === '{imageUrl}') return tx.pure.string(imageUrl || '');
-      if (a === '{imageCid}') return tx.pure.string(imageCid || '');
-      if (a === '{imageMimeType}') return tx.pure.string(imageMimeType || '');
-      return tx.pure.string(String(a));
+      try {
+        if (a === '{recipient}') {
+          // アドレス形式の検証
+          if (!/^0x[a-fA-F0-9]{64}$/.test(recipient)) {
+            throw new Error(`Invalid recipient address format: ${recipient}`);
+          }
+          return tx.pure.address(recipient);
+        }
+        if (a === '{imageUrl}') return tx.pure.string(imageUrl || '');
+        if (a === '{imageCid}') return tx.pure.string(imageCid || '');
+        if (a === '{imageMimeType}') return tx.pure.string(imageMimeType || '');
+        return tx.pure.string(String(a));
+      } catch (argError) {
+        console.error(`Error building argument ${a}:`, argError);
+        throw new Error(`Invalid argument template: ${a}`);
+      }
     });
+
+    // Move呼び出しターゲットの検証
+    if (!/^0x[a-fA-F0-9]+::[a-zA-Z_][a-zA-Z0-9_]*::[a-zA-Z_][a-zA-Z0-9_]*$/.test(moveCall.target)) {
+      throw new Error(`Invalid move call target format: ${moveCall.target}`);
+    }
 
     tx.moveCall({
       target: moveCall.target,
@@ -211,9 +227,22 @@ app.post('/api/mint', async (req, res) => {
       arguments: builtArgs
     });
 
-    if (moveCall.gasBudget) tx.setGasBudget(Number(moveCall.gasBudget));
+    // ガスバジェットの設定（デフォルト値で安全性確保）
+    const gasBudget = moveCall.gasBudget ? Number(moveCall.gasBudget) : 50000000; // 0.05 SUI
+    if (gasBudget < 1000000 || gasBudget > 1000000000) { // 0.001 SUI ~ 1 SUI
+      throw new Error(`Gas budget out of safe range: ${gasBudget}`);
+    }
+    tx.setGasBudget(gasBudget);
 
-    const result = await client.signAndExecuteTransaction({ signer: kp, transaction: tx, options: { showEffects: true } });
+    const result = await client.signAndExecuteTransaction({ 
+      signer: kp, 
+      transaction: tx, 
+      options: { 
+        showEffects: true,
+        showEvents: true,
+        showObjectChanges: true
+      }
+    });
 
     return res.json({ success: true, txDigest: result.digest });
   } catch (e: any) {

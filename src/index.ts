@@ -140,6 +140,11 @@ app.post('/api/mint', async (c) => {
     const active = Boolean(ev.active) && ev.startAt && ev.endAt && now >= Date.parse(ev.startAt) && now <= Date.parse(ev.endAt);
     if (!active) return c.json({ success: false, error: 'Event is not active' }, 400);
 
+    // アドレス形式の検証
+    if (!/^0x[a-fA-F0-9]{64}$/.test(address)) {
+      return c.json({ success: false, error: 'Invalid address format' }, 400);
+    }
+
     // 重複防止（1アドレス1回）
     const addrLower = String(address).toLowerCase();
     const mintedKey = `minted:${eventId}:${addrLower}`;

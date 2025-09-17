@@ -108,9 +108,15 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
       if (!finalUrl) {
         setMessage('アップロードは成功しましたがURLを特定できませんでした。手動で設定してください。');
       } else {
-        if (editingEvent) setEditingEvent({ ...(editingEvent as AdminMintEvent), imageUrl: finalUrl });
-        else setNewEvent({ ...newEvent, imageUrl: finalUrl });
-        setMessage('画像URLを反映しました');
+        // CIDとURLの両方を設定（CID優先の運用）
+        const updates = {
+          imageUrl: finalUrl,
+          imageCid: cid || '',
+          imageMimeType: uploadFile.type || 'application/octet-stream'
+        };
+        if (editingEvent) setEditingEvent({ ...(editingEvent as AdminMintEvent), ...updates });
+        else setNewEvent({ ...newEvent, ...updates });
+        setMessage(`画像アップロード完了: ${cid ? `CID=${cid}` : 'URL設定済み'}`);
       }
     } catch (e: any) {
       setMessage(e?.message || 'アップロードに失敗しました');
