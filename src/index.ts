@@ -12,6 +12,8 @@ import { DmSettings, DmTemplate, DmMode, DEFAULT_DM_SETTINGS, BatchConfig, Batch
   }
 }
 
+ 
+
 // NFTコレクション型定義
 interface NFTCollection {
   id: string;
@@ -83,6 +85,103 @@ app.get('/', (c) => {
     message: 'NFT Verification API',
     timestamp: new Date().toISOString()
   });
+});
+
+// 公開: イベント情報（アクティブ状態を付加）
+app.get('/api/events/:id/public', async (c) => {
+  try {
+    const store = (c.env as any).EVENT_STORE as KVNamespace | undefined;
+    if (!store) {
+      return c.json({ success: false, error: 'EVENT_STORE is not available' }, 503);
+    }
+
+    const id = c.req.param('id');
+    const listStr = await store.get('events');
+    const list = listStr ? JSON.parse(listStr) : [];
+    const ev = Array.isArray(list) ? list.find((e: any) => e && e.id === id) : null;
+    if (!ev) {
+      return c.json({ success: false, error: 'Event not found' }, 404);
+    }
+
+    const now = Date.now();
+    const active = Boolean(ev.active) && ev.startAt && ev.endAt && now >= Date.parse(ev.startAt) && now <= Date.parse(ev.endAt);
+
+    return c.json({ success: true, data: { ...ev, active } });
+  } catch (error) {
+    logError('Failed to get public event', error);
+    return c.json({ success: false, error: 'Failed to load event' }, 500);
+  }
+});
+
+// ミントAPI（署名検証・イベント期間チェック・重複防止・スポンサー委譲）
+app.post('/api/mint', async (c) => {
+  try {
+    const eventStore = (c.env as any).EVENT_STORE as KVNamespace | undefined;
+    const mintedStore = (c.env as any).MINTED_STORE as KVNamespace | undefined;
+    if (!eventStore) return c.json({ success: false, error: 'EVENT_STORE is not available' }, 503);
+    if (!mintedStore) return c.json({ success: false, error: 'MINTED_STORE is not available' }, 503);
+
+    const body = await c.req.json().catch(() => ({}));
+    const { eventId, address, signature, bytes, publicKey, authMessage } = body || {};
+
+    const missing = ['eventId', 'address', 'signature', 'authMessage'].filter((k) => !(body && body[k]));
+    if (missing.length) {
+      return c.json({ success: false, error: `Missing: ${missing.join(', ')}` }, 400);
+    }
+
+    // イベント取得
+    const listStr = await eventStore.get('events');
+    const list = listStr ? JSON.parse(listStr) : [];
+    const ev = Array.isArray(list) ? list.find((e: any) => e && e.id === eventId) : null;
+    if (!ev) return c.json({ success: false, error: 'Event not found' }, 404);
+
+    // 期間チェック
+    const now = Date.now();
+    const active = Boolean(ev.active) && ev.startAt && ev.endAt && now >= Date.parse(ev.startAt) && now <= Date.parse(ev.endAt);
+    if (!active) return c.json({ success: false, error: 'Event is not active' }, 400);
+
+    // 重複防止（1アドレス1回）
+    const addrLower = String(address).toLowerCase();
+    const mintedKey = `minted:${eventId}:${addrLower}`;
+    const already = await mintedStore.get(mintedKey);
+    if (already) return c.json({ success: false, error: 'Already minted for this event' }, 400);
+
+    // 署名検証
+    const ok = await verifySignedMessage({ signature, bytes, publicKey }, new TextEncoder().encode(authMessage));
+    if (!ok) return c.json({ success: false, error: 'Invalid signature' }, 400);
+
+    // スポンサーAPIへ委譲
+    const sponsorUrl = (c.env as any).MINT_SPONSOR_API_URL || (c.env as any).DISCORD_BOT_API_URL;
+    if (!sponsorUrl) return c.json({ success: false, error: 'Sponsor API URL is not configured' }, 500);
+
+    const resp = await fetch(`${sponsorUrl}/api/mint`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        eventId: ev.id,
+        recipient: address,
+        moveCall: ev.moveCall,
+        imageUrl: ev.imageUrl,
+        collectionId: ev.collectionId
+      })
+    });
+    const sponsorRes: any = await resp.json().catch(() => null);
+    if (!resp.ok || !sponsorRes?.success) {
+      return c.json({ success: false, error: sponsorRes?.error || `Sponsor mint failed (${resp.status})` }, 502);
+    }
+
+    const txDigest = sponsorRes.txDigest || sponsorRes.data?.txDigest || null;
+    await mintedStore.put(
+      mintedKey,
+      JSON.stringify({ tx: txDigest, at: new Date().toISOString() }),
+      { expirationTtl: 60 * 60 * 24 * 365 }
+    );
+
+    return c.json({ success: true, data: { txDigest } });
+  } catch (error) {
+    logError('Mint API error', error);
+    return c.json({ success: false, error: 'Mint API error' }, 500);
+  }
 });
 
 // ================
@@ -1847,6 +1946,99 @@ app.get('/api/admin/addresses', async (c) => {
       success: false,
       error: 'Failed to get admin addresses'
     }, 500);
+  }
+});
+
+// 管理者向け: イベント一覧取得
+app.get('/api/admin/events', async (c) => {
+  try {
+    const store = (c.env as any).EVENT_STORE as KVNamespace | undefined;
+    if (!store) return c.json({ success: false, error: 'EVENT_STORE is not available' }, 503);
+    const listStr = await store.get('events');
+    const list = listStr ? JSON.parse(listStr) : [];
+    return c.json({ success: true, data: list });
+  } catch (error) {
+    logError('Get events failed', error);
+    return c.json({ success: false, error: 'Failed to get events' }, 500);
+  }
+});
+
+// 管理者向け: イベント作成
+app.post('/api/admin/events', async (c) => {
+  try {
+    const admin = c.req.header('X-Admin-Address');
+    if (!admin || !(await isAdmin(c, admin))) return c.json({ success: false, error: 'forbidden' }, 403);
+    const store = (c.env as any).EVENT_STORE as KVNamespace | undefined;
+    if (!store) return c.json({ success: false, error: 'EVENT_STORE is not available' }, 503);
+
+    const body = await c.req.json().catch(() => ({}));
+    const { name, description = '', collectionId, imageUrl = '', active = true, startAt, endAt, moveCall } = body || {};
+    if (!name || !collectionId || !startAt || !endAt) {
+      return c.json({ success: false, error: 'Missing required fields: name, collectionId, startAt, endAt' }, 400);
+    }
+
+    const listStr = await store.get('events');
+    const list = listStr ? JSON.parse(listStr) : [];
+    const ev = {
+      id: Date.now().toString(),
+      name,
+      description,
+      collectionId,
+      imageUrl,
+      active: Boolean(active),
+      startAt,
+      endAt,
+      moveCall: moveCall || undefined
+    };
+    list.push(ev);
+    await store.put('events', JSON.stringify(list));
+    return c.json({ success: true, data: ev });
+  } catch (error) {
+    logError('Create event failed', error);
+    return c.json({ success: false, error: 'Failed to create event' }, 500);
+  }
+});
+
+// 管理者向け: イベント更新
+app.put('/api/admin/events/:id', async (c) => {
+  try {
+    const admin = c.req.header('X-Admin-Address');
+    if (!admin || !(await isAdmin(c, admin))) return c.json({ success: false, error: 'forbidden' }, 403);
+    const store = (c.env as any).EVENT_STORE as KVNamespace | undefined;
+    if (!store) return c.json({ success: false, error: 'EVENT_STORE is not available' }, 503);
+
+    const id = c.req.param('id');
+    const patch = await c.req.json().catch(() => ({}));
+    const listStr = await store.get('events');
+    const list = listStr ? JSON.parse(listStr) : [];
+    const idx = Array.isArray(list) ? list.findIndex((e: any) => e && e.id === id) : -1;
+    if (idx < 0) return c.json({ success: false, error: 'Event not found' }, 404);
+    list[idx] = { ...list[idx], ...patch, id };
+    await store.put('events', JSON.stringify(list));
+    return c.json({ success: true, data: list[idx] });
+  } catch (error) {
+    logError('Update event failed', error);
+    return c.json({ success: false, error: 'Failed to update event' }, 500);
+  }
+});
+
+// 管理者向け: イベント削除
+app.delete('/api/admin/events/:id', async (c) => {
+  try {
+    const admin = c.req.header('X-Admin-Address');
+    if (!admin || !(await isAdmin(c, admin))) return c.json({ success: false, error: 'forbidden' }, 403);
+    const store = (c.env as any).EVENT_STORE as KVNamespace | undefined;
+    if (!store) return c.json({ success: false, error: 'EVENT_STORE is not available' }, 503);
+
+    const id = c.req.param('id');
+    const listStr = await store.get('events');
+    const list = listStr ? JSON.parse(listStr) : [];
+    const newList = Array.isArray(list) ? list.filter((e: any) => e && e.id !== id) : [];
+    await store.put('events', JSON.stringify(newList));
+    return c.json({ success: true });
+  } catch (error) {
+    logError('Delete event failed', error);
+    return c.json({ success: false, error: 'Failed to delete event' }, 500);
   }
 });
 

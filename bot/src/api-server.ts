@@ -2,6 +2,10 @@ import express from 'express';
 import { config } from './config';
 import { grantRoleToUser, revokeRoleFromUser, sendVerificationFailureMessage } from './index';
 import { client } from './index';
+import { SuiClient, getFullnodeUrl } from '@mysten/sui/client';
+import { Transaction } from '@mysten/sui/transactions';
+import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
+import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
 
 const app = express();
 const PORT = config.PORT;
@@ -33,6 +37,24 @@ app.use((req, res, next) => {
   
   next();
 });
+
+function getSuiClient() {
+  const net = (process.env.SUI_NETWORK || 'mainnet') as 'mainnet' | 'testnet' | 'devnet';
+  return new SuiClient({ url: getFullnodeUrl(net) });
+}
+
+function getSponsorKeypair() {
+  const secret = process.env.SPONSOR_SECRET_KEY || '';
+  const mnemonic = process.env.SPONSOR_MNEMONIC || '';
+  if (secret) {
+    const { secretKey } = decodeSuiPrivateKey(secret);
+    return Ed25519Keypair.fromSecretKey(secretKey);
+  }
+  if (mnemonic) {
+    return Ed25519Keypair.deriveKeypair(mnemonic);
+  }
+  throw new Error('SPONSOR_SECRET_KEY or SPONSOR_MNEMONIC must be set');
+}
 
 // Cloudflare Workersからの認証結果通知エンドポイント
 app.post('/notify', async (req, res) => {
@@ -159,6 +181,42 @@ app.post('/api/discord-action', async (req, res) => {
       success: false,
       error: 'Internal server error'
     });
+  }
+});
+
+// スポンサー実行: Suiでのミント処理を代理送信
+app.post('/api/mint', async (req, res) => {
+  try {
+    const { eventId, recipient, moveCall, imageUrl } = req.body || {};
+    if (!eventId || !recipient || !moveCall?.target) {
+      return res.status(400).json({ success: false, error: 'Missing eventId/recipient/moveCall.target' });
+    }
+
+    const client = getSuiClient();
+    const kp = getSponsorKeypair();
+    const tx = new Transaction();
+
+    const args = Array.isArray(moveCall.argumentsTemplate) ? moveCall.argumentsTemplate : [];
+    const builtArgs = args.map((a: string) => {
+      if (a === '{recipient}') return tx.pure.address(recipient);
+      if (a === '{imageUrl}') return tx.pure.string(imageUrl || '');
+      return tx.pure.string(String(a));
+    });
+
+    tx.moveCall({
+      target: moveCall.target,
+      typeArguments: Array.isArray(moveCall.typeArguments) ? moveCall.typeArguments : [],
+      arguments: builtArgs
+    });
+
+    if (moveCall.gasBudget) tx.setGasBudget(Number(moveCall.gasBudget));
+
+    const result = await client.signAndExecuteTransaction({ signer: kp, transaction: tx, options: { showEffects: true } });
+
+    return res.json({ success: true, txDigest: result.digest });
+  } catch (e: any) {
+    console.error('Sponsor mint failed:', e);
+    return res.status(500).json({ success: false, error: e?.message || 'Sponsor mint failed' });
   }
 });
 

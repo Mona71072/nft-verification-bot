@@ -99,5 +99,23 @@ export const DEFAULT_BATCH_CONFIG: BatchConfig = {
   enableDmNotifications: true
 };
 
+// 管理UI用のイベント型
+export interface AdminMintEvent {
+  id: string;
+  name: string;
+  description?: string;
+  collectionId: string;
+  imageUrl?: string;
+  active: boolean;
+  startAt: string; // ISO
+  endAt: string;   // ISO
+  moveCall?: {
+    target?: string;
+    typeArguments?: string[];
+    argumentsTemplate?: string[];
+    gasBudget?: number;
+  };
+}
+
 
 
