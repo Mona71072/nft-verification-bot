@@ -146,6 +146,17 @@ app.post('/api/mint', async (c) => {
     const already = await mintedStore.get(mintedKey);
     if (already) return c.json({ success: false, error: 'Already minted for this event' }, 400);
 
+    // totalCap チェック（上限到達時はミント不可）
+    if (typeof ev.totalCap === 'number' && ev.totalCap >= 0) {
+      // mintedStore 内のイベントごとの総ミント数をカウント
+      const mintedCountKey = `minted_count:${eventId}`;
+      const mintedCountStr = await mintedStore.get(mintedCountKey);
+      const mintedCount = mintedCountStr ? Number(mintedCountStr) : 0;
+      if (mintedCount >= ev.totalCap) {
+        return c.json({ success: false, error: 'Mint cap reached for this event' }, 400);
+      }
+    }
+
     // 署名検証
     const ok = await verifySignedMessage({ signature, bytes, publicKey }, new TextEncoder().encode(authMessage));
     if (!ok) return c.json({ success: false, error: 'Invalid signature' }, 400);
@@ -162,6 +173,8 @@ app.post('/api/mint', async (c) => {
         recipient: address,
         moveCall: ev.moveCall,
         imageUrl: ev.imageUrl,
+        imageCid: ev.imageCid,
+        imageMimeType: ev.imageMimeType,
         collectionId: ev.collectionId
       })
     });
@@ -176,6 +189,14 @@ app.post('/api/mint', async (c) => {
       JSON.stringify({ tx: txDigest, at: new Date().toISOString() }),
       { expirationTtl: 60 * 60 * 24 * 365 }
     );
+
+    // イベント総ミント数をインクリメント
+    if (typeof ev.totalCap === 'number' && ev.totalCap >= 0) {
+      const mintedCountKey = `minted_count:${eventId}`;
+      const mintedCountStr = await mintedStore.get(mintedCountKey);
+      const mintedCount = mintedCountStr ? Number(mintedCountStr) : 0;
+      await mintedStore.put(mintedCountKey, String(mintedCount + 1));
+    }
 
     return c.json({ success: true, data: { txDigest } });
   } catch (error) {
@@ -1956,10 +1977,67 @@ app.get('/api/admin/events', async (c) => {
     if (!store) return c.json({ success: false, error: 'EVENT_STORE is not available' }, 503);
     const listStr = await store.get('events');
     const list = listStr ? JSON.parse(listStr) : [];
-    return c.json({ success: true, data: list });
+    // mintedCount を付与
+    const mintedStore = (c.env as any).MINTED_STORE as KVNamespace | undefined;
+    const withStats = await Promise.all(list.map(async (ev: any) => {
+      if (!mintedStore) return ev;
+      const mintedCountStr = await mintedStore.get(`minted_count:${ev.id}`);
+      const mintedCount = mintedCountStr ? Number(mintedCountStr) : 0;
+      return { ...ev, mintedCount };
+    }));
+    return c.json({ success: true, data: withStats });
   } catch (error) {
     logError('Get events failed', error);
     return c.json({ success: false, error: 'Failed to get events' }, 500);
+  }
+});
+
+// 管理者向け: イベント有効/無効トグル
+app.post('/api/admin/events/:id/toggle-active', async (c) => {
+  try {
+    const admin = c.req.header('X-Admin-Address');
+    if (!admin || !(await isAdmin(c, admin))) return c.json({ success: false, error: 'forbidden' }, 403);
+    const store = (c.env as any).EVENT_STORE as KVNamespace | undefined;
+    if (!store) return c.json({ success: false, error: 'EVENT_STORE is not available' }, 503);
+
+    const id = c.req.param('id');
+    const listStr = await store.get('events');
+    const list = listStr ? JSON.parse(listStr) : [];
+    const idx = Array.isArray(list) ? list.findIndex((e: any) => e && e.id === id) : -1;
+    if (idx < 0) return c.json({ success: false, error: 'Event not found' }, 404);
+    const current = list[idx];
+    list[idx] = { ...current, active: !current.active, updatedAt: new Date().toISOString() };
+    await store.put('events', JSON.stringify(list));
+    return c.json({ success: true, data: list[idx] });
+  } catch (error) {
+    logError('Toggle event active failed', error);
+    return c.json({ success: false, error: 'Failed to toggle event' }, 500);
+  }
+});
+
+// 管理者向け: イベント統計
+app.get('/api/admin/events/:id/stats', async (c) => {
+  try {
+    const admin = c.req.header('X-Admin-Address');
+    if (!admin || !(await isAdmin(c, admin))) return c.json({ success: false, error: 'forbidden' }, 403);
+    const eventStore = (c.env as any).EVENT_STORE as KVNamespace | undefined;
+    const mintedStore = (c.env as any).MINTED_STORE as KVNamespace | undefined;
+    if (!eventStore || !mintedStore) return c.json({ success: false, error: 'Store not available' }, 503);
+
+    const id = c.req.param('id');
+    const listStr = await eventStore.get('events');
+    const list = listStr ? JSON.parse(listStr) : [];
+    const ev = Array.isArray(list) ? list.find((e: any) => e && e.id === id) : null;
+    if (!ev) return c.json({ success: false, error: 'Event not found' }, 404);
+
+    const mintedCountStr = await mintedStore.get(`minted_count:${id}`);
+    const mintedCount = mintedCountStr ? Number(mintedCountStr) : 0;
+    const totalCap = typeof ev.totalCap === 'number' ? ev.totalCap : null;
+    const remaining = totalCap != null ? Math.max(totalCap - mintedCount, 0) : null;
+    return c.json({ success: true, data: { mintedCount, totalCap, remaining } });
+  } catch (error) {
+    logError('Get event stats failed', error);
+    return c.json({ success: false, error: 'Failed to get stats' }, 500);
   }
 });
 
@@ -1972,23 +2050,37 @@ app.post('/api/admin/events', async (c) => {
     if (!store) return c.json({ success: false, error: 'EVENT_STORE is not available' }, 503);
 
     const body = await c.req.json().catch(() => ({}));
-    const { name, description = '', collectionId, imageUrl = '', active = true, startAt, endAt, moveCall } = body || {};
+    const { name, description = '', collectionId, imageUrl = '', imageCid = '', imageMimeType = '', active = true, startAt, endAt, moveCall, totalCap } = body || {};
     if (!name || !collectionId || !startAt || !endAt) {
       return c.json({ success: false, error: 'Missing required fields: name, collectionId, startAt, endAt' }, 400);
     }
 
     const listStr = await store.get('events');
     const list = listStr ? JSON.parse(listStr) : [];
+    // moveCall のデフォルト（環境変数で提供されている場合）
+    const fallbackMoveCall = (!moveCall || !moveCall.target) && (c.env as any).DEFAULT_MOVE_TARGET
+      ? {
+          target: (c.env as any).DEFAULT_MOVE_TARGET,
+          typeArguments: [],
+          argumentsTemplate: imageCid ? ['{recipient}', '{imageCid}', '{imageMimeType}'] : ['{recipient}', '{imageUrl}']
+        }
+      : moveCall;
+
     const ev = {
       id: Date.now().toString(),
       name,
       description,
       collectionId,
       imageUrl,
+      imageCid,
+      imageMimeType,
       active: Boolean(active),
       startAt,
       endAt,
-      moveCall: moveCall || undefined
+      moveCall: fallbackMoveCall || undefined,
+      totalCap: typeof totalCap === 'number' ? totalCap : undefined,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
     list.push(ev);
     await store.put('events', JSON.stringify(list));
@@ -2013,7 +2105,7 @@ app.put('/api/admin/events/:id', async (c) => {
     const list = listStr ? JSON.parse(listStr) : [];
     const idx = Array.isArray(list) ? list.findIndex((e: any) => e && e.id === id) : -1;
     if (idx < 0) return c.json({ success: false, error: 'Event not found' }, 404);
-    list[idx] = { ...list[idx], ...patch, id };
+    list[idx] = { ...list[idx], ...patch, id, updatedAt: new Date().toISOString() };
     await store.put('events', JSON.stringify(list));
     return c.json({ success: true, data: list[idx] });
   } catch (error) {

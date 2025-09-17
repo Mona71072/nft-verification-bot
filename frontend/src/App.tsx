@@ -132,30 +132,18 @@ function App() {
           justifyContent: 'space-between',
           alignItems: 'center'
         }}>
-          <h1 style={{
+          <a href="/" style={{
             fontSize: '1.125rem',
             fontWeight: 700,
             color: '#1a1a1a',
-            margin: 0
+            margin: 0,
+            textDecoration: 'none',
+            cursor: 'pointer'
           }}>
             SyndicateXTokyo
-          </h1>
+          </a>
           {isAdmin && (
-            <button
-              onClick={() => setCurrentPage(currentPage === 'admin' ? 'verification' : 'admin')}
-              style={{
-                padding: '0.5rem 0.75rem',
-                background: currentPage === 'admin' ? '#3b82f6' : 'transparent',
-                color: currentPage === 'admin' ? 'white' : '#374151',
-                border: currentPage === 'admin' ? 'none' : '1px solid #d1d5db',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                fontSize: '0.75rem',
-                fontWeight: 600
-              }}
-            >
-              {currentPage === 'admin' ? '認証ページへ' : '管理者パネル'}
-            </button>
+            <a href="/admin" style={{ padding: '0.5rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '8px', color: '#374151', textDecoration: 'none', fontSize: '0.75rem', fontWeight: 600 }}>管理者ページ</a>
           )}
         </div>
       </nav>
@@ -169,8 +157,33 @@ function App() {
       }}>
         {(() => {
           try {
-            if (typeof window !== 'undefined' && window.location.pathname.startsWith('/mint')) return <MintPage />;
-            return currentPage === 'verification' ? <NFTVerification /> : <AdminPage />;
+            if (typeof window !== 'undefined') {
+              const path = window.location.pathname;
+              if (path.startsWith('/mint')) return <MintPage />;
+              if (path.startsWith('/admin')) {
+                if (!isAdmin) {
+                  return (
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      minHeight: '60vh',
+                      color: 'white',
+                      textAlign: 'center'
+                    }}>
+                      <div>
+                        <h2>アクセス拒否</h2>
+                        <p>管理者権限が必要です。ウォレットを接続してください。</p>
+                      </div>
+                    </div>
+                  );
+                }
+                if (path === '/admin') return <AdminPanel mode="admin" />;
+                if (path.startsWith('/admin/roles')) return <AdminPanel mode="roles" />;
+                if (path.startsWith('/admin/mint')) return <AdminPanel mode="mint" />;
+              }
+            }
+            return <NFTVerification />;
           } catch (error) {
             console.error('Component rendering error:', error);
             return (

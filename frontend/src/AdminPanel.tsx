@@ -4,8 +4,12 @@ import type { DmSettings, DmMode } from './types';
 import type { NFTCollection, DiscordRole, BatchConfig, BatchStats, VerifiedUser, AdminMintEvent } from './types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
+const DEFAULT_WALRUS_UPLOAD_URL = (import.meta as any).env?.VITE_WALRUS_UPLOAD_URL || '';
+const DEFAULT_WALRUS_GATEWAY = (import.meta as any).env?.VITE_WALRUS_GATEWAY || '';
 
-function AdminPanel() {
+type AdminMode = 'admin' | 'roles' | 'mint' | undefined;
+
+function AdminPanel({ mode }: { mode?: AdminMode }) {
   const [collections, setCollections] = useState<NFTCollection[]>([]);
   const [discordRoles, setDiscordRoles] = useState<DiscordRole[]>([]);
   const [loading, setLoading] = useState(false);
@@ -16,7 +20,17 @@ function AdminPanel() {
   const [batchConfig, setBatchConfig] = useState<BatchConfig | null>(null);
   const [batchStats, setBatchStats] = useState<BatchStats | null>(null);
   const [batchLoading, setBatchLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'collections' | 'events' | 'batch' | 'users' | 'admins' | 'dm-settings'>('collections');
+  const [activeTab, setActiveTab] = useState<'collections' | 'events' | 'batch' | 'users' | 'admins' | 'dm-settings'>(
+    mode === 'mint' ? 'events' : mode === 'admin' ? 'admins' : 'collections'
+  );
+
+  // 表示タブをmodeで制限
+  const allowedTabs: Array<'collections' | 'events' | 'batch' | 'users' | 'admins' | 'dm-settings'> =
+    mode === 'mint'
+      ? ['events']
+      : mode === 'admin'
+      ? ['admins']
+      : ['collections', 'batch', 'users', 'dm-settings'];
 
   // Events 管理用ステート
   const [events, setEvents] = useState<AdminMintEvent[]>([]);
@@ -29,8 +43,88 @@ function AdminPanel() {
     active: true,
     startAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
     endAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-    moveCall: { target: '', typeArguments: [], argumentsTemplate: ['{recipient}', '{imageUrl}'], gasBudget: 20000000 }
+    moveCall: { target: '', typeArguments: [], argumentsTemplate: ['{recipient}', '{imageUrl}'], gasBudget: 20000000 },
+    totalCap: undefined
   });
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+
+  // Walrus 設定・アップロードUI用
+  const [walrusUploadUrl, setWalrusUploadUrl] = useState<string>(DEFAULT_WALRUS_UPLOAD_URL);
+  const [walrusGatewayBase, setWalrusGatewayBase] = useState<string>(DEFAULT_WALRUS_GATEWAY);
+  const [uploading, setUploading] = useState<boolean>(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+
+  const resolveCidFromResponse = (obj: any): string | null => {
+    if (!obj || typeof obj !== 'object') return null;
+    // 代表的なキー候補を探索
+    const candidates = ['cid', 'hash', 'digest', 'id'];
+    for (const key of candidates) {
+      if (typeof obj[key] === 'string' && obj[key]) return obj[key];
+    }
+    // ネスト探索（1階層のみ）
+    for (const k of Object.keys(obj)) {
+      const v = (obj as any)[k];
+      if (v && typeof v === 'object') {
+        for (const key of candidates) {
+          if (typeof v[key] === 'string' && v[key]) return v[key];
+        }
+      }
+    }
+    return null;
+  };
+
+  const handleWalrusUpload = async () => {
+    try {
+      if (!uploadFile) { setMessage('アップロードする画像ファイルを選択してください'); return; }
+      if (!walrusUploadUrl) { setMessage('アップロードエンドポイントURLを設定してください'); return; }
+      setUploading(true);
+      setMessage('アップロード中...');
+
+      const form = new FormData();
+      form.append('file', uploadFile);
+      const res = await fetch(walrusUploadUrl, { method: 'POST', body: form });
+      if (!res.ok) {
+        const t = await res.text().catch(() => '');
+        throw new Error(`Upload failed (${res.status}): ${t}`);
+      }
+      const data = await res.json().catch(() => ({}));
+      const cid = resolveCidFromResponse(data);
+      const returnedUrl = (data && (data.url || data.gatewayUrl)) as string | undefined;
+      let finalUrl = '';
+      if (returnedUrl && /^https?:\/\//.test(returnedUrl)) {
+        finalUrl = returnedUrl;
+      } else if (cid && walrusGatewayBase) {
+        // 一般的なゲートウェイのパス形態に対応
+        // 例: {GATEWAY}/ipfs/{cid} または {GATEWAY}/{cid}
+        const base = walrusGatewayBase.replace(/\/$/, '');
+        finalUrl = `${base}/${cid}`;
+      }
+
+      if (!finalUrl && cid) {
+        // 最低限CIDは保持
+        finalUrl = cid;
+      }
+
+      if (!finalUrl) {
+        setMessage('アップロードは成功しましたがURLを特定できませんでした。手動で設定してください。');
+      } else {
+        if (editingEvent) setEditingEvent({ ...(editingEvent as AdminMintEvent), imageUrl: finalUrl });
+        else setNewEvent({ ...newEvent, imageUrl: finalUrl });
+        setMessage('画像URLを反映しました');
+      }
+    } catch (e: any) {
+      setMessage(e?.message || 'アップロードに失敗しました');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // カウントダウン用（1秒ごとに更新）
+  const [nowTs, setNowTs] = useState<number>(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowTs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   // 認証済みユーザー関連の状態
   const [verifiedUsers, setVerifiedUsers] = useState<VerifiedUser[]>([]);
@@ -117,9 +211,24 @@ function AdminPanel() {
 
   const handleCreateEvent = async () => {
     if (!newEvent?.name || !newEvent?.collectionId || !newEvent?.startAt || !newEvent?.endAt) {
-      setMessage('必須項目（name, collectionId, startAt, endAt）を入力してください');
+      setMessage('必須項目（イベント名・コレクション・開始/終了）を入力してください');
       return;
     }
+    // 画像の必須化：URL または CID のどちらかが必要
+    const hasImage = Boolean((newEvent as any).imageUrl) || Boolean((newEvent as any).imageCid);
+    if (!hasImage) {
+      setMessage('画像が未設定です。WalrusへアップロードするかURL/CIDを設定してください');
+      return;
+    }
+    // 日時の整合性チェック
+    try {
+      const st = Date.parse(newEvent.startAt as string);
+      const ed = Date.parse(newEvent.endAt as string);
+      if (isFinite(st) && isFinite(ed) && ed <= st) {
+        setMessage('終了日時は開始日時より後に設定してください');
+        return;
+      }
+    } catch {}
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE_URL}/api/admin/events`, {
@@ -148,6 +257,15 @@ function AdminPanel() {
 
   const handleUpdateEvent = async () => {
     if (!editingEvent) return;
+    // 更新時も日時整合性を軽くチェック
+    try {
+      const st = Date.parse(editingEvent.startAt);
+      const ed = Date.parse(editingEvent.endAt);
+      if (isFinite(st) && isFinite(ed) && ed <= st) {
+        setMessage('終了日時は開始日時より後に設定してください');
+        return;
+      }
+    } catch {}
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE_URL}/api/admin/events/${editingEvent.id}`, {
@@ -614,7 +732,16 @@ function AdminPanel() {
 
   return (
     <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
-      <h1 style={{ marginBottom: '2rem' }}>NFT Verification 管理パネル</h1>
+      <h1 style={{ marginBottom: '2rem' }}>
+        {mode === 'admin' ? '管理者ページ' : mode === 'mint' ? 'ミント管理' : mode === 'roles' ? 'ロール管理' : 'NFT Verification 管理パネル'}
+      </h1>
+
+      {mode === 'admin' && (
+        <div style={{ marginBottom: '2rem', display: 'grid', gap: '0.75rem', maxWidth: '400px' }}>
+          <a href="/admin/roles" style={{ padding: '0.75rem 1rem', background: '#f8f9fa', borderRadius: 8, textDecoration: 'none', fontWeight: 600, color: '#1f2937', textAlign: 'center', border: '1px solid #d1d5db' }}>ロール管理へ</a>
+          <a href="/admin/mint" style={{ padding: '0.75rem 1rem', background: '#f8f9fa', borderRadius: 8, textDecoration: 'none', fontWeight: 600, color: '#1f2937', textAlign: 'center', border: '1px solid #d1d5db' }}>ミント管理へ</a>
+        </div>
+      )}
 
       {/* タブナビゲーション */}
       <div style={{ 
@@ -625,6 +752,7 @@ function AdminPanel() {
         paddingBottom: '1rem',
         flexWrap: 'wrap'
       }}>
+        {allowedTabs.includes('collections') && (
         <button
           onClick={() => setActiveTab('collections')}
           style={{
@@ -638,6 +766,8 @@ function AdminPanel() {
         >
           コレクション管理
         </button>
+        )}
+        {allowedTabs.includes('events') && (
         <button
           onClick={() => setActiveTab('events')}
           style={{
@@ -651,6 +781,8 @@ function AdminPanel() {
         >
           イベント管理
         </button>
+        )}
+        {allowedTabs.includes('batch') && (
         <button
           onClick={() => setActiveTab('batch')}
           style={{
@@ -664,6 +796,8 @@ function AdminPanel() {
         >
           バッチ処理管理
         </button>
+        )}
+        {allowedTabs.includes('users') && (
         <button
           onClick={() => setActiveTab('users')}
           style={{
@@ -677,6 +811,8 @@ function AdminPanel() {
         >
           認証済みユーザー
         </button>
+        )}
+        {allowedTabs.includes('admins') && (
         <button
           onClick={() => setActiveTab('admins')}
           style={{
@@ -690,6 +826,8 @@ function AdminPanel() {
         >
           管理者管理
         </button>
+        )}
+        {allowedTabs.includes('dm-settings') && (
         <button
           onClick={() => setActiveTab('dm-settings')}
           style={{
@@ -703,6 +841,7 @@ function AdminPanel() {
         >
           DM通知設定
         </button>
+        )}
       </div>
 
       {activeTab === 'collections' && (
@@ -1191,6 +1330,49 @@ function AdminPanel() {
                 onChange={(e) => editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), imageUrl: e.target.value }) : setNewEvent({ ...newEvent, imageUrl: e.target.value })}
                 style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
               />
+              <input
+                type="text"
+                placeholder="Walrus CID（任意）"
+                value={(editingEvent?.imageCid) ?? ((newEvent as any).imageCid ?? '')}
+                onChange={(e) => editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), imageCid: e.target.value as any }) : setNewEvent({ ...newEvent, imageCid: e.target.value as any })}
+                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+              />
+              <input
+                type="text"
+                placeholder="MIME Type（例: image/png）"
+                value={(editingEvent?.imageMimeType) ?? ((newEvent as any).imageMimeType ?? '')}
+                onChange={(e) => editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), imageMimeType: e.target.value as any }) : setNewEvent({ ...newEvent, imageMimeType: e.target.value as any })}
+                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+              />
+              {/* Walrus アップロードUI */}
+              <div style={{ display: 'grid', gap: '0.5rem', border: '1px dashed #d1d5db', padding: '0.75rem', borderRadius: 8 }}>
+                <div style={{ display: 'grid', gap: '0.25rem' }}>
+                  <label style={{ fontSize: '0.85rem', color: '#374151' }}>Walrus Upload Endpoint</label>
+                  <input
+                    type="text"
+                    placeholder="例: https://walrus.example.com/upload"
+                    value={walrusUploadUrl}
+                    onChange={(e) => setWalrusUploadUrl(e.target.value)}
+                    style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                  />
+                </div>
+                <div style={{ display: 'grid', gap: '0.25rem' }}>
+                  <label style={{ fontSize: '0.85rem', color: '#374151' }}>Walrus Gateway Base URL</label>
+                  <input
+                    type="text"
+                    placeholder="例: https://walrus.example.com/ipfs"
+                    value={walrusGatewayBase}
+                    onChange={(e) => setWalrusGatewayBase(e.target.value)}
+                    style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <input type="file" accept="image/*" onChange={(e) => setUploadFile(e.target.files?.[0] || null)} />
+                  <button onClick={handleWalrusUpload} disabled={uploading || !uploadFile} style={{ padding: '0.5rem 0.75rem', background: '#0ea5e9', color: 'white', border: 'none', borderRadius: 6, cursor: uploading || !uploadFile ? 'not-allowed' : 'pointer' }}>
+                    {uploading ? 'アップロード中...' : 'Walrusにアップロード'}
+                  </button>
+                </div>
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                 <input
                   type="datetime-local"
@@ -1226,42 +1408,63 @@ function AdminPanel() {
                 有効化
               </label>
               <input
-                type="text"
-                placeholder="Move呼び出しターゲット（例: 0xabc::module::mint)"
-                value={(editingEvent?.moveCall?.target) ?? (newEvent.moveCall?.target || '')}
-                onChange={(e) => editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), moveCall: { ...(editingEvent.moveCall || {}), target: e.target.value } }) : setNewEvent({ ...newEvent, moveCall: { ...(newEvent.moveCall || {}), target: e.target.value } })}
-                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
-              />
-              <input
-                type="text"
-                placeholder="Type Arguments（カンマ区切り）"
-                value={((editingEvent?.moveCall?.typeArguments) ?? (newEvent.moveCall?.typeArguments || [])).join(',')}
-                onChange={(e) => {
-                  const arr = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
-                  editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), moveCall: { ...(editingEvent.moveCall || {}), typeArguments: arr } }) : setNewEvent({ ...newEvent, moveCall: { ...(newEvent.moveCall || {}), typeArguments: arr } });
-                }}
-                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
-              />
-              <input
-                type="text"
-                placeholder="Arguments Template（カンマ区切り）。例: {recipient},{imageUrl}"
-                value={((editingEvent?.moveCall?.argumentsTemplate) ?? (newEvent.moveCall?.argumentsTemplate || [])).join(',')}
-                onChange={(e) => {
-                  const arr = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
-                  editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), moveCall: { ...(editingEvent.moveCall || {}), argumentsTemplate: arr } }) : setNewEvent({ ...newEvent, moveCall: { ...(newEvent.moveCall || {}), argumentsTemplate: arr } });
-                }}
-                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
-              />
-              <input
                 type="number"
-                placeholder="Gas Budget（任意）"
-                value={Number((editingEvent?.moveCall?.gasBudget) ?? (newEvent.moveCall?.gasBudget || '')) || ''}
+                placeholder="総ミント上限（未設定可）"
+                value={typeof (editingEvent?.totalCap ?? newEvent.totalCap) === 'number' ? (editingEvent?.totalCap ?? (newEvent.totalCap as number)) : ''}
                 onChange={(e) => {
-                  const v = Number(e.target.value || 0);
-                  editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), moveCall: { ...(editingEvent.moveCall || {}), gasBudget: v } }) : setNewEvent({ ...newEvent, moveCall: { ...(newEvent.moveCall || {}), gasBudget: v } });
+                  const v = e.target.value.trim() === '' ? undefined : Number(e.target.value);
+                  if (editingEvent) setEditingEvent({ ...(editingEvent as AdminMintEvent), totalCap: v as any });
+                  else setNewEvent({ ...newEvent, totalCap: v as any });
                 }}
                 style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
               />
+              {/* 詳細設定（折り畳み） */}
+              <div style={{ marginTop: '0.5rem' }}>
+                <button type="button" onClick={() => setAdvancedOpen(!advancedOpen)} style={{ padding: '0.35rem 0.6rem', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontSize: '0.85rem' }}>
+                  {advancedOpen ? '詳細設定を閉じる' : '詳細設定を開く'}
+                </button>
+                {advancedOpen && (
+                  <div style={{ display: 'grid', gap: '0.5rem', marginTop: '0.5rem', background: '#fafafa', border: '1px solid #eee', borderRadius: 8, padding: '0.75rem' }}>
+                    <input
+                      type="text"
+                      placeholder="Move呼び出しターゲット（例: 0xabc::module::mint)"
+                      value={(editingEvent?.moveCall?.target) ?? (newEvent.moveCall?.target || '')}
+                      onChange={(e) => editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), moveCall: { ...(editingEvent.moveCall || {}), target: e.target.value } }) : setNewEvent({ ...newEvent, moveCall: { ...(newEvent.moveCall || {}), target: e.target.value } })}
+                      style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Type Arguments（カンマ区切り）"
+                      value={((editingEvent?.moveCall?.typeArguments) ?? (newEvent.moveCall?.typeArguments || [])).join(',')}
+                      onChange={(e) => {
+                        const arr = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
+                        editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), moveCall: { ...(editingEvent.moveCall || {}), typeArguments: arr } }) : setNewEvent({ ...newEvent, moveCall: { ...(newEvent.moveCall || {}), typeArguments: arr } });
+                      }}
+                      style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Arguments Template（カンマ区切り）。例: {recipient},{imageUrl}"
+                      value={((editingEvent?.moveCall?.argumentsTemplate) ?? (newEvent.moveCall?.argumentsTemplate || [])).join(',')}
+                      onChange={(e) => {
+                        const arr = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
+                        editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), moveCall: { ...(editingEvent.moveCall || {}), argumentsTemplate: arr } }) : setNewEvent({ ...newEvent, moveCall: { ...(newEvent.moveCall || {}), argumentsTemplate: arr } });
+                      }}
+                      style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                    />
+                    <input
+                      type="number"
+                      placeholder="Gas Budget（任意）"
+                      value={Number((editingEvent?.moveCall?.gasBudget) ?? (newEvent.moveCall?.gasBudget || '')) || ''}
+                      onChange={(e) => {
+                        const v = Number(e.target.value || 0);
+                        editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), moveCall: { ...(editingEvent.moveCall || {}), gasBudget: v } }) : setNewEvent({ ...newEvent, moveCall: { ...(newEvent.moveCall || {}), gasBudget: v } });
+                      }}
+                      style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                    />
+                  </div>
+                )}
+              </div>
 
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 {editingEvent ? (
@@ -1278,7 +1481,15 @@ function AdminPanel() {
 
           {/* イベント一覧 */}
           <div>
-            <h4>イベント一覧</h4>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h4 style={{ margin: 0 }}>イベント一覧</h4>
+              <button
+                onClick={fetchEvents}
+                style={{ padding: '0.25rem 0.75rem', background: '#007bff', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem' }}
+              >
+                一覧を更新
+              </button>
+            </div>
             {events.map(ev => (
               <div key={ev.id} style={{ border: '1px solid #ccc', padding: '1rem', borderRadius: '8px', marginBottom: '0.5rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1287,9 +1498,73 @@ function AdminPanel() {
                     <div style={{ fontSize: '0.9rem', color: '#555' }}>{ev.description}</div>
                     <div style={{ fontSize: '0.85rem', color: '#333' }}>期間: {new Date(ev.startAt).toLocaleString('ja-JP')} - {new Date(ev.endAt).toLocaleString('ja-JP')}</div>
                     <div style={{ fontSize: '0.85rem', color: '#333' }}>状態: {ev.active ? 'Active' : 'Inactive'}</div>
-                    {ev.imageUrl && <div style={{ fontSize: '0.85rem', color: '#333' }}>画像: {ev.imageUrl}</div>}
+                    <div style={{ fontSize: '0.85rem', color: '#333' }}>
+                      ID: <span style={{ fontFamily: 'monospace' }}>{ev.id}</span>
+                      <button
+                        onClick={async () => { try { await navigator.clipboard.writeText(ev.id); setMessage('イベントIDをコピーしました'); } catch { setMessage(ev.id); } }}
+                        style={{ marginLeft: '0.5rem', padding: '0.1rem 0.4rem', background: '#6b7280', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: '0.75rem' }}
+                      >
+                        コピー
+                      </button>
+                    </div>
+                    <div style={{ fontSize: '0.85rem', color: '#333' }}>
+                      ミント進捗: {typeof ev.mintedCount === 'number' ? ev.mintedCount : 0}
+                      {typeof ev.totalCap === 'number' ? ` / ${ev.totalCap}（残り ${Math.max((ev.totalCap || 0) - (ev.mintedCount || 0), 0)}）` : ' / 上限なし'}
+                    </div>
+                    {/* カウントダウン */}
+                    <div style={{ fontSize: '0.85rem', color: '#1f2937' }}>
+                      {(() => {
+                        const start = Date.parse(ev.startAt);
+                        const end = Date.parse(ev.endAt);
+                        if (nowTs < start) {
+                          const rem = Math.max(0, start - nowTs);
+                          const h = Math.floor(rem / 3600000);
+                          const m = Math.floor((rem % 3600000) / 60000);
+                          const s = Math.floor((rem % 60000) / 1000);
+                          return `開始まで: ${h}時間 ${m}分 ${s}秒`;
+                        } else if (nowTs <= end) {
+                          const rem = Math.max(0, end - nowTs);
+                          const h = Math.floor(rem / 3600000);
+                          const m = Math.floor((rem % 3600000) / 60000);
+                          const s = Math.floor((rem % 60000) / 1000);
+                          return `終了まで: ${h}時間 ${m}分 ${s}秒`;
+                        } else {
+                          return 'イベントは終了しました';
+                        }
+                      })()}
+                    </div>
+                    {ev.imageUrl && (
+                      <div style={{ marginTop: '0.25rem' }}>
+                        <div style={{ fontSize: '0.85rem', color: '#333', marginBottom: '0.25rem' }}>画像:</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <img src={ev.imageUrl} alt={ev.name} style={{ width: 120, height: 'auto', borderRadius: 8, border: '1px solid #e5e7eb' }} />
+                          <a href={ev.imageUrl} target="_blank" rel="noreferrer" style={{ fontSize: '0.8rem' }}>新しいタブで開く</a>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                      onClick={async () => {
+                        try {
+                          const res = await fetch(`${API_BASE_URL}/api/admin/events/${ev.id}/toggle-active`, { method: 'POST', headers: getAuthHeaders() });
+                          const data = await res.json();
+                          if (data.success) { setMessage('状態を切り替えました'); fetchEvents(); } else { setMessage(data.error || '切り替えに失敗しました'); }
+                        } catch { setMessage('切り替えに失敗しました'); }
+                      }}
+                      style={{ padding: '0.25rem 0.5rem', background: ev.active ? '#6c757d' : '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
+                    >
+                      {ev.active ? '無効化' : '有効化'}
+                    </button>
+                    <button
+                      onClick={async () => {
+                        const url = `${window.location.origin}/mint/${ev.id}`;
+                        try { await navigator.clipboard.writeText(url); setMessage('ミントURLをコピーしました'); } catch { setMessage(url); }
+                      }}
+                      style={{ padding: '0.25rem 0.5rem', background: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
+                    >
+                      URLコピー
+                    </button>
                     <button onClick={() => setEditingEvent(ev)} style={{ padding: '0.25rem 0.5rem', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}>編集</button>
                     <button onClick={() => handleDeleteEvent(ev.id)} style={{ padding: '0.25rem 0.5rem', background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}>削除</button>
                   </div>

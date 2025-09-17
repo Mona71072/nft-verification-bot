@@ -187,7 +187,7 @@ app.post('/api/discord-action', async (req, res) => {
 // スポンサー実行: Suiでのミント処理を代理送信
 app.post('/api/mint', async (req, res) => {
   try {
-    const { eventId, recipient, moveCall, imageUrl } = req.body || {};
+    const { eventId, recipient, moveCall, imageUrl, imageCid, imageMimeType } = req.body || {};
     if (!eventId || !recipient || !moveCall?.target) {
       return res.status(400).json({ success: false, error: 'Missing eventId/recipient/moveCall.target' });
     }
@@ -200,6 +200,8 @@ app.post('/api/mint', async (req, res) => {
     const builtArgs = args.map((a: string) => {
       if (a === '{recipient}') return tx.pure.address(recipient);
       if (a === '{imageUrl}') return tx.pure.string(imageUrl || '');
+      if (a === '{imageCid}') return tx.pure.string(imageCid || '');
+      if (a === '{imageMimeType}') return tx.pure.string(imageMimeType || '');
       return tx.pure.string(String(a));
     });
 

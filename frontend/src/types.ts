@@ -106,6 +106,8 @@ export interface AdminMintEvent {
   description?: string;
   collectionId: string;
   imageUrl?: string;
+  imageCid?: string;
+  imageMimeType?: string;
   active: boolean;
   startAt: string; // ISO
   endAt: string;   // ISO
@@ -115,6 +117,10 @@ export interface AdminMintEvent {
     argumentsTemplate?: string[];
     gasBudget?: number;
   };
+  totalCap?: number;
+  createdAt?: string;
+  updatedAt?: string;
+  mintedCount?: number;
 }
 
 
