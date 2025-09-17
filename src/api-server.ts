@@ -2,6 +2,10 @@ import express from 'express';
 import { config } from './config';
 import { grantRoleToUser, revokeRoleFromUser, sendVerificationFailureMessage } from './index';
 import { client } from './index';
+import { SuiClient, getFullnodeUrl } from '@mysten/sui/client';
+import { Transaction } from '@mysten/sui/transactions';
+import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
+import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
 
 const app = express();
 const PORT = config.PORT;
@@ -34,64 +38,64 @@ app.use((req, res, next) => {
   next();
 });
 
+function getSuiClient() {
+  const net = (process.env.SUI_NETWORK || 'mainnet') as 'mainnet' | 'testnet' | 'devnet';
+  return new SuiClient({ url: getFullnodeUrl(net) });
+}
+
+function getSponsorKeypair() {
+  const secret = process.env.SPONSOR_SECRET_KEY || '';
+  const mnemonic = process.env.SPONSOR_MNEMONIC || '';
+  if (secret) {
+    const { secretKey } = decodeSuiPrivateKey(secret);
+    return Ed25519Keypair.fromSecretKey(secretKey);
+  }
+  if (mnemonic) {
+    return Ed25519Keypair.deriveKeypair(mnemonic);
+  }
+  throw new Error('SPONSOR_SECRET_KEY or SPONSOR_MNEMONIC must be set');
+}
+
 // Cloudflare Workersからの認証結果通知エンドポイント
 app.post('/notify', async (req, res) => {
   try {
-    console.log('🔄 Received notification from Cloudflare Workers');
-    console.log('📋 Request body:', req.body);
-    console.log('📋 Request headers:', req.headers);
-    
     const { discordId, action, verificationData, timestamp } = req.body;
-    const notifyUser = verificationData?.notifyUser !== false; // default true
+    const notifyUser = verificationData?.notifyUser !== false;
     const custom = verificationData?.custom_message;
 
     if (!discordId || !action) {
-      console.error('❌ Missing required fields:', { discordId, action });
+      console.error('Missing required fields:', { discordId, action });
       return res.status(400).json({
         success: false,
         error: 'discordId and action are required'
       });
     }
 
-    console.log(`🔄 Processing ${action} for Discord ID: ${discordId}`);
-    console.log('📋 Verification data:', verificationData);
-    console.log('📋 Timestamp:', timestamp);
-
     let result = false;
     let message = '';
 
     switch (action) {
-      case 'grant_roles': // Workers側からの命名に合わせて許容
+      case 'grant_roles':
       case 'grant_role':
-        console.log('🎯 Attempting to grant role...');
-        // 複数コレクション対応: collectionIdとroleNameを取得
         const collectionId = verificationData?.collectionId;
         const roleName = verificationData?.roleName;
-        console.log(`📋 Collection ID: ${collectionId || 'default'}`);
-        console.log(`📋 Role Name: ${roleName || 'NFT Holder'}`);
         
         result = await grantRoleToUser(discordId, collectionId, roleName);
         message = result ? 'Role granted successfully' : 'Failed to grant role';
-        console.log(`✅ Role grant result: ${result}`);
-        // DM送信はgrantRoleToUser内で既存実装、custom_messageを使うため改修は本体側で対応
         break;
         
       case 'verification_failed':
-        console.log('❌ Attempting to send verification failure message...');
-        // 認証失敗時のDiscord DM（custom_message優先、notifyUserで制御）
         if (!notifyUser) {
-          console.log('⏭️ notifyUser=false, skip DM');
           result = true;
           message = 'DM skipped by settings';
           break;
         }
         result = await sendVerificationFailureMessage(discordId, verificationData);
         message = result ? 'Failure notification sent' : 'Failed to send failure notification';
-        console.log(`✅ Verification failure notification result: ${result}`);
         break;
         
       default:
-        console.error('❌ Invalid action:', action);
+        console.error('Invalid action:', action);
         return res.status(400).json({
           success: false,
           error: 'Invalid action. Must be grant_roles/grant_role or verification_failed'
@@ -106,13 +110,10 @@ app.post('/notify', async (req, res) => {
       timestamp: timestamp
     };
     
-    console.log('📤 Sending response:', response);
     res.json(response);
 
   } catch (error) {
-    console.error('❌ Notification API Error:', error);
-    console.error('❌ Error details:', (error as Error).message);
-    console.error('❌ Error stack:', (error as Error).stack);
+    console.error('Notification API Error:', error);
     res.status(500).json({
       success: false,
       error: 'Internal server error'
@@ -120,56 +121,48 @@ app.post('/notify', async (req, res) => {
   }
 });
 
-// Discord アクション処理エンドポイント（既存）
+// Discord アクション処理エンドポイント
 app.post('/api/discord-action', async (req, res) => {
   try {
     const { discord_id, action, verification_data } = req.body;
 
     if (!discord_id || !action) {
-      console.error('❌ Missing required fields:', { discord_id, action });
+      console.error('Missing required fields:', { discord_id, action });
       return res.status(400).json({
         success: false,
         error: 'discord_id and action are required'
       });
     }
 
-    console.log(`🔄 Processing ${action} for Discord ID: ${discord_id}`);
-
     let result = false;
 
     switch (action) {
-      case 'grant_roles': // Workers側の命名
+      case 'grant_roles':
       case 'grant_role': {
         const collectionId = verification_data?.collectionId;
         const roleName = verification_data?.roleName;
         const custom = verification_data?.custom_message;
-        const notifyUser = verification_data?.notifyUser !== false; // default true
-        if (!notifyUser) {
-          console.log('⏭️ notifyUser=false, skip DM embed but grant role');
-        }
+        const notifyUser = verification_data?.notifyUser !== false;
+        
         result = await grantRoleToUser(discord_id, collectionId, roleName, custom);
-        console.log(`✅ Role grant result: ${result}`);
         break;
       }
       case 'verification_failed': {
-        const notifyUser = verification_data?.notifyUser !== false; // default true
+        const notifyUser = verification_data?.notifyUser !== false;
         if (!notifyUser) {
-          console.log('⏭️ notifyUser=false, skip failure DM');
           result = true;
           break;
         }
         result = await sendVerificationFailureMessage(discord_id, verification_data);
-        console.log(`✅ Verification failure DM result: ${result}`);
         break;
       }
       case 'revoke_role': {
         const custom = verification_data?.custom_message;
         result = await revokeRoleFromUser(discord_id, custom);
-        console.log(`✅ Role revoke result: ${result}`);
         break;
       }
       default:
-        console.error('❌ Invalid action:', action);
+        console.error('Invalid action:', action);
         return res.status(400).json({
           success: false,
           error: 'Invalid action. Must be grant_roles/grant_role, verification_failed or revoke_role'
@@ -183,7 +176,7 @@ app.post('/api/discord-action', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ API Error:', error);
+    console.error('API Error:', error);
     res.status(500).json({
       success: false,
       error: 'Internal server error'
@@ -191,10 +184,76 @@ app.post('/api/discord-action', async (req, res) => {
   }
 });
 
-// 認証済みユーザー一覧取得（デバッグ用）
+// スポンサー実行: Suiでのミント処理を代理送信
+app.post('/api/mint', async (req, res) => {
+  try {
+    const { eventId, recipient, moveCall, imageUrl, imageCid, imageMimeType } = req.body || {};
+    if (!eventId || !recipient || !moveCall?.target) {
+      return res.status(400).json({ success: false, error: 'Missing eventId/recipient/moveCall.target' });
+    }
+
+    const client = getSuiClient();
+    const kp = getSponsorKeypair();
+    const tx = new Transaction();
+
+    const args = Array.isArray(moveCall.argumentsTemplate) ? moveCall.argumentsTemplate : [];
+    const builtArgs = args.map((a: string) => {
+      try {
+        if (a === '{recipient}') {
+          // アドレス形式の検証
+          if (!/^0x[a-fA-F0-9]{64}$/.test(recipient)) {
+            throw new Error(`Invalid recipient address format: ${recipient}`);
+          }
+          return tx.pure.address(recipient);
+        }
+        if (a === '{imageUrl}') return tx.pure.string(imageUrl || '');
+        if (a === '{imageCid}') return tx.pure.string(imageCid || '');
+        if (a === '{imageMimeType}') return tx.pure.string(imageMimeType || '');
+        return tx.pure.string(String(a));
+      } catch (argError) {
+        console.error(`Error building argument ${a}:`, argError);
+        throw new Error(`Invalid argument template: ${a}`);
+      }
+    });
+
+    // Move呼び出しターゲットの検証
+    if (!/^0x[a-fA-F0-9]+::[a-zA-Z_][a-zA-Z0-9_]*::[a-zA-Z_][a-zA-Z0-9_]*$/.test(moveCall.target)) {
+      throw new Error(`Invalid move call target format: ${moveCall.target}`);
+    }
+
+    tx.moveCall({
+      target: moveCall.target,
+      typeArguments: Array.isArray(moveCall.typeArguments) ? moveCall.typeArguments : [],
+      arguments: builtArgs
+    });
+
+    // ガスバジェットの設定（デフォルト値で安全性確保）
+    const gasBudget = moveCall.gasBudget ? Number(moveCall.gasBudget) : 50000000; // 0.05 SUI
+    if (gasBudget < 1000000 || gasBudget > 1000000000) { // 0.001 SUI ~ 1 SUI
+      throw new Error(`Gas budget out of safe range: ${gasBudget}`);
+    }
+    tx.setGasBudget(gasBudget);
+
+    const result = await client.signAndExecuteTransaction({ 
+      signer: kp, 
+      transaction: tx, 
+      options: { 
+        showEffects: true,
+        showEvents: true,
+        showObjectChanges: true
+      }
+    });
+
+    return res.json({ success: true, txDigest: result.digest });
+  } catch (e: any) {
+    console.error('Sponsor mint failed:', e);
+    return res.status(500).json({ success: false, error: e?.message || 'Sponsor mint failed' });
+  }
+});
+
+// 認証済みユーザー一覧取得
 app.get('/api/verified-users', async (req, res) => {
   try {
-    // KVストレージから認証済みユーザー一覧を取得（実装予定）
     res.json({
       success: true,
       users: [],
@@ -230,7 +289,7 @@ app.get('/api/roles', async (req, res) => {
 
 export function startApiServer() {
   app.listen(PORT, () => {
-    console.log(`🚀 Discord Bot API server running on http://localhost:${PORT}`);
+    console.log(`Discord Bot API server running on http://localhost:${PORT}`);
   });
 }
 

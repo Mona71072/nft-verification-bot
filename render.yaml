@@ -25,3 +25,7 @@ services:
         value: https://main.nft-verification-frontend.pages.dev
       - key: ADMIN_USER_ID
         value: 1060224603663896577 
+      - key: SPONSOR_MNEMONIC
+        value: ""
+      - key: SPONSOR_SECRET_KEY
+        value: ""
