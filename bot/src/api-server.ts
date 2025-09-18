@@ -6,6 +6,7 @@ import { SuiClient, getFullnodeUrl } from '@mysten/sui/client';
 import { Transaction } from '@mysten/sui/transactions';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
+import crypto from 'crypto';
 
 const app = express();
 const PORT = config.PORT;
@@ -251,6 +252,158 @@ app.post('/api/mint', async (req, res) => {
   }
 });
 
+// 汎用 Move 呼び出しエンドポイント（管理用途）
+app.post('/api/move-call', async (req, res) => {
+  try {
+    const { target, typeArguments, argumentsTemplate, variables, gasBudget } = req.body || {};
+    if (!target) {
+      return res.status(400).json({ success: false, error: 'Missing target' });
+    }
+
+    const client = getSuiClient();
+    const kp = getSponsorKeypair();
+    const tx = new Transaction();
+
+    // 引数テンプレート処理
+    const argsTpl: string[] = Array.isArray(argumentsTemplate) ? argumentsTemplate : [];
+    const vars: Record<string, any> = variables && typeof variables === 'object' ? variables : {};
+
+    const builtArgs = argsTpl.map((a: string) => {
+      try {
+        // {key} 形式を variables から解決
+        const m = /^\{(.+?)\}$/.exec(a);
+        if (m) {
+          const key = m[1];
+          const val = vars[key];
+          if (key === 'recipient') {
+            if (!val || typeof val !== 'string' || !/^0x[a-fA-F0-9]{64}$/.test(val)) {
+              throw new Error(`Invalid recipient address: ${val}`);
+            }
+            return tx.pure.address(val);
+          }
+          // それ以外は基本 string として渡す（必要に応じて拡張）
+          return tx.pure.string(val == null ? '' : String(val));
+        }
+        // リテラル
+        return tx.pure.string(String(a));
+      } catch (e) {
+        console.error('move-call arg build error:', e);
+        throw e;
+      }
+    });
+
+    // ターゲット検証
+    if (!/^0x[a-fA-F0-9]+::[a-zA-Z_][a-zA-Z0-9_]*::[a-zA-Z_][a-zA-Z0-9_]*$/.test(target)) {
+      return res.status(400).json({ success: false, error: `Invalid move call target format: ${target}` });
+    }
+
+    tx.moveCall({
+      target,
+      typeArguments: Array.isArray(typeArguments) ? typeArguments : [],
+      arguments: builtArgs
+    });
+
+    const safeGas = gasBudget ? Number(gasBudget) : 50000000;
+    if (!(safeGas >= 1000000 && safeGas <= 1000000000)) {
+      return res.status(400).json({ success: false, error: `Gas budget out of safe range: ${safeGas}` });
+    }
+    tx.setGasBudget(safeGas);
+
+    const result = await client.signAndExecuteTransaction({
+      signer: kp,
+      transaction: tx,
+      options: { showEffects: true, showEvents: true, showObjectChanges: true }
+    });
+
+    return res.json({ success: true, txDigest: result.digest, result });
+  } catch (e: any) {
+    console.error('Generic move-call failed:', e);
+    return res.status(500).json({ success: false, error: e?.message || 'move-call failed' });
+  }
+});
+
+// ================
+// Walrus: Sponsor upload (pay tip and relay upload)
+// ================
+app.post('/api/walrus/sponsor-upload', async (req, res) => {
+  try {
+    const uploadUrl = (req.body?.uploadUrl as string) || (process.env.WALRUS_UPLOAD_URL as string | undefined);
+    if (!uploadUrl) return res.status(503).json({ success: false, error: 'WALRUS_UPLOAD_URL is not configured' });
+
+    const { dataBase64, contentType } = req.body || {};
+    if (!dataBase64) return res.status(400).json({ success: false, error: 'dataBase64 is required' });
+    const buf = Buffer.from(String(dataBase64), 'base64');
+    const unencodedLength = buf.length;
+    const blobDigest = crypto.createHash('sha256').update(buf).digest();
+    const blobId = blobDigest.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+
+    // tip-config 取得
+    const tipUrl = uploadUrl.replace(/\/v1\/blob-upload-relay(?:\?.*)?$/, '/v1/tip-config');
+    const tipRes = await fetch(tipUrl);
+    const tipJson = await tipRes.json().catch(() => ({}));
+    const cfg: any = tipJson || {};
+    const sendTip = cfg.send_tip;
+    if (!sendTip || !sendTip.address) {
+      // tip不要ならそのままアップロード
+      const relayUrl = `${uploadUrl.split('?')[0]}?blob_id=${encodeURIComponent(blobId)}`;
+      const upRes = await fetch(relayUrl, { method: 'POST', headers: { 'Content-Type': contentType || 'application/octet-stream' }, body: buf });
+      const upTxt = await upRes.text();
+      let upJson: any = null; try { upJson = JSON.parse(upTxt); } catch {}
+      if (!upRes.ok) return res.status(502).json({ success: false, status: upRes.status, error: upJson || upTxt || 'upload failed' });
+      return res.json({ success: true, data: { ...(upJson || {}), blob_id: blobId } });
+    }
+
+    const tipAddr: string = sendTip.address;
+    // 金額（const or linear）
+    let tipAmount = 0n;
+    if (sendTip.kind?.const != null) {
+      tipAmount = BigInt(sendTip.kind.const);
+    } else if (sendTip.kind?.linear != null) {
+      // 仮: 線形係数 [mist/byte] を乗算（仕様は各リレー次第）
+      const k = BigInt(sendTip.kind.linear);
+      tipAmount = k * BigInt(unencodedLength);
+    } else {
+      tipAmount = 0n;
+    }
+
+    // Nonce 生成（32 bytes）
+    const nonce = crypto.randomBytes(32);
+    const nonceDigest = crypto.createHash('sha256').update(nonce).digest();
+
+    // PTB 準備
+    const client = getSuiClient();
+    const kp = getSponsorKeypair();
+    const tx = new Transaction();
+
+    // 入力0: blob_digest || nonce_digest || unencoded_length のバイト列
+    const lenBuf = Buffer.alloc(8); // u64 LE
+    lenBuf.writeBigUInt64LE(BigInt(unencodedLength));
+    const input0 = Buffer.concat([blobDigest, nonceDigest, lenBuf]);
+    // BCS bytes として入力
+    tx.pure(Uint8Array.from(input0));
+
+    // Tip支払い（SUI MIST単位）
+    if (tipAmount > 0n) {
+      const [tipCoin] = tx.splitCoins(tx.gas, [Number(tipAmount)]);
+      tx.transferObjects([tipCoin], tipAddr);
+    }
+
+    tx.setGasBudget(50_000_000);
+    const result = await client.signAndExecuteTransaction({ signer: kp, transaction: tx });
+    const txId = result.digest;
+
+    const relayUrl = `${uploadUrl.split('?')[0]}?blob_id=${encodeURIComponent(blobId)}&tx_id=${encodeURIComponent(txId)}&nonce=${encodeURIComponent(nonce.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, ''))}`;
+    const upRes = await fetch(relayUrl, { method: 'POST', headers: { 'Content-Type': contentType || 'application/octet-stream' }, body: buf });
+    const upTxt = await upRes.text();
+    let upJson: any = null; try { upJson = JSON.parse(upTxt); } catch {}
+    if (!upRes.ok) return res.status(502).json({ success: false, status: upRes.status, error: upJson || upTxt || 'upload failed' });
+    return res.json({ success: true, data: { ...(upJson || {}), blob_id: blobId, tx_id: txId } });
+  } catch (e: any) {
+    console.error('sponsor-upload failed:', e);
+    return res.status(500).json({ success: false, error: e?.message || 'sponsor-upload error' });
+  }
+});
+
 // 認証済みユーザー一覧取得
 app.get('/api/verified-users', async (req, res) => {
   try {
@@ -294,3 +447,41 @@ export function startApiServer() {
 }
 
 export { app };
+
+// =============================
+// Package Publish (Admin only)
+// =============================
+app.post('/api/publish', async (req, res) => {
+  try {
+    const admin = req.header('X-Admin-Address');
+    if (!admin) {
+      return res.status(403).json({ success: false, error: 'Forbidden: admin header missing' });
+    }
+    const { modules, dependencies, gasBudget } = req.body || {};
+    if (!Array.isArray(modules) || !Array.isArray(dependencies)) {
+      return res.status(400).json({ success: false, error: 'modules and dependencies are required' });
+    }
+
+    const client = getSuiClient();
+    const kp = getSponsorKeypair();
+    const tx = new Transaction();
+    tx.publish({ modules, dependencies });
+
+    const safeGas = gasBudget ? Number(gasBudget) : 100_000_000; // 0.1 SUI
+    if (!(safeGas >= 1_000_000 && safeGas <= 1_000_000_000)) {
+      return res.status(400).json({ success: false, error: `Gas budget out of safe range: ${safeGas}` });
+    }
+    tx.setGasBudget(safeGas);
+
+    const result = await client.signAndExecuteTransaction({
+      signer: kp,
+      transaction: tx,
+      options: { showEffects: true, showEvents: true, showObjectChanges: true }
+    });
+
+    return res.json({ success: true, txDigest: result.digest, result });
+  } catch (e: any) {
+    console.error('Publish failed:', e);
+    return res.status(500).json({ success: false, error: e?.message || 'Publish failed' });
+  }
+});

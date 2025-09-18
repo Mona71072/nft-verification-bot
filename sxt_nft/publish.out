@@ -1,0 +1,129 @@
+Transaction Digest: 2KJMmfJ6k1EGS9kbWcBAk8P2CgkuKjJDQ6Q8HeLbtbAn
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Transaction Data                                                                                             │
+├──────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ Sender: 0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d                                   │
+│ Gas Owner: 0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d                                │
+│ Gas Budget: 100000000 MIST                                                                                   │
+│ Gas Price: 500 MIST                                                                                          │
+│ Gas Payment:                                                                                                 │
+│  ┌──                                                                                                         │
+│  │ ID: 0x750448bcdb5c4b0fb3ed1d659b3f3ed59f1fd7ca657f39681d70d741127e3d73                                    │
+│  │ Version: 635103205                                                                                        │
+│  │ Digest: CkfbkSuA448J7h8qyEK4kDdxf1LEBiNtygZWmVCxUoJX                                                      │
+│  └──                                                                                                         │
+│                                                                                                              │
+│ Transaction Kind: Programmable                                                                               │
+│ ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────╮ │
+│ │ Input Objects                                                                                            │ │
+│ ├──────────────────────────────────────────────────────────────────────────────────────────────────────────┤ │
+│ │ 0   Pure Arg: Type: address, Value: "0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d" │ │
+│ ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────╯ │
+│ ╭─────────────────────────────────────────────────────────────────────────╮                                  │
+│ │ Commands                                                                │                                  │
+│ ├─────────────────────────────────────────────────────────────────────────┤                                  │
+│ │ 0  Publish:                                                             │                                  │
+│ │  ┌                                                                      │                                  │
+│ │  │ Dependencies:                                                        │                                  │
+│ │  │   0x0000000000000000000000000000000000000000000000000000000000000001 │                                  │
+│ │  │   0x0000000000000000000000000000000000000000000000000000000000000002 │                                  │
+│ │  └                                                                      │                                  │
+│ │                                                                         │                                  │
+│ │ 1  TransferObjects:                                                     │                                  │
+│ │  ┌                                                                      │                                  │
+│ │  │ Arguments:                                                           │                                  │
+│ │  │   Result 0                                                           │                                  │
+│ │  │ Address: Input  0                                                    │                                  │
+│ │  └                                                                      │                                  │
+│ ╰─────────────────────────────────────────────────────────────────────────╯                                  │
+│                                                                                                              │
+│ Signatures:                                                                                                  │
+│    kYYRv7y+dLCkOTr3CYk2uKqhcii+Zp2rTrinbh41Xq7ml8SZyirR5Ic1HRosHe6c+f+wFFa6G3YL0mRcstq8Ag==                  │
+│                                                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭───────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Transaction Effects                                                                               │
+├───────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ Digest: 2KJMmfJ6k1EGS9kbWcBAk8P2CgkuKjJDQ6Q8HeLbtbAn                                              │
+│ Status: Success                                                                                   │
+│ Executed Epoch: 888                                                                               │
+│                                                                                                   │
+│ Created Objects:                                                                                  │
+│  ┌──                                                                                              │
+│  │ ID: 0x3aae3556299f4db382a05e25349beaa51ab56f7c01776d9da6895eeaf4abed5e                         │
+│  │ Owner: Account Address ( 0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d )  │
+│  │ Version: 635103206                                                                             │
+│  │ Digest: 4FSUJuuMeyWCFCVy7vnrXFa9bd1WpsZhfhnN91nNQWMK                                           │
+│  └──                                                                                              │
+│  ┌──                                                                                              │
+│  │ ID: 0x7a9695b16975f9a8614a81fc3eb67464699255f42294f4cb7df55e9d8169f506                         │
+│  │ Owner: Immutable                                                                               │
+│  │ Version: 1                                                                                     │
+│  │ Digest: 9KYZAzRKFBApvkzMogyLSTaL8TTw1vTMRUdfMBHdagZL                                           │
+│  └──                                                                                              │
+│ Mutated Objects:                                                                                  │
+│  ┌──                                                                                              │
+│  │ ID: 0x750448bcdb5c4b0fb3ed1d659b3f3ed59f1fd7ca657f39681d70d741127e3d73                         │
+│  │ Owner: Account Address ( 0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d )  │
+│  │ Version: 635103206                                                                             │
+│  │ Digest: C43DSMKxzyXRybYaLBbj1FtJiVect8EoDKU6Bd8GJcCu                                           │
+│  └──                                                                                              │
+│ Gas Object:                                                                                       │
+│  ┌──                                                                                              │
+│  │ ID: 0x750448bcdb5c4b0fb3ed1d659b3f3ed59f1fd7ca657f39681d70d741127e3d73                         │
+│  │ Owner: Account Address ( 0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d )  │
+│  │ Version: 635103206                                                                             │
+│  │ Digest: C43DSMKxzyXRybYaLBbj1FtJiVect8EoDKU6Bd8GJcCu                                           │
+│  └──                                                                                              │
+│ Gas Cost Summary:                                                                                 │
+│    Storage Cost: 8823600 MIST                                                                     │
+│    Computation Cost: 500000 MIST                                                                  │
+│    Storage Rebate: 978120 MIST                                                                    │
+│    Non-refundable Storage Fee: 9880 MIST                                                          │
+│                                                                                                   │
+│ Transaction Dependencies:                                                                         │
+│    3S76pTfT1uCScif66faa1Z3bNXE8ua5BUBv9dcUeVGi3                                                   │
+│    GtS7LtTw7SU3ppRAUc3V8tz3SyKxC4VnD9prqJ8LVHAm                                                   │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─────────────────────────────╮
+│ No transaction block events │
+╰─────────────────────────────╯
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Object Changes                                                                                   │
+├──────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ Created Objects:                                                                                 │
+│  ┌──                                                                                             │
+│  │ ObjectID: 0x3aae3556299f4db382a05e25349beaa51ab56f7c01776d9da6895eeaf4abed5e                  │
+│  │ Sender: 0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d                    │
+│  │ Owner: Account Address ( 0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d ) │
+│  │ ObjectType: 0x2::package::UpgradeCap                                                          │
+│  │ Version: 635103206                                                                            │
+│  │ Digest: 4FSUJuuMeyWCFCVy7vnrXFa9bd1WpsZhfhnN91nNQWMK                                          │
+│  └──                                                                                             │
+│ Mutated Objects:                                                                                 │
+│  ┌──                                                                                             │
+│  │ ObjectID: 0x750448bcdb5c4b0fb3ed1d659b3f3ed59f1fd7ca657f39681d70d741127e3d73                  │
+│  │ Sender: 0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d                    │
+│  │ Owner: Account Address ( 0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d ) │
+│  │ ObjectType: 0x2::coin::Coin<0x2::sui::SUI>                                                    │
+│  │ Version: 635103206                                                                            │
+│  │ Digest: C43DSMKxzyXRybYaLBbj1FtJiVect8EoDKU6Bd8GJcCu                                          │
+│  └──                                                                                             │
+│ Published Objects:                                                                               │
+│  ┌──                                                                                             │
+│  │ PackageID: 0x7a9695b16975f9a8614a81fc3eb67464699255f42294f4cb7df55e9d8169f506                 │
+│  │ Version: 1                                                                                    │
+│  │ Digest: 9KYZAzRKFBApvkzMogyLSTaL8TTw1vTMRUdfMBHdagZL                                          │
+│  │ Modules: event_nft                                                                            │
+│  └──                                                                                             │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭───────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Balance Changes                                                                                   │
+├───────────────────────────────────────────────────────────────────────────────────────────────────┤
+│  ┌──                                                                                              │
+│  │ Owner: Account Address ( 0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d )  │
+│  │ CoinType: 0x2::sui::SUI                                                                        │
+│  │ Amount: -8345480                                                                               │
+│  └──                                                                                              │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────╯

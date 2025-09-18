@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import type { DmSettings, DmMode } from './types';
 
 import type { NFTCollection, DiscordRole, BatchConfig, BatchStats, VerifiedUser, AdminMintEvent } from './types';
+import { useWalletWithErrorHandling } from './hooks/useWallet';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
 const DEFAULT_WALRUS_UPLOAD_URL = (import.meta as any).env?.VITE_WALRUS_UPLOAD_URL || '';
@@ -10,6 +11,7 @@ const DEFAULT_WALRUS_GATEWAY = (import.meta as any).env?.VITE_WALRUS_GATEWAY || 
 type AdminMode = 'admin' | 'roles' | 'mint' | undefined;
 
 function AdminPanel({ mode }: { mode?: AdminMode }) {
+  const { account, connected, signPersonalMessage } = useWalletWithErrorHandling() as any;
   const [collections, setCollections] = useState<NFTCollection[]>([]);
   const [discordRoles, setDiscordRoles] = useState<DiscordRole[]>([]);
   const [loading, setLoading] = useState(false);
@@ -20,14 +22,14 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
   const [batchConfig, setBatchConfig] = useState<BatchConfig | null>(null);
   const [batchStats, setBatchStats] = useState<BatchStats | null>(null);
   const [batchLoading, setBatchLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'collections' | 'events' | 'batch' | 'users' | 'admins' | 'dm-settings'>(
+  const [activeTab, setActiveTab] = useState<'collections' | 'events' | 'batch' | 'users' | 'admins' | 'dm-settings' | 'history'>(
     mode === 'mint' ? 'events' : mode === 'admin' ? 'admins' : 'collections'
   );
 
   // 表示タブをmodeで制限
-  const allowedTabs: Array<'collections' | 'events' | 'batch' | 'users' | 'admins' | 'dm-settings'> =
+  const allowedTabs: Array<'collections' | 'events' | 'batch' | 'users' | 'admins' | 'dm-settings' | 'history'> =
     mode === 'mint'
-      ? ['events']
+      ? ['events', 'history']
       : mode === 'admin'
       ? ['admins']
       : ['collections', 'batch', 'users', 'dm-settings'];
@@ -48,20 +50,165 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
   });
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
+  // コレクション作成UI用ステート
+  const [createColName, setCreateColName] = useState<string>('');
+  const [createColSymbol, setCreateColSymbol] = useState<string>('');
+  const [createColTypePath, setCreateColTypePath] = useState<string>('');
+  const [creatingCollection, setCreatingCollection] = useState<boolean>(false);
+  const [createColMessage, setCreateColMessage] = useState<string>('');
+  const [createColResult, setCreateColResult] = useState<any>(null);
+
+  // パッケージ公開（本番）用ステート
+  const [artifactModules, setArtifactModules] = useState<string[] | null>(null);
+  const [artifactDeps, setArtifactDeps] = useState<string[] | null>(null);
+  const [publishing, setPublishing] = useState<boolean>(false);
+  const [publishMessage, setPublishMessage] = useState<string>('');
+  const [publishResult, setPublishResult] = useState<any>(null);
+
+  const handleArtifactChange = async (file: File | null) => {
+    try {
+      setArtifactModules(null);
+      setArtifactDeps(null);
+      setPublishMessage('');
+      setPublishResult(null);
+      if (!file) return;
+      const text = await file.text();
+      const json = JSON.parse(text);
+      const modules = Array.isArray(json.modules) ? json.modules : null;
+      const deps = Array.isArray(json.dependencies) ? json.dependencies : null;
+      if (!modules || !deps) {
+        setPublishMessage('不正なアーティファクトです（modules/dependenciesが見つかりません）');
+        return;
+      }
+      setArtifactModules(modules);
+      setArtifactDeps(deps);
+      setPublishMessage(`読み込み完了: modules=${modules.length}, dependencies=${deps.length}`);
+    } catch (e: any) {
+      setPublishMessage(e?.message || 'アーティファクトの読み込みに失敗しました');
+    }
+  };
+
+  const handlePublishPackage = async () => {
+    try {
+      if (publishing) return;
+      if (!connected || !account?.address) { setPublishMessage('ウォレットを接続してください'); return; }
+      if (!artifactModules || !artifactDeps) { setPublishMessage('アーティファクト（build.artifacts.json）を選択してください'); return; }
+      setPublishing(true);
+      setPublishMessage('パッケージ公開中...');
+      setPublishResult(null);
+
+      const timestamp = new Date().toISOString();
+      const authMessage = `SXT Admin Publish\naddress=${account.address}\ntimestamp=${timestamp}`;
+      const msgBytes = new TextEncoder().encode(authMessage);
+      const sig = typeof signPersonalMessage === 'function' ? await signPersonalMessage({ message: msgBytes }) : null;
+      const signature = sig?.signature;
+      const bytes = sig?.bytes;
+      const publicKey = (sig as any)?.publicKey ?? (account as any)?.publicKey;
+      try { localStorage.setItem('currentWalletAddress', account.address); } catch {}
+
+      const resp = await fetch(`${API_BASE_URL}/api/admin/publish`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ modules: artifactModules, dependencies: artifactDeps, gasBudget: 100_000_000, signature, bytes, publicKey, authMessage })
+      });
+      const data = await resp.json();
+      if (!data?.success) {
+        setPublishMessage(data?.error || '公開に失敗しました');
+      } else {
+        setPublishMessage('公開に成功しました');
+        setPublishResult(data);
+      }
+    } catch (e: any) {
+      setPublishMessage(e?.message || 'エラーが発生しました');
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const proposeSymbol = (name: string | undefined) => {
+    if (!name) return '';
+    const ascii = name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    return ascii.slice(0, 6) || 'EVENT';
+  };
+
+  const handleCreateCollectionViaMove = async () => {
+    try {
+      if (creatingCollection) return;
+      if (!connected || !account?.address) {
+        setCreateColMessage('ウォレットを接続してください');
+        return;
+      }
+      setCreatingCollection(true);
+      setCreateColMessage('コレクション作成中...');
+      setCreateColResult(null);
+
+      // 認証メッセージ（管理操作）と署名
+      const timestamp = new Date().toISOString();
+      const authMessage = `SXT Admin Collection Create\naddress=${account.address}\ntimestamp=${timestamp}`;
+      const msgBytes = new TextEncoder().encode(authMessage);
+      const sig = typeof signPersonalMessage === 'function' ? await signPersonalMessage({ message: msgBytes }) : null;
+      const signature = sig?.signature;
+      const bytes = sig?.bytes;
+      const publicKey = (sig as any)?.publicKey ?? (account as any)?.publicKey;
+      try { localStorage.setItem('currentWalletAddress', account.address); } catch {}
+
+      const body: any = {
+        name: createColName || (newEvent.name || 'Event Collection'),
+        symbol: createColSymbol || proposeSymbol(newEvent.name),
+        imageCid: (newEvent as any).imageCid || '',
+        imageMimeType: (newEvent as any).imageMimeType || '',
+        typePath: createColTypePath || undefined,
+        signature,
+        bytes,
+        publicKey,
+        authMessage
+      };
+
+      const res = await fetch(`${API_BASE_URL}/api/admin/collections/create`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (!data?.success) {
+        setCreateColMessage(data?.error || 'コレクション作成に失敗しました');
+      } else {
+        setCreateColMessage('コレクションを作成しました');
+        setCreateColResult(data);
+        try { await fetchCollections(); } catch {}
+      }
+    } catch (e: any) {
+      setCreateColMessage(e?.message || 'エラーが発生しました');
+    } finally {
+      setCreatingCollection(false);
+    }
+  };
+
   // Walrus 設定・アップロードUI用
   const [walrusUploadUrl, setWalrusUploadUrl] = useState<string>(DEFAULT_WALRUS_UPLOAD_URL);
   const [walrusGatewayBase, setWalrusGatewayBase] = useState<string>(DEFAULT_WALRUS_GATEWAY);
   const [uploading, setUploading] = useState<boolean>(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [usePublicRelayFlow, setUsePublicRelayFlow] = useState<boolean>(false);
+  const [walrusBlobId, setWalrusBlobId] = useState<string>('');
+  const [walrusTxId, setWalrusTxId] = useState<string>('');
+  const [walrusNonce, setWalrusNonce] = useState<string>('');
+
+  const computeBlobIdBase64Url = async (file: File): Promise<string> => {
+    const buf = await file.arrayBuffer();
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', buf));
+    // base64url encode
+    let b64 = btoa(String.fromCharCode(...digest));
+    b64 = b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    return b64;
+  };
 
   const resolveCidFromResponse = (obj: any): string | null => {
     if (!obj || typeof obj !== 'object') return null;
-    // 代表的なキー候補を探索
     const candidates = ['cid', 'hash', 'digest', 'id'];
     for (const key of candidates) {
       if (typeof obj[key] === 'string' && obj[key]) return obj[key];
     }
-    // ネスト探索（1階層のみ）
     for (const k of Object.keys(obj)) {
       const v = (obj as any)[k];
       if (v && typeof v === 'object') {
@@ -76,13 +223,43 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
   const handleWalrusUpload = async () => {
     try {
       if (!uploadFile) { setMessage('アップロードする画像ファイルを選択してください'); return; }
-      if (!walrusUploadUrl) { setMessage('アップロードエンドポイントURLを設定してください'); return; }
+      // プロキシ経由（Workers）か直URLかを選択
+      const useProxy = !walrusUploadUrl; // 設定が空の場合はWorkersのプロキシを利用
+      const endpoint = useProxy ? `${API_BASE_URL}/api/walrus/upload` : walrusUploadUrl;
       setUploading(true);
       setMessage('アップロード中...');
 
-      const form = new FormData();
-      form.append('file', uploadFile);
-      const res = await fetch(walrusUploadUrl, { method: 'POST', body: form });
+      let res: Response;
+      if (usePublicRelayFlow) {
+        // tip-config を確認して必要ならスポンサー対応（未実装時は警告）
+        let needsTip = false;
+        try {
+          const tipRes = await fetch(`${API_BASE_URL}/api/walrus/tip-config`);
+          const tipJson = await tipRes.json().catch(() => ({}));
+          const cfg = tipJson?.data || tipJson;
+          // 代表的な形: { send_tip: {...} } もしくは { no_tip: {} }
+          needsTip = !!cfg?.send_tip;
+        } catch {}
+
+        let finalBlobId = walrusBlobId.trim();
+        if (!finalBlobId) {
+          finalBlobId = await computeBlobIdBase64Url(uploadFile);
+        }
+
+        if (needsTip) {
+          setMessage('この公開リレーはtipが必要です。Botスポンサーでの自動tip決済・登録・certifyを実装します。少々お待ちください。');
+          setUploading(false);
+          return;
+        }
+
+        const qp = new URLSearchParams({ blob_id: finalBlobId });
+        const relayUrl = `${API_BASE_URL}/api/walrus/upload-relay?${qp.toString()}`;
+        res = await fetch(relayUrl, { method: 'POST', headers: { 'Content-Type': uploadFile.type || 'application/octet-stream' }, body: uploadFile });
+      } else {
+        const form = new FormData();
+        form.append('file', uploadFile);
+        res = await fetch(endpoint, { method: 'POST', body: form });
+      }
       if (!res.ok) {
         const t = await res.text().catch(() => '');
         throw new Error(`Upload failed (${res.status}): ${t}`);
@@ -125,11 +302,35 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
     }
   };
 
+  const handleFetchTipConfig = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/walrus/tip-config`);
+      const txt = await res.text();
+      setMessage(`tip-config: ${txt.slice(0, 300)}${txt.length > 300 ? '…' : ''}`);
+    } catch (e: any) {
+      setMessage(e?.message || 'tip-config の取得に失敗しました');
+    }
+  };
+
   // カウントダウン用（1秒ごとに更新）
   const [nowTs, setNowTs] = useState<number>(Date.now());
   useEffect(() => {
     const id = setInterval(() => setNowTs(Date.now()), 1000);
     return () => clearInterval(id);
+  }, []);
+
+  // WorkersのWalrus設定を取得し、自動適用（初回）
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/walrus/config`);
+        const data = await res.json();
+        if (data?.success) {
+          if (!walrusGatewayBase && data.data.gatewayBase) setWalrusGatewayBase(data.data.gatewayBase);
+          // uploadはプロキシを標準にするため、空のままでもOK
+        }
+      } catch {}
+    })();
   }, []);
 
   // 認証済みユーザー関連の状態
@@ -177,7 +378,8 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
 
   const fetchCollections = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/collections`);
+      // ミント用コレクションを取得
+      const response = await fetch(`${API_BASE_URL}/api/mint-collections`);
       const data = await response.json();
       if (data.success) {
         setCollections(data.data);
@@ -220,11 +422,50 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
       setMessage('必須項目（イベント名・コレクション・開始/終了）を入力してください');
       return;
     }
-    // 画像の必須化：URL または CID のどちらかが必要
-    const hasImage = Boolean((newEvent as any).imageUrl) || Boolean((newEvent as any).imageCid);
-    if (!hasImage) {
-      setMessage('画像が未設定です。WalrusへアップロードするかURL/CIDを設定してください');
-      return;
+    // 画像自動アップロード（未設定の場合）
+    if (!((newEvent as any).imageUrl) && !((newEvent as any).imageCid) && uploadFile) {
+      try {
+        // tip不要なら自動blob_id算出でリレー送信
+        const tipRes = await fetch(`${API_BASE_URL}/api/walrus/tip-config`).catch(() => null);
+        let needsTip = false;
+        if (tipRes && tipRes.ok) {
+          const tipJson = await tipRes.json().catch(() => ({}));
+          const cfg = tipJson?.data || tipJson;
+          needsTip = !!cfg?.send_tip;
+        }
+        if (!needsTip) {
+          const qp = new URLSearchParams(); // blob_idはWorkers側で自動計算
+          const relayUrl = `${API_BASE_URL}/api/walrus/upload-relay?${qp.toString()}`;
+          const r = await fetch(relayUrl, { method: 'POST', headers: { 'Content-Type': uploadFile.type || 'application/octet-stream' }, body: uploadFile });
+          if (r.ok) {
+            const d = await r.json().catch(() => ({}));
+            const cid = resolveCidFromResponse(d);
+            const base = walrusGatewayBase ? walrusGatewayBase.replace(/\/$/, '') : '';
+            const url = cid && base ? `${base}/${cid}` : cid || '';
+            if (cid) {
+              (newEvent as any).imageCid = cid;
+              (newEvent as any).imageMimeType = uploadFile.type || 'application/octet-stream';
+              (newEvent as any).imageUrl = url;
+            }
+          }
+        }
+      } catch {}
+    }
+
+    // Moveターゲットの自動補完
+    if (!newEvent?.moveCall?.target) {
+      try {
+        const mt = await fetch(`${API_BASE_URL}/api/move-targets`).then(r => r.json()).catch(() => null);
+        const target = mt?.data?.defaultMoveTarget || '';
+        if (target) {
+          (newEvent as any).moveCall = {
+            target,
+            typeArguments: [],
+            argumentsTemplate: ['{recipient}', '{imageCid}', '{imageMimeType}'],
+            gasBudget: 50_000_000
+          };
+        }
+      } catch {}
     }
     // 日時の整合性チェック
     try {
@@ -274,6 +515,34 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
     } catch {}
     setLoading(true);
     try {
+      // 画像自動アップロード（未設定でファイル選択がある場合）
+      if (!((editingEvent as any).imageUrl) && !((editingEvent as any).imageCid) && uploadFile) {
+        try {
+          const tipRes = await fetch(`${API_BASE_URL}/api/walrus/tip-config`).catch(() => null);
+          let needsTip = false;
+          if (tipRes && tipRes.ok) {
+            const tipJson = await tipRes.json().catch(() => ({}));
+            const cfg = tipJson?.data || tipJson;
+            needsTip = !!cfg?.send_tip;
+          }
+          if (!needsTip) {
+            const relayUrl = `${API_BASE_URL}/api/walrus/upload-relay`;
+            const r = await fetch(relayUrl, { method: 'POST', headers: { 'Content-Type': uploadFile.type || 'application/octet-stream' }, body: uploadFile });
+            if (r.ok) {
+              const d = await r.json().catch(() => ({}));
+              const cid = resolveCidFromResponse(d);
+              const base = walrusGatewayBase ? walrusGatewayBase.replace(/\/$/, '') : '';
+              const url = cid && base ? `${base}/${cid}` : cid || '';
+              if (cid) {
+                (editingEvent as any).imageCid = cid;
+                (editingEvent as any).imageMimeType = uploadFile.type || 'application/octet-stream';
+                (editingEvent as any).imageUrl = url;
+              }
+            }
+          }
+        } catch {}
+      }
+
       const res = await fetch(`${API_BASE_URL}/api/admin/events/${editingEvent.id}`, {
         method: 'PUT',
         headers: getAuthHeaders(),
@@ -736,6 +1005,33 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
     }
   }, [activeTab]);
 
+  // コレクション別ミント履歴
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyItems, setHistoryItems] = useState<Array<{ txDigest: string; eventId?: string; recipient?: string; objectIds?: string[]; at?: string }>>([]);
+  const [historyCollection, setHistoryCollection] = useState<string>('');
+
+  const fetchCollectionHistory = async (typePath: string, limit: number = 50) => {
+    if (!typePath) return;
+    setHistoryLoading(true);
+    try {
+      const encoded = encodeURIComponent(typePath);
+      const res = await fetch(`${API_BASE_URL}/api/mint-collections/${encoded}/mints?limit=${limit}`);
+      const data = await res.json();
+      if (data.success) {
+        setHistoryItems(Array.isArray(data.data) ? data.data : []);
+      } else {
+        setMessage(`履歴の取得に失敗しました: ${data.error || 'unknown error'}`);
+        setHistoryItems([]);
+      }
+    } catch (e) {
+      console.error('Failed to fetch collection history', e);
+      setMessage('履歴の取得に失敗しました');
+      setHistoryItems([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
   return (
     <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
       <h1 style={{ marginBottom: '2rem' }}>
@@ -746,6 +1042,35 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
         <div style={{ marginBottom: '2rem', display: 'grid', gap: '0.75rem', maxWidth: '400px' }}>
           <a href="/admin/roles" style={{ padding: '0.75rem 1rem', background: '#f8f9fa', borderRadius: 8, textDecoration: 'none', fontWeight: 600, color: '#1f2937', textAlign: 'center', border: '1px solid #d1d5db' }}>ロール管理へ</a>
           <a href="/admin/mint" style={{ padding: '0.75rem 1rem', background: '#f8f9fa', borderRadius: 8, textDecoration: 'none', fontWeight: 600, color: '#1f2937', textAlign: 'center', border: '1px solid #d1d5db' }}>ミント管理へ</a>
+        </div>
+      )}
+
+      {mode === 'admin' && (
+        <div style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #d1d5db', borderRadius: 8 }}>
+          <h3 style={{ margin: '0 0 0.75rem 0' }}>パッケージ公開（本番）</h3>
+          <div style={{ display: 'grid', gap: '0.5rem', maxWidth: 720 }}>
+            <div>
+              <input type="file" accept="application/json" onChange={(e) => handleArtifactChange(e.target.files?.[0] || null)} />
+              <div style={{ fontSize: '0.85rem', color: '#6b7280' }}>sxt_nft/build.artifacts.json を選択してください</div>
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button onClick={handlePublishPackage} disabled={publishing || !artifactModules || !artifactDeps} style={{ padding: '0.5rem 1rem', background: '#ef4444', color: 'white', border: 'none', borderRadius: 6, cursor: publishing || !artifactModules || !artifactDeps ? 'not-allowed' : 'pointer', opacity: publishing || !artifactModules || !artifactDeps ? 0.6 : 1 }}>
+                {publishing ? '公開中...' : 'パッケージ公開（本番）'}
+              </button>
+              {publishMessage && <div style={{ alignSelf: 'center', color: '#111827' }}>{publishMessage}</div>}
+            </div>
+            {publishResult && (
+              <div style={{ background: '#f9fafb', padding: '0.75rem', borderRadius: 6, border: '1px solid #e5e7eb' }}>
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <strong>Tx Digest:</strong> <span style={{ fontFamily: 'monospace' }}>{publishResult?.data?.tx?.txDigest || publishResult?.txDigest || '-'}</span>
+                </div>
+                <details>
+                  <summary>詳細</summary>
+                  <pre style={{ overflowX: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '0.8rem' }}>{JSON.stringify(publishResult, null, 2)}</pre>
+                </details>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -846,6 +1171,22 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
           }}
         >
           DM通知設定
+        </button>
+        )}
+        {allowedTabs.includes('history') && (
+        <button
+          onClick={() => setActiveTab('history')}
+          style={{
+            padding: '0.5rem 1rem',
+            background: activeTab === 'history' ? '#007bff' : '#f8f9fa',
+            color: activeTab === 'history' ? 'white' : '#333',
+            border: '1px solid #ccc',
+            borderRadius: 4,
+            cursor: 'pointer',
+            fontWeight: 500
+          }}
+        >
+          コレクション履歴
         </button>
         )}
       </div>
@@ -1305,6 +1646,93 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
         <div>
           <h3>イベント管理</h3>
 
+          {/* コレクション作成（Move呼び出し） */}
+          <div style={{ marginBottom: '1.5rem', padding: '1rem', border: '1px solid #d1d5db', borderRadius: 8, background: '#f8fafc' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <h4 style={{ margin: 0 }}>コレクション作成</h4>
+              <small style={{ color: '#6b7280' }}>Walrus CIDがある場合は自動で使用</small>
+            </div>
+            <div style={{ display: 'grid', gap: '0.5rem', maxWidth: 720 }}>
+              <input
+                type="text"
+                placeholder={`コレクション名（例: ${(newEvent.name || 'Event Collection')}）`}
+                value={createColName}
+                onChange={(e) => setCreateColName(e.target.value)}
+                style={{ padding: '0.5rem', borderRadius: 6, border: '1px solid #d1d5db' }}
+              />
+              <input
+                type="text"
+                placeholder={`シンボル（例: ${proposeSymbol(newEvent.name)}）`}
+                value={createColSymbol}
+                onChange={(e) => setCreateColSymbol(e.target.value)}
+                style={{ padding: '0.5rem', borderRadius: 6, border: '1px solid #d1d5db' }}
+              />
+              <input
+                type="text"
+                placeholder="型パス（任意・例: 0x...::module::Struct）未指定時は既定から推測"
+                value={createColTypePath}
+                onChange={(e) => setCreateColTypePath(e.target.value)}
+                style={{ padding: '0.5rem', borderRadius: 6, border: '1px solid #d1d5db' }}
+              />
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  onClick={handleCreateCollectionViaMove}
+                  disabled={creatingCollection}
+                  style={{ padding: '0.5rem 1rem', background: '#0ea5e9', color: 'white', border: 'none', borderRadius: 6, cursor: creatingCollection ? 'not-allowed' : 'pointer', opacity: creatingCollection ? 0.6 : 1 }}
+                >
+                  {creatingCollection ? '作成中...' : 'コレクション作成'}
+                </button>
+                {createColMessage && (
+                  <div style={{ alignSelf: 'center', color: '#374151' }}>{createColMessage}</div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* 作成結果モーダル */}
+          {createColResult && (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }} onClick={() => setCreateColResult(null)}>
+              <div style={{ background: 'white', borderRadius: 12, padding: '1rem', width: 'min(92vw, 720px)' }} onClick={(e) => e.stopPropagation()}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h4 style={{ margin: 0 }}>コレクション作成結果</h4>
+                  <button onClick={() => setCreateColResult(null)} style={{ background: 'transparent', border: 'none', fontSize: '1.25rem', cursor: 'pointer' }}>×</button>
+                </div>
+                <div style={{ marginTop: '0.75rem' }}>
+                  <div style={{ marginBottom: '0.5rem' }}>
+                    <strong>登録コレクション:</strong>
+                    <div style={{ fontFamily: 'monospace', fontSize: '0.9rem' }}>{createColResult?.data?.collection?.packageId || '-'}</div>
+                  </div>
+                  <div style={{ marginBottom: '0.5rem' }}>
+                    <strong>Tx Digest:</strong>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontFamily: 'monospace', fontSize: '0.9rem' }}>{createColResult?.data?.moveResult?.txDigest || '-'}</span>
+                      {createColResult?.data?.moveResult?.txDigest && (
+                        <button
+                          onClick={async () => { try { await navigator.clipboard.writeText(createColResult?.data?.moveResult?.txDigest); setCreateColMessage('Tx Digestをコピーしました'); } catch {} }}
+                          style={{ padding: '0.25rem 0.5rem', background: '#6b7280', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: '0.8rem' }}
+                        >
+                          コピー
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {(createColResult?.data?.moveResult?.events || createColResult?.data?.moveResult?.objectChanges) && (
+                    <details style={{ background: '#f9fafb', padding: '0.5rem', borderRadius: 6 }}>
+                      <summary>詳細</summary>
+                      <pre style={{ overflowX: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '0.8rem' }}>{JSON.stringify({
+                        events: createColResult?.data?.moveResult?.events || [],
+                        objectChanges: createColResult?.data?.moveResult?.objectChanges || []
+                      }, null, 2)}</pre>
+                    </details>
+                  )}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.75rem' }}>
+                  <button onClick={() => setCreateColResult(null)} style={{ padding: '0.5rem 1rem', background: '#10b981', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer' }}>閉じる</button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* 作成/編集フォーム */}
           <div style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ccc', borderRadius: '8px', maxWidth: '800px' }}>
             <h4>{editingEvent ? 'イベント編集' : '新規イベント'}</h4>
@@ -1322,13 +1750,29 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
                 onChange={(e) => editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), description: e.target.value }) : setNewEvent({ ...newEvent, description: e.target.value })}
                 style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', minHeight: 60 }}
               />
-              <input
-                type="text"
-                placeholder="コレクションID（型ID/パッケージIDなど）"
-                value={(editingEvent?.collectionId) ?? (newEvent.collectionId || '')}
-                onChange={(e) => editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), collectionId: e.target.value }) : setNewEvent({ ...newEvent, collectionId: e.target.value })}
-                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
-              />
+              {/* コレクション選択（ミント用） */}
+              <div style={{ display: 'grid', gap: '0.25rem' }}>
+                <label style={{ fontSize: '0.85rem', color: '#374151' }}>対象コレクション（ミント用）</label>
+                <select
+                  value={(editingEvent?.collectionId) ?? (newEvent.collectionId || '')}
+                  onChange={(e) => editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), collectionId: e.target.value }) : setNewEvent({ ...newEvent, collectionId: e.target.value })}
+                  style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                >
+                  <option value="">コレクションを選択してください</option>
+                  {collections.map(col => (
+                    <option key={col.id} value={col.packageId}>
+                      {col.name} ({(col.packageId || '').slice(0, 10)}...)
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  placeholder="または手動入力（型/パス: 0x...::module::Struct など）"
+                  value={(editingEvent?.collectionId) ?? (newEvent.collectionId || '')}
+                  onChange={(e) => editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), collectionId: e.target.value }) : setNewEvent({ ...newEvent, collectionId: e.target.value })}
+                  style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                />
+              </div>
               <input
                 type="text"
                 placeholder="Walrus画像URL（任意）"
@@ -1377,6 +1821,34 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
                   <button onClick={handleWalrusUpload} disabled={uploading || !uploadFile} style={{ padding: '0.5rem 0.75rem', background: '#0ea5e9', color: 'white', border: 'none', borderRadius: 6, cursor: uploading || !uploadFile ? 'not-allowed' : 'pointer' }}>
                     {uploading ? 'アップロード中...' : 'Walrusにアップロード'}
                   </button>
+                </div>
+                <div style={{ display: 'grid', gap: '0.5rem', background: '#fafafa', border: '1px solid #eee', borderRadius: 8, padding: '0.75rem' }}>
+                  <label style={{ fontSize: '0.85rem', color: '#374151' }}>
+                    <input type="checkbox" checked={usePublicRelayFlow} onChange={(e) => setUsePublicRelayFlow(e.target.checked)} style={{ marginRight: 8 }} />
+                    公開リレーフローを使用（blob_id 事前取得が必要）
+                  </label>
+                  {usePublicRelayFlow && (
+                    <div style={{ display: 'grid', gap: '0.5rem' }}>
+                      <div style={{ display: 'grid', gap: '0.25rem' }}>
+                        <label style={{ fontSize: '0.85rem', color: '#374151' }}>blob_id（必須）</label>
+                        <input type="text" value={walrusBlobId} onChange={(e) => setWalrusBlobId(e.target.value)} placeholder="例: E7_nN..." style={{ padding: '0.5rem', borderRadius: 4, border: '1px solid #ccc' }} />
+                      </div>
+                      <div style={{ display: 'grid', gap: '0.25rem' }}>
+                        <label style={{ fontSize: '0.85rem', color: '#374151' }}>tx_id（tip必要時）</label>
+                        <input type="text" value={walrusTxId} onChange={(e) => setWalrusTxId(e.target.value)} placeholder="Base58 TxID" style={{ padding: '0.5rem', borderRadius: 4, border: '1px solid #ccc' }} />
+                      </div>
+                      <div style={{ display: 'grid', gap: '0.25rem' }}>
+                        <label style={{ fontSize: '0.85rem', color: '#374151' }}>nonce（tip必要時, Base64URL）</label>
+                        <input type="text" value={walrusNonce} onChange={(e) => setWalrusNonce(e.target.value)} placeholder="rw8xIu...（= Base64URL）" style={{ padding: '0.5rem', borderRadius: 4, border: '1px solid #ccc' }} />
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button onClick={handleFetchTipConfig} type="button" style={{ padding: '0.35rem 0.6rem', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontSize: '0.85rem' }}>
+                          tip-config を取得
+                        </button>
+                        <a href="https://docs.wal.app/operator-guide/upload-relay.html" target="_blank" rel="noreferrer" style={{ padding: '0.35rem 0.6rem', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: '0.85rem', textDecoration: 'none' }}>仕様を確認</a>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
@@ -2253,6 +2725,95 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
               <p>DM設定を読み込み中...</p>
             </div>
           )}
+        </div>
+      )}
+
+      {activeTab === 'history' && (
+        <div style={{ display: 'grid', gap: '1rem' }}>
+          <div style={{ display: 'grid', gap: '0.5rem' }}>
+            <label style={{ fontSize: '0.9rem', color: '#374151' }}>コレクションを選択</label>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <select
+                value={historyCollection}
+                onChange={(e) => setHistoryCollection(e.target.value)}
+                style={{ padding: '0.5rem', borderRadius: 4, border: '1px solid #ccc', minWidth: 280 }}
+              >
+                <option value="">選択してください</option>
+                {collections.map(col => (
+                  <option key={col.id} value={col.packageId}>
+                    {col.name} ({(col.packageId || '').slice(0, 10)}...)
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => historyCollection && fetchCollectionHistory(historyCollection)}
+                disabled={!historyCollection || historyLoading}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: historyLoading ? '#6c757d' : '#007bff',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: 4,
+                  cursor: !historyCollection || historyLoading ? 'not-allowed' : 'pointer',
+                  opacity: !historyCollection || historyLoading ? 0.6 : 1,
+                  fontWeight: 500
+                }}
+                title={!historyCollection ? 'コレクションを選んでください' : ''}
+              >
+                {historyLoading ? '読み込み中...' : '履歴取得'}
+              </button>
+            </div>
+          </div>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb', padding: '0.5rem' }}>日時</th>
+                  <th style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb', padding: '0.5rem' }}>イベント</th>
+                  <th style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb', padding: '0.5rem' }}>Recipient</th>
+                  <th style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb', padding: '0.5rem' }}>ObjectIDs</th>
+                  <th style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb', padding: '0.5rem' }}>TxDigest</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historyItems.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} style={{ padding: '1rem', color: '#6b7280' }}>データがありません</td>
+                  </tr>
+                ) : (
+                  historyItems.map((it, idx) => {
+                    const evName = events.find(e => e.id === it.eventId)?.name || it.eventId || '-';
+                    return (
+                      <tr key={idx}>
+                        <td style={{ padding: '0.5rem', borderBottom: '1px solid #f3f4f6', whiteSpace: 'nowrap' }}>{it.at ? new Date(it.at).toLocaleString() : '-'}</td>
+                        <td style={{ padding: '0.5rem', borderBottom: '1px solid #f3f4f6' }}>{evName}</td>
+                        <td style={{ padding: '0.5rem', borderBottom: '1px solid #f3f4f6', fontFamily: 'monospace' }}>{it.recipient || '-'}</td>
+                        <td style={{ padding: '0.5rem', borderBottom: '1px solid #f3f4f6' }}>
+                          {(it.objectIds || []).length ? (
+                            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                              {(it.objectIds || []).map((oid, i) => (
+                                <a key={i} href={`https://suiexplorer.com/object/${oid}?network=mainnet`} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>
+                                  {oid.slice(0, 6)}...{oid.slice(-4)}
+                                </a>
+                              ))}
+                            </div>
+                          ) : '-'}
+                        </td>
+                        <td style={{ padding: '0.5rem', borderBottom: '1px solid #f3f4f6' }}>
+                          {it.txDigest ? (
+                            <a href={`https://suiexplorer.com/txblock/${it.txDigest}?network=mainnet`} target="_blank" rel="noreferrer" style={{ color: '#2563eb', fontFamily: 'monospace' }}>
+                              {it.txDigest.slice(0, 6)}...{it.txDigest.slice(-4)}
+                            </a>
+                          ) : '-'}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

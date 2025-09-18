@@ -87,6 +87,156 @@ app.get('/', (c) => {
   });
 });
 
+// Walrus 設定取得
+app.get('/api/walrus/config', (c) => {
+  const uploadEnabled = Boolean((c.env as any).WALRUS_UPLOAD_URL);
+  const gatewayBase = (c.env as any).WALRUS_GATEWAY_BASE || '';
+  return c.json({ success: true, data: { uploadEnabled, gatewayBase } });
+});
+
+// Move ターゲット（デフォルト）取得
+app.get('/api/move-targets', (c) => {
+  const defaultMoveTarget = (c.env as any).DEFAULT_MOVE_TARGET || '';
+  const defaultCollectionCreateTarget = (c.env as any).DEFAULT_COLLECTION_CREATE_TARGET || '';
+  return c.json({ success: true, data: { defaultMoveTarget, defaultCollectionCreateTarget } });
+});
+
+// Walrus アップロード（プロキシ）
+app.post('/api/walrus/upload', async (c) => {
+  try {
+    const uploadUrl = (c.env as any).WALRUS_UPLOAD_URL as string | undefined;
+    if (!uploadUrl) {
+      return c.json({ success: false, error: 'WALRUS_UPLOAD_URL is not configured' }, 503);
+    }
+
+    // 期待: formData に file が入っている。公開リレーは blob_id クエリ必須のため、こちらで計算して付与し、バイナリで転送する
+    const form = await c.req.formData();
+    let file: File | null = null;
+    for await (const entry of form as any) {
+      const [key, val] = entry as any[];
+      if (val instanceof File) { file = val as File; break; }
+      if (!file && key === 'file' && typeof (val as any)?.arrayBuffer === 'function') {
+        file = val as File;
+        break;
+      }
+    }
+    if (!file) {
+      return c.json({ success: false, error: 'No file found in form-data' }, 400);
+    }
+
+    const buf = await file.arrayBuffer();
+    const digest = await crypto.subtle.digest('SHA-256', buf);
+    let b64 = btoa(String.fromCharCode(...new Uint8Array(digest)));
+    b64 = b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    const blobId = b64;
+
+    // Botへ委譲（tip有無に関係なく処理可能）
+    let res: Response;
+    const sponsor = (c.env as any).MINT_SPONSOR_API_URL || (c.env as any).DISCORD_BOT_API_URL;
+    if (sponsor) {
+      const payload = {
+        dataBase64: btoa(String.fromCharCode(...new Uint8Array(buf))),
+        contentType: (file as any).type || 'application/octet-stream',
+        uploadUrl
+      } as any;
+      res = await fetch(`${sponsor}/api/walrus/sponsor-upload`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (!res.ok) {
+        // スポンサー経由が失敗した場合のみ直送を試す（freeリレー想定）
+        const qp = new URLSearchParams({ blob_id: blobId });
+        const forwardUrl = `${uploadUrl.split('?')[0]}?${qp.toString()}`;
+        res = await fetch(forwardUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': file.type || 'application/octet-stream' },
+          body: buf as any
+        });
+      }
+    } else {
+      const qp = new URLSearchParams({ blob_id: blobId });
+      const forwardUrl = `${uploadUrl.split('?')[0]}?${qp.toString()}`;
+      res = await fetch(forwardUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': file.type || 'application/octet-stream' },
+        body: buf as any
+      });
+    }
+    const text = await res.text();
+    let data: any = null;
+    try { data = JSON.parse(text); } catch { /* non-json */ }
+    if (!res.ok) {
+      return c.json({ success: false, status: res.status, error: data || text || 'Upload failed' }, 502);
+    }
+    return c.json({ success: true, data: { ...(data || { raw: text }), blob_id: blobId } });
+  } catch (e: any) {
+    logError('Walrus upload proxy error', e);
+    return c.json({ success: false, error: e?.message || 'Walrus upload error' }, 500);
+  }
+});
+
+// Walrus tip-config 取得（公開リレー向け）
+app.get('/api/walrus/tip-config', async (c) => {
+  try {
+    const uploadUrl = (c.env as any).WALRUS_UPLOAD_URL as string | undefined;
+    if (!uploadUrl) return c.json({ success: false, error: 'WALRUS_UPLOAD_URL is not configured' }, 503);
+    // 例: https://upload-relay.mainnet.walrus.space/v1/blob-upload-relay -> /v1/tip-config
+    const tipUrl = uploadUrl.replace(/\/v1\/blob-upload-relay(?:\?.*)?$/, '/v1/tip-config');
+    const res = await fetch(tipUrl);
+    const text = await res.text();
+    let data: any = null;
+    try { data = JSON.parse(text); } catch {}
+    if (!res.ok) return c.json({ success: false, status: res.status, error: data || text || 'Failed to fetch tip-config' }, 502);
+    return c.json({ success: true, data: data ?? {} });
+  } catch (e: any) {
+    logError('Walrus tip-config error', e);
+    return c.json({ success: false, error: e?.message || 'tip-config error' }, 500);
+  }
+});
+
+// Walrus リレー転送: blob_idをクエリに付けてバイナリを転送
+// 例: POST /api/walrus/upload-relay?blob_id=...&tx_id=...&nonce=...
+app.post('/api/walrus/upload-relay', async (c) => {
+  try {
+    const uploadUrl = (c.env as any).WALRUS_UPLOAD_URL as string | undefined;
+    if (!uploadUrl) {
+      return c.json({ success: false, error: 'WALRUS_UPLOAD_URL is not configured' }, 503);
+    }
+    const url = new URL(c.req.url);
+    let blobId = url.searchParams.get('blob_id');
+    const txId = url.searchParams.get('tx_id');
+    const nonce = url.searchParams.get('nonce');
+    const body = await c.req.arrayBuffer();
+
+    // blob_id が未指定なら自動計算（SHA-256 → base64url）
+    if (!blobId) {
+      const digest = await crypto.subtle.digest('SHA-256', body);
+      let b64 = btoa(String.fromCharCode(...new Uint8Array(digest)));
+      b64 = b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+      blobId = b64;
+    }
+
+    const qp = new URLSearchParams({ blob_id: blobId });
+    if (txId) qp.set('tx_id', txId);
+    if (nonce) qp.set('nonce', nonce);
+
+    const contentType = c.req.header('Content-Type') || 'application/octet-stream';
+    const forwardUrl = `${uploadUrl.split('?')[0]}?${qp.toString()}`;
+    const res = await fetch(forwardUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': contentType },
+      body: body as any
+    });
+    const text = await res.text();
+    let data: any = null;
+    try { data = JSON.parse(text); } catch {}
+    if (!res.ok) {
+      return c.json({ success: false, status: res.status, error: data || text || 'Upload failed' }, 502);
+    }
+    return c.json({ success: true, data: { ...(data ?? {}), blob_id: blobId } });
+  } catch (e: any) {
+    logError('Walrus upload-relay proxy error', e);
+    return c.json({ success: false, error: e?.message || 'upload-relay error' }, 500);
+  }
+});
+
 // 公開: イベント情報（アクティブ状態を付加）
 app.get('/api/events/:id/public', async (c) => {
   try {
@@ -202,6 +352,62 @@ app.post('/api/mint', async (c) => {
       const mintedCount = mintedCountStr ? Number(mintedCountStr) : 0;
       await mintedStore.put(mintedCountKey, String(mintedCount + 1));
     }
+
+  // ================================
+  // 追加: ミント詳細ログ（コレクション別）
+  // ================================
+  try {
+    if (txDigest && ev.collectionId) {
+      // Sui JSON-RPC 呼び出しで objectChanges を取得
+      const suiNet = (c.env as any).SUI_NETWORK || 'mainnet';
+      const fullnode = suiNet === 'testnet'
+        ? 'https://fullnode.testnet.sui.io:443'
+        : suiNet === 'devnet'
+          ? 'https://fullnode.devnet.sui.io:443'
+          : 'https://fullnode.mainnet.sui.io:443';
+      const rpcResp = await fetch(fullnode, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'sui_getTransactionBlock',
+          params: [txDigest, { showObjectChanges: true, showEffects: false, showInput: false, showEvents: true }]
+        })
+      });
+      const rpcJson: any = await rpcResp.json().catch(() => null);
+      const changes: any[] = rpcJson?.result?.objectChanges || [];
+      const created = changes.filter((ch) => ch?.type === 'created');
+      const nftObjects = created
+        .filter((ch) => typeof ch?.objectType === 'string' && ch.objectType === ev.collectionId)
+        .map((ch) => ch.objectId)
+        .filter(Boolean);
+
+      const log = {
+        txDigest,
+        eventId: ev.id,
+        collectionType: ev.collectionId,
+        recipient: address,
+        objectIds: nftObjects,
+        at: new Date().toISOString()
+      };
+      // 1) 取引別レコード
+      await mintedStore.put(`mint_tx:${txDigest}`, JSON.stringify(log), { expirationTtl: 60 * 60 * 24 * 365 });
+      // 2) コレクション別インデックス
+      const idxKeyAll = `mint_index:${ev.collectionId}`;
+      const idxKeyEvt = `mint_index:${ev.collectionId}:${ev.id}`;
+      const idxAllStr = await mintedStore.get(idxKeyAll);
+      const idxEvtStr = await mintedStore.get(idxKeyEvt);
+      const idxAll = idxAllStr ? JSON.parse(idxAllStr) : [];
+      const idxEvt = idxEvtStr ? JSON.parse(idxEvtStr) : [];
+      if (!idxAll.includes(txDigest)) idxAll.unshift(txDigest);
+      if (!idxEvt.includes(txDigest)) idxEvt.unshift(txDigest);
+      await mintedStore.put(idxKeyAll, JSON.stringify(idxAll.slice(0, 1000)), { expirationTtl: 60 * 60 * 24 * 365 });
+      await mintedStore.put(idxKeyEvt, JSON.stringify(idxEvt.slice(0, 1000)), { expirationTtl: 60 * 60 * 24 * 365 });
+    }
+  } catch (e) {
+    logWarning('Mint log enrichment failed');
+  }
 
     return c.json({ success: true, data: { txDigest } });
   } catch (error) {
@@ -1757,6 +1963,108 @@ app.get('/api/collections', async (c) => {
   }
 });
 
+// =============================
+// ミント用コレクションAPI（ロール用と分離）
+// =============================
+app.get('/api/mint-collections', async (c) => {
+  try {
+    let collections = [];
+    if (c.env.COLLECTION_STORE) {
+      const s = await c.env.COLLECTION_STORE.get('mint_collections');
+      collections = s ? JSON.parse(s) : [];
+    }
+    return c.json({ success: true, data: collections });
+  } catch (e) {
+    logError('mint-collections get failed', e);
+    return c.json({ success: true, data: [] });
+  }
+});
+
+// コレクション別ミント履歴（最新N件のtxDigestと詳細）
+app.get('/api/mint-collections/:typePath/mints', async (c) => {
+  try {
+    const typePath = c.req.param('typePath');
+    const limitRaw = c.req.query('limit');
+    const limit = Math.min(Math.max(Number(limitRaw || 50), 1), 200);
+    const mintedStore = (c.env as any).MINTED_STORE as KVNamespace | undefined;
+    if (!mintedStore) return c.json({ success: false, error: 'MINTED_STORE is not available' }, 503);
+
+    const idxKeyAll = `mint_index:${typePath}`;
+    const idxAllStr = await mintedStore.get(idxKeyAll);
+    const txs: string[] = idxAllStr ? JSON.parse(idxAllStr) : [];
+    const slice = txs.slice(0, limit);
+    const items = await Promise.all(slice.map(async (tx) => {
+      const rec = await mintedStore.get(`mint_tx:${tx}`);
+      return rec ? JSON.parse(rec) : { txDigest: tx };
+    }));
+    return c.json({ success: true, data: items });
+  } catch (error) {
+    logError('Get collection mints failed', error);
+    return c.json({ success: false, error: 'Failed to get collection mints' }, 500);
+  }
+});
+
+app.post('/api/mint-collections', async (c) => {
+  try {
+    const admin = c.req.header('X-Admin-Address');
+    if (!admin || !(await isAdmin(c, admin))) return c.json({ success: false, error: 'forbidden' }, 403);
+    const body = await c.req.json();
+    const { name, packageId, description = '' } = body || {};
+    if (!name || !packageId) return c.json({ success: false, error: 'Missing name/packageId' }, 400);
+    const s = await c.env.COLLECTION_STORE.get('mint_collections');
+    const list = s ? JSON.parse(s) : [];
+    const item = {
+      id: Date.now().toString(),
+      name,
+      packageId,
+      description,
+      isActive: true,
+      createdAt: new Date().toISOString(),
+    };
+    list.push(item);
+    await c.env.COLLECTION_STORE.put('mint_collections', JSON.stringify(list));
+    return c.json({ success: true, data: item });
+  } catch (e) {
+    logError('mint-collections post failed', e);
+    return c.json({ success: false, error: 'failed' }, 500);
+  }
+});
+
+app.put('/api/mint-collections/:id', async (c) => {
+  try {
+    const admin = c.req.header('X-Admin-Address');
+    if (!admin || !(await isAdmin(c, admin))) return c.json({ success: false, error: 'forbidden' }, 403);
+    const id = c.req.param('id');
+    const patch = await c.req.json().catch(() => ({}));
+    const s = await c.env.COLLECTION_STORE.get('mint_collections');
+    const list = s ? JSON.parse(s) : [];
+    const idx = list.findIndex((x: any) => x.id === id);
+    if (idx < 0) return c.json({ success: false, error: 'not found' }, 404);
+    list[idx] = { ...list[idx], ...patch, id, updatedAt: new Date().toISOString() };
+    await c.env.COLLECTION_STORE.put('mint_collections', JSON.stringify(list));
+    return c.json({ success: true, data: list[idx] });
+  } catch (e) {
+    logError('mint-collections put failed', e);
+    return c.json({ success: false, error: 'failed' }, 500);
+  }
+});
+
+app.delete('/api/mint-collections/:id', async (c) => {
+  try {
+    const admin = c.req.header('X-Admin-Address');
+    if (!admin || !(await isAdmin(c, admin))) return c.json({ success: false, error: 'forbidden' }, 403);
+    const id = c.req.param('id');
+    const s = await c.env.COLLECTION_STORE.get('mint_collections');
+    const list = s ? JSON.parse(s) : [];
+    const next = list.filter((x: any) => x.id !== id);
+    await c.env.COLLECTION_STORE.put('mint_collections', JSON.stringify(next));
+    return c.json({ success: true });
+  } catch (e) {
+    logError('mint-collections delete failed', e);
+    return c.json({ success: false, error: 'failed' }, 500);
+  }
+});
+
 // コレクション追加API（管理者用）
 app.post('/api/collections', async (c) => {
   try {
@@ -1831,6 +2139,95 @@ app.post('/api/collections', async (c) => {
   }
 });
 
+// ===== Move Targets Config (KV) =====
+const MOVE_TARGETS_KEY = 'config:move_targets';
+
+app.get('/api/admin/config/move-targets', async (c) => {
+  try {
+    const admin = c.req.header('X-Admin-Address');
+    if (!admin || !(await isAdmin(c, admin))) return c.json({ success: false, error: 'forbidden' }, 403);
+    const kv = c.env.COLLECTION_STORE;
+    const s = await kv.get(MOVE_TARGETS_KEY);
+    const data = s ? JSON.parse(s) : {};
+    return c.json({ success: true, data });
+  } catch (e) {
+    logError('get move-targets failed', e);
+    return c.json({ success: false, error: 'failed' }, 500);
+  }
+});
+
+app.put('/api/admin/config/move-targets', async (c) => {
+  try {
+    const admin = c.req.header('X-Admin-Address');
+    if (!admin || !(await isAdmin(c, admin))) return c.json({ success: false, error: 'forbidden' }, 403);
+    const kv = c.env.COLLECTION_STORE;
+    const body = await c.req.json().catch(() => ({}));
+    const currentStr = await kv.get(MOVE_TARGETS_KEY);
+    const current = currentStr ? JSON.parse(currentStr) : {};
+    const next = { ...current, ...body };
+    await kv.put(MOVE_TARGETS_KEY, JSON.stringify(next));
+    return c.json({ success: true, data: next });
+  } catch (e) {
+    logError('put move-targets failed', e);
+    return c.json({ success: false, error: 'failed' }, 500);
+  }
+});
+
+// パッケージ公開（Bot経由）
+app.post('/api/admin/publish', async (c) => {
+  try {
+    const admin = c.req.header('X-Admin-Address');
+    if (!admin || !(await isAdmin(c, admin))) return c.json({ success: false, error: 'forbidden' }, 403);
+    const sponsorUrl = (c.env as any).MINT_SPONSOR_API_URL || (c.env as any).DISCORD_BOT_API_URL;
+    if (!sponsorUrl) return c.json({ success: false, error: 'Sponsor API URL is not configured' }, 500);
+
+    const body = await c.req.json().catch(() => ({}));
+    const { modules, dependencies, gasBudget, signature, bytes, publicKey, authMessage } = body || {};
+    if (!Array.isArray(modules) || !Array.isArray(dependencies)) {
+      return c.json({ success: false, error: 'modules and dependencies are required' }, 400);
+    }
+
+    // 署名検証（管理操作）
+    if (!signature || !authMessage || typeof authMessage !== 'string' || !authMessage.includes('SXT Admin Publish') || !authMessage.includes(String(admin))) {
+      return c.json({ success: false, error: 'Invalid admin signature' }, 400);
+    }
+    const ok = await verifySignedMessage({ signature, bytes, publicKey }, new TextEncoder().encode(authMessage));
+    if (!ok) return c.json({ success: false, error: 'Invalid signature' }, 401);
+
+    const resp = await fetch(`${sponsorUrl}/api/publish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Address': admin },
+      body: JSON.stringify({ modules, dependencies, gasBudget })
+    });
+    const resJson: any = await resp.json().catch(() => null);
+    if (!resp.ok || !resJson?.success) {
+      return c.json({ success: false, error: resJson?.error || `Publish failed (${resp.status})` }, 502);
+    }
+
+    // packageId 抽出
+    const changes = (resJson.result?.objectChanges || []) as any[];
+    const pub = Array.isArray(changes) ? changes.find((x) => x?.type === 'published' || x?.type === 'publish') : null;
+    const packageId: string | null = pub?.packageId || pub?.publishedId || null;
+
+    // 既定ターゲットをKVに保存
+    if (packageId) {
+      const defaults = {
+        defaultMoveTarget: `${packageId}::event_nft::mint_to`,
+        defaultCollectionCreateTarget: `${packageId}::event_nft::create_collection`
+      };
+      const kv = c.env.COLLECTION_STORE;
+      const curStr = await kv.get(MOVE_TARGETS_KEY);
+      const cur = curStr ? JSON.parse(curStr) : {};
+      await kv.put(MOVE_TARGETS_KEY, JSON.stringify({ ...cur, ...defaults }));
+      return c.json({ success: true, data: { packageId, targets: defaults, tx: resJson } });
+    }
+
+    return c.json({ success: true, data: { packageId: null, tx: resJson } });
+  } catch (e) {
+    logError('admin publish failed', e);
+    return c.json({ success: false, error: 'failed' }, 500);
+  }
+});
 // コレクション更新API
 app.put('/api/collections/:id', async (c) => {
   try {
@@ -1935,6 +2332,181 @@ app.delete('/api/collections/:id', async (c) => {
       success: false,
       error: 'Failed to delete collection'
     }, 500);
+  }
+});
+
+// コレクション作成（管理者・任意のMove呼び出し対応）
+app.post('/api/admin/collections/create', async (c) => {
+  try {
+    const admin = c.req.header('X-Admin-Address');
+    if (!admin || !(await isAdmin(c, admin))) return c.json({ success: false, error: 'forbidden' }, 403);
+
+    const sponsorUrl = (c.env as any).MINT_SPONSOR_API_URL || (c.env as any).DISCORD_BOT_API_URL;
+    if (!sponsorUrl) return c.json({ success: false, error: 'Sponsor API URL is not configured' }, 500);
+
+    const body = await c.req.json().catch(() => ({}));
+    const {
+      name,
+      symbol,
+      description = '',
+      imageCid = '',
+      imageMimeType = '',
+      recipient = admin,
+      // Move 呼び出しオプション
+      target,
+      typeArguments = [],
+      argumentsTemplate,
+      gasBudget,
+      // コレクション登録用
+      typePath,
+      typeStructName = 'EventNFT',
+      // 署名認証
+      signature,
+      bytes,
+      publicKey,
+      authMessage
+    } = body || {};
+
+    // 管理者署名の検証（任意）。提供があれば検証するが、失敗しても管理者であれば許可する
+    if (signature && authMessage) {
+      if (typeof authMessage === 'string' && authMessage.includes('SXT Admin Collection Create') && authMessage.includes(String(admin))) {
+        const sigOk = await verifySignedMessage({ signature, bytes, publicKey }, new TextEncoder().encode(authMessage)).catch(() => false);
+        if (!sigOk) {
+          logWarning('Admin signature verification failed for collection create');
+        }
+      }
+    }
+
+    // Suiアドレス正規化（0x + 64桁）
+    const normalizeSuiAddress = (addr: string | undefined): string | null => {
+      if (!addr || typeof addr !== 'string') return null;
+      const hex = addr.toLowerCase().replace(/^0x/, '');
+      if (!/^[0-9a-f]+$/.test(hex) || hex.length > 64) return null;
+      return '0x' + hex.padStart(64, '0');
+    };
+
+    const normalizedRecipient = normalizeSuiAddress(recipient || admin);
+    if (!normalizedRecipient) {
+      return c.json({ success: false, error: `Invalid recipient address: ${recipient || admin}` }, 400);
+    }
+
+    // Move呼び出しターゲットの選定（未指定なら環境既定を使用）
+    const finalTarget: string | undefined = target || (c.env as any).DEFAULT_COLLECTION_CREATE_TARGET || undefined;
+
+    // Move呼び出しを実行（ターゲットがある場合のみ）
+    let moveResult: any = null;
+    if (finalTarget) {
+      const template = Array.isArray(argumentsTemplate) && argumentsTemplate.length > 0
+        ? argumentsTemplate
+        : ['{recipient}', '{name}', '{symbol}', '{imageCid}', '{imageMimeType}'];
+
+      const payload = {
+        target: finalTarget,
+        typeArguments: Array.isArray(typeArguments) ? typeArguments : [],
+        argumentsTemplate: template,
+        gasBudget: typeof gasBudget === 'number' ? gasBudget : 50_000_000,
+        // Bot 側のAPI仕様に合わせて 'variables' を使用
+        variables: {
+          name: name || '',
+          symbol: symbol || '',
+          imageCid: imageCid || '',
+          imageMimeType: imageMimeType || '',
+          recipient: normalizedRecipient
+        }
+      };
+
+      let resp = await fetch(`${sponsorUrl}/api/move-call`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Admin-Address': admin },
+        body: JSON.stringify(payload)
+      });
+      let resJson: any = await resp.json().catch(async () => {
+        // 404時はHTMLが返るためJSON化に失敗する。テキストで拾っておく
+        const text = await resp.text().catch(() => '');
+        return { success: false, error: text };
+      });
+      if (!resp.ok || !resJson?.success) {
+        // Render上の旧Botが /api/move-call を未実装のケースにフォールバック
+        if (resp.status === 404) {
+          const mintPayload = {
+            eventId: 'admin-collection-create',
+            recipient: normalizedRecipient,
+            imageCid: imageCid || '',
+            imageMimeType: imageMimeType || '',
+            moveCall: {
+              target: finalTarget,
+              typeArguments: Array.isArray(typeArguments) ? typeArguments : [],
+              // /api/mint は {recipient},{imageCid},{imageMimeType} のみ置換対応。
+              // name/symbol はリテラルで渡す
+              argumentsTemplate: [
+                '{recipient}',
+                String(name || ''),
+                String(symbol || ''),
+                '{imageCid}',
+                '{imageMimeType}'
+              ],
+              gasBudget: typeof gasBudget === 'number' ? gasBudget : 50_000_000
+            }
+          };
+          const resp2 = await fetch(`${sponsorUrl}/api/mint`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(mintPayload)
+          });
+          const resJson2: any = await resp2.json().catch(() => null);
+          if (!resp2.ok || !resJson2?.success) {
+            return c.json({ success: false, error: resJson2?.error || `Move call failed (${resp2.status})` }, 502);
+          }
+          moveResult = resJson2;
+        } else {
+          return c.json({ success: false, error: resJson?.error || `Move call failed (${resp.status})` }, 502);
+        }
+      } else {
+        moveResult = resJson;
+      }
+    }
+
+    // KVにミント用コレクション登録（ロール管理と分離）
+    const store = (c.env as any).COLLECTION_STORE as KVNamespace | undefined;
+    if (!store) return c.json({ success: false, error: 'COLLECTION_STORE is not available' }, 503);
+
+    // packageId/typePathの決定
+    let finalTypePath: string | undefined = typeof typePath === 'string' && typePath.trim() ? typePath.trim() : undefined;
+    if (!finalTypePath) {
+      // DEFAULT_MOVE_TARGET から型パスを推測（末尾関数名→構造体名へ置換）
+      const defaultMoveTarget = (c.env as any).DEFAULT_MOVE_TARGET as string | undefined;
+      if (defaultMoveTarget && /^0x[a-fA-F0-9]+::[a-zA-Z_][a-zA-Z0-9_]*::[a-zA-Z_][a-zA-Z0-9_]*$/.test(defaultMoveTarget)) {
+        const [addr, mod, _fun] = defaultMoveTarget.split('::');
+        finalTypePath = `${addr}::${mod}::${typeStructName}`;
+      }
+    }
+    if (!finalTypePath) {
+      // 型パス未指定の場合でも登録を許容（後で更新可能）
+      finalTypePath = (name && String(name).trim()) || 'pending';
+    }
+
+    // 既存コレクション読み込み
+    const existingStr = await store.get('mint_collections');
+    const collections = existingStr ? JSON.parse(existingStr) : [];
+
+    const newCollection: NFTCollection = {
+      id: Date.now().toString(),
+      name: name || finalTypePath,
+      packageId: finalTypePath,
+      roleId: '',
+      roleName: 'NFT Holder',
+      description: description || '',
+      isActive: true,
+      createdAt: new Date().toISOString()
+    };
+
+    collections.push(newCollection);
+    await store.put('mint_collections', JSON.stringify(collections));
+
+    return c.json({ success: true, data: { collection: newCollection, moveResult } });
+  } catch (error) {
+    logError('Create collection (admin) failed', error);
+    return c.json({ success: false, error: 'Failed to create collection' }, 500);
   }
 });
 
