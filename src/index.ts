@@ -49,6 +49,26 @@ function logError(message: string, error?: any): void {
 
 const app = new Hono<{ Bindings: Env }>();
 
+// 安全な base64 エンコード（巨大配列でもスタックを溢れさせない）
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000; // 32KB
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const sub = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...sub);
+  }
+  return btoa(binary);
+}
+
+// ファイルサイズチェック（1MB制限）
+function checkFileSize(file: File): void {
+  const maxSize = 1024 * 1024; // 1MB
+  if (file.size > maxSize) {
+    throw new Error(`File size too large: ${Math.round(file.size / 1024)}KB > 1MB. Please compress the image.`);
+  }
+}
+
 // カスタムCORSミドルウェア
 app.use('*', async (c, next) => {
   const method = c.req.method;
@@ -124,7 +144,11 @@ app.post('/api/walrus/upload', async (c) => {
       return c.json({ success: false, error: 'No file found in form-data' }, 400);
     }
 
+    // ファイルサイズチェック（1MB制限）
+    checkFileSize(file);
     const buf = await file.arrayBuffer();
+    const finalType = file.type;
+    
     const digest = await crypto.subtle.digest('SHA-256', buf);
     let b64 = btoa(String.fromCharCode(...new Uint8Array(digest)));
     b64 = b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
@@ -133,31 +157,16 @@ app.post('/api/walrus/upload', async (c) => {
     // Botへ委譲（tip有無に関係なく処理可能）
     let res: Response;
     const sponsor = (c.env as any).MINT_SPONSOR_API_URL || (c.env as any).DISCORD_BOT_API_URL;
-    if (sponsor) {
+    const walrusUploadUrl = (c.env as any).WALRUS_UPLOAD_URL;
+    if (sponsor && walrusUploadUrl) {
       const payload = {
-        dataBase64: btoa(String.fromCharCode(...new Uint8Array(buf))),
-        contentType: (file as any).type || 'application/octet-stream',
-        uploadUrl
+        dataBase64: arrayBufferToBase64(buf),
+        contentType: finalType || 'application/octet-stream',
+        uploadUrl: walrusUploadUrl
       } as any;
       res = await fetch(`${sponsor}/api/walrus/sponsor-upload`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-      if (!res.ok) {
-        // スポンサー経由が失敗した場合のみ直送を試す（freeリレー想定）
-        const qp = new URLSearchParams({ blob_id: blobId });
-        const forwardUrl = `${uploadUrl.split('?')[0]}?${qp.toString()}`;
-        res = await fetch(forwardUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': file.type || 'application/octet-stream' },
-          body: buf as any
-        });
-      }
     } else {
-      const qp = new URLSearchParams({ blob_id: blobId });
-      const forwardUrl = `${uploadUrl.split('?')[0]}?${qp.toString()}`;
-      res = await fetch(forwardUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': file.type || 'application/octet-stream' },
-        body: buf as any
-      });
+      return c.json({ success: false, error: 'Sponsor API or WALRUS_UPLOAD_URL is not configured' }, 503);
     }
     const text = await res.text();
     let data: any = null;

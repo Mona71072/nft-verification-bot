@@ -220,14 +220,77 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
     return null;
   };
 
+  // 画像自動圧縮（512KB以下に、より積極的）
+  const compressImage = async (file: File): Promise<File> => {
+    const maxSize = 512 * 1024; // 512KB（より厳しく）
+    if (file.size <= maxSize) return file;
+
+    return new Promise((resolve) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d')!;
+      const img = new Image();
+      
+      img.onload = () => {
+        // より小さく縮小（最大800x600）
+        const maxW = 800, maxH = 600;
+        let { width, height } = img;
+        if (width > maxW || height > maxH) {
+          const ratio = Math.min(maxW / width, maxH / height);
+          width *= ratio;
+          height *= ratio;
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // より低い品質から開始、512KB以下になるまで調整
+        let quality = 0.7;
+        const tryCompress = () => {
+          canvas.toBlob((blob) => {
+            if (blob) {
+              console.log(`Compression attempt: quality=${quality}, size=${Math.round(blob.size/1024)}KB`);
+              if (blob.size <= maxSize || quality <= 0.05) {
+                const compressedFile = new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' });
+                console.log(`Final compressed: ${Math.round(compressedFile.size/1024)}KB`);
+                resolve(compressedFile);
+              } else {
+                quality -= 0.05; // より細かく調整
+                tryCompress();
+              }
+            } else {
+              resolve(file); // フォールバック
+            }
+          }, 'image/jpeg', quality);
+        };
+        tryCompress();
+      };
+      
+      img.onerror = () => resolve(file); // エラー時はそのまま
+      img.src = URL.createObjectURL(file);
+    });
+  };
+
   const handleWalrusUpload = async () => {
     try {
       if (!uploadFile) { setMessage('アップロードする画像ファイルを選択してください'); return; }
+      
+      setUploading(true);
+      setMessage('画像を処理中...');
+      console.log(`Original file: ${uploadFile.name}, size: ${Math.round(uploadFile.size/1024)}KB`);
+      
+      // 自動圧縮（512KB以下に）
+      const compressedFile = await compressImage(uploadFile);
+      if (compressedFile.size !== uploadFile.size) {
+        setMessage(`画像を圧縮しました: ${Math.round(uploadFile.size/1024)}KB → ${Math.round(compressedFile.size/1024)}KB`);
+      }
+      console.log(`Using file: ${compressedFile.name}, size: ${Math.round(compressedFile.size/1024)}KB, type: ${compressedFile.type}`);
+      
+      setMessage('アップロード中...');
+      
       // プロキシ経由（Workers）か直URLかを選択
       const useProxy = !walrusUploadUrl; // 設定が空の場合はWorkersのプロキシを利用
       const endpoint = useProxy ? `${API_BASE_URL}/api/walrus/upload` : walrusUploadUrl;
-      setUploading(true);
-      setMessage('アップロード中...');
 
       let res: Response;
       if (usePublicRelayFlow) {
@@ -243,7 +306,7 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
 
         let finalBlobId = walrusBlobId.trim();
         if (!finalBlobId) {
-          finalBlobId = await computeBlobIdBase64Url(uploadFile);
+          finalBlobId = await computeBlobIdBase64Url(compressedFile);
         }
 
         if (needsTip) {
@@ -254,10 +317,10 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
 
         const qp = new URLSearchParams({ blob_id: finalBlobId });
         const relayUrl = `${API_BASE_URL}/api/walrus/upload-relay?${qp.toString()}`;
-        res = await fetch(relayUrl, { method: 'POST', headers: { 'Content-Type': uploadFile.type || 'application/octet-stream' }, body: uploadFile });
+        res = await fetch(relayUrl, { method: 'POST', headers: { 'Content-Type': compressedFile.type || 'application/octet-stream' }, body: compressedFile });
       } else {
         const form = new FormData();
-        form.append('file', uploadFile);
+        form.append('file', compressedFile);
         res = await fetch(endpoint, { method: 'POST', body: form });
       }
       if (!res.ok) {
@@ -289,7 +352,7 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
         const updates = {
           imageUrl: finalUrl,
           imageCid: cid || '',
-          imageMimeType: uploadFile.type || 'application/octet-stream'
+          imageMimeType: compressedFile.type || 'application/octet-stream'
         };
         if (editingEvent) setEditingEvent({ ...(editingEvent as AdminMintEvent), ...updates });
         else setNewEvent({ ...newEvent, ...updates });
