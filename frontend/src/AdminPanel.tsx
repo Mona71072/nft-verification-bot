@@ -5,8 +5,6 @@ import type { NFTCollection, DiscordRole, BatchConfig, BatchStats, VerifiedUser,
 import { useWalletWithErrorHandling } from './hooks/useWallet';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
-const DEFAULT_WALRUS_UPLOAD_URL = (import.meta as any).env?.VITE_WALRUS_UPLOAD_URL || '';
-const DEFAULT_WALRUS_GATEWAY = (import.meta as any).env?.VITE_WALRUS_GATEWAY || '';
 
 type AdminMode = 'admin' | 'roles' | 'mint' | undefined;
 
@@ -184,24 +182,10 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
     }
   };
 
-  // Walrus 設定・アップロードUI用
-  const [walrusUploadUrl, setWalrusUploadUrl] = useState<string>(DEFAULT_WALRUS_UPLOAD_URL);
-  const [walrusGatewayBase, setWalrusGatewayBase] = useState<string>(DEFAULT_WALRUS_GATEWAY);
+  // Walrus アップロードUI用
   const [uploading, setUploading] = useState<boolean>(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [usePublicRelayFlow, setUsePublicRelayFlow] = useState<boolean>(false);
-  const [walrusBlobId, setWalrusBlobId] = useState<string>('');
-  const [walrusTxId, setWalrusTxId] = useState<string>('');
-  const [walrusNonce, setWalrusNonce] = useState<string>('');
 
-  const computeBlobIdBase64Url = async (file: File): Promise<string> => {
-    const buf = await file.arrayBuffer();
-    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', buf));
-    // base64url encode
-    let b64 = btoa(String.fromCharCode(...digest));
-    b64 = b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-    return b64;
-  };
 
   const resolveCidFromResponse = (obj: any): string | null => {
     if (!obj || typeof obj !== 'object') return null;
@@ -288,41 +272,13 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
       
       setMessage('アップロード中...');
       
-      // プロキシ経由（Workers）か直URLかを選択
-      const useProxy = !walrusUploadUrl; // 設定が空の場合はWorkersのプロキシを利用
-      const endpoint = useProxy ? `${API_BASE_URL}/api/walrus/upload` : walrusUploadUrl;
+      // Workersのプロキシ経由でアップロード
+      const endpoint = `${API_BASE_URL}/api/walrus/upload`;
 
-      let res: Response;
-      if (usePublicRelayFlow) {
-        // tip-config を確認して必要ならスポンサー対応（未実装時は警告）
-        let needsTip = false;
-        try {
-          const tipRes = await fetch(`${API_BASE_URL}/api/walrus/tip-config`);
-          const tipJson = await tipRes.json().catch(() => ({}));
-          const cfg = tipJson?.data || tipJson;
-          // 代表的な形: { send_tip: {...} } もしくは { no_tip: {} }
-          needsTip = !!cfg?.send_tip;
-        } catch {}
-
-        let finalBlobId = walrusBlobId.trim();
-        if (!finalBlobId) {
-          finalBlobId = await computeBlobIdBase64Url(compressedFile);
-        }
-
-        if (needsTip) {
-          setMessage('この公開リレーはtipが必要です。Botスポンサーでの自動tip決済・登録・certifyを実装します。少々お待ちください。');
-          setUploading(false);
-          return;
-        }
-
-        const qp = new URLSearchParams({ blob_id: finalBlobId });
-        const relayUrl = `${API_BASE_URL}/api/walrus/upload-relay?${qp.toString()}`;
-        res = await fetch(relayUrl, { method: 'POST', headers: { 'Content-Type': compressedFile.type || 'application/octet-stream' }, body: compressedFile });
-      } else {
-        const form = new FormData();
-        form.append('file', compressedFile);
-        res = await fetch(endpoint, { method: 'POST', body: form });
-      }
+      // プロキシ経由（Workersがtip処理）
+      const form = new FormData();
+      form.append('file', compressedFile);
+      const res = await fetch(endpoint, { method: 'POST', body: form });
       if (!res.ok) {
         const t = await res.text().catch(() => '');
         throw new Error(`Upload failed (${res.status}): ${t}`);
@@ -333,11 +289,11 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
       let finalUrl = '';
       if (returnedUrl && /^https?:\/\//.test(returnedUrl)) {
         finalUrl = returnedUrl;
-      } else if (cid && walrusGatewayBase) {
+      } else if (cid) {
         // 一般的なゲートウェイのパス形態に対応
         // 例: {GATEWAY}/ipfs/{cid} または {GATEWAY}/{cid}
-        const base = walrusGatewayBase.replace(/\/$/, '');
-        finalUrl = `${base}/${cid}`;
+        const base = 'https://gateway.mainnet.walrus.space/';
+        finalUrl = `${base}${cid}`;
       }
 
       if (!finalUrl && cid) {
@@ -365,15 +321,6 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
     }
   };
 
-  const handleFetchTipConfig = async () => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/walrus/tip-config`);
-      const txt = await res.text();
-      setMessage(`tip-config: ${txt.slice(0, 300)}${txt.length > 300 ? '…' : ''}`);
-    } catch (e: any) {
-      setMessage(e?.message || 'tip-config の取得に失敗しました');
-    }
-  };
 
   // カウントダウン用（1秒ごとに更新）
   const [nowTs, setNowTs] = useState<number>(Date.now());
@@ -389,7 +336,7 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
         const res = await fetch(`${API_BASE_URL}/api/walrus/config`);
         const data = await res.json();
         if (data?.success) {
-          if (!walrusGatewayBase && data.data.gatewayBase) setWalrusGatewayBase(data.data.gatewayBase);
+          // ゲートウェイ設定は固定値を使用
           // uploadはプロキシを標準にするため、空のままでもOK
         }
       } catch {}
@@ -503,8 +450,8 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
           if (r.ok) {
             const d = await r.json().catch(() => ({}));
             const cid = resolveCidFromResponse(d);
-            const base = walrusGatewayBase ? walrusGatewayBase.replace(/\/$/, '') : '';
-            const url = cid && base ? `${base}/${cid}` : cid || '';
+            const base = 'https://gateway.mainnet.walrus.space/';
+            const url = cid && base ? `${base}${cid}` : cid || '';
             if (cid) {
               (newEvent as any).imageCid = cid;
               (newEvent as any).imageMimeType = uploadFile.type || 'application/octet-stream';
@@ -594,8 +541,8 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
             if (r.ok) {
               const d = await r.json().catch(() => ({}));
               const cid = resolveCidFromResponse(d);
-              const base = walrusGatewayBase ? walrusGatewayBase.replace(/\/$/, '') : '';
-              const url = cid && base ? `${base}/${cid}` : cid || '';
+              const base = 'https://gateway.mainnet.walrus.space/';
+              const url = cid && base ? `${base}${cid}` : cid || '';
               if (cid) {
                 (editingEvent as any).imageCid = cid;
                 (editingEvent as any).imageMimeType = uploadFile.type || 'application/octet-stream';
