@@ -12,6 +12,8 @@ export default function MintPage() {
     name: string;
     description?: string;
     imageUrl?: string;
+    imageCid?: string;
+    imageMimeType?: string;
     active: boolean;
     startAt?: string;
     endAt?: string;
@@ -57,33 +59,55 @@ export default function MintPage() {
   const handleMint = async () => {
     try {
       if (!event) {
-        setMessage('イベントが取得できていません');
+        setMessage('❌ イベント情報が取得できていません');
         return;
       }
       if (!connected || !account?.address || !signPersonalMessage) {
-        setMessage('ウォレットを接続してください');
+        setMessage('❌ ウォレットを接続してください');
+        return;
+      }
+
+      // イベントの有効性チェック
+      if (!event.active) {
+        setMessage('❌ このイベントは現在ミント期間外です');
         return;
       }
 
       setMinting(true);
-      setMessage('');
+      setMessage('🔄 ミント準備中...');
 
-      // 1) ナンス（既存APIを流用）
+      // 1) ナンス取得
+      setMessage('🔄 認証情報を準備中...');
       const nonceResp = await fetch(`${API_BASE_URL}/api/nonce`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ discordId: 'event', address: account.address, scope: 'mint', eventId })
       });
+      
+      if (!nonceResp.ok) {
+        throw new Error(`認証エラー (${nonceResp.status}): ${await nonceResp.text()}`);
+      }
+      
       const nonceData = await nonceResp.json();
-      if (!nonceData?.success) throw new Error(nonceData?.error || 'ナンスの発行に失敗しました');
+      if (!nonceData?.success) {
+        throw new Error(nonceData?.error || 'ナンスの発行に失敗しました');
+      }
 
       // 2) 署名メッセージ
+      setMessage('🔄 署名を準備中...');
       const timestamp = new Date().toISOString();
       const authMessage = `SXT Event Mint\naddress=${account.address}\neventId=${eventId}\nnonce=${nonceData.data.nonce}\ntimestamp=${timestamp}`;
       const bytes = new TextEncoder().encode(authMessage);
-      const sig = await signPersonalMessage({ message: bytes });
+      
+      let sig;
+      try {
+        sig = await signPersonalMessage({ message: bytes });
+      } catch (e: any) {
+        throw new Error('署名がキャンセルされました');
+      }
 
-      // 3) ミント要求（WorkersがスポンサーAPIへ委譲）
+      // 3) ミント実行
+      setMessage('🚀 NFTをミント中...');
       const mintResp = await fetch(`${API_BASE_URL}/api/mint`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -96,14 +120,27 @@ export default function MintPage() {
           authMessage
         })
       });
+      
+      if (!mintResp.ok) {
+        const errorText = await mintResp.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { error: errorText };
+        }
+        throw new Error(`ミントエラー (${mintResp.status}): ${errorData.error || errorText}`);
+      }
+      
       const mintData = await mintResp.json();
       if (mintData?.success) {
-        setMessage(`ミント完了: ${mintData?.data?.txDigest || ''}`);
+        setMessage(`🎉 ミント完了！ トランザクション: ${mintData?.data?.txDigest || 'N/A'}`);
       } else {
-        setMessage(mintData?.error || 'ミントに失敗しました');
+        throw new Error(mintData?.error || 'ミントに失敗しました');
       }
     } catch (e: any) {
-      setMessage(e?.message || 'ミント処理でエラーが発生しました');
+      console.error('Mint error:', e);
+      setMessage(`❌ ${e?.message || 'ミント処理でエラーが発生しました'}`);
     } finally {
       setMinting(false);
     }
@@ -179,8 +216,32 @@ export default function MintPage() {
             }
           }
           @keyframes pulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.05); }
+            0%, 100% { 
+              transform: scale(1);
+              opacity: 1;
+            }
+            50% { 
+              transform: scale(1.02);
+              opacity: 0.8;
+            }
+          }
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+          @keyframes bounce {
+            0%, 20%, 53%, 80%, 100% {
+              transform: translate3d(0,0,0);
+            }
+            40%, 43% {
+              transform: translate3d(0, -8px, 0);
+            }
+            70% {
+              transform: translate3d(0, -4px, 0);
+            }
+            90% {
+              transform: translate3d(0, -2px, 0);
+            }
           }
           .mint-button {
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -198,41 +259,111 @@ export default function MintPage() {
           .image-container:hover {
             transform: scale(1.02);
           }
+          .success-message {
+            animation: bounce 1s ease-in-out;
+          }
         `}</style>
 
         {/* Event Image */}
-        {event?.imageUrl && (
-          <div className="image-container" style={{
-            marginBottom: '24px',
-            borderRadius: '16px',
-            overflow: 'hidden',
-            position: 'relative'
-          }}>
-            <img 
-              src={event.imageUrl} 
-              alt={event.name} 
-              style={{
+        {(() => {
+          // 画像URLの決定ロジック
+          let imageUrl = event?.imageUrl;
+          if (!imageUrl && event?.imageCid) {
+            imageUrl = `https://gateway.mainnet.walrus.space/${event.imageCid}`;
+          }
+          
+          return imageUrl ? (
+            <div className="image-container" style={{
+              marginBottom: '24px',
+              borderRadius: '16px',
+              overflow: 'hidden',
+              position: 'relative',
+              boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1)'
+            }}>
+              <img 
+                src={imageUrl} 
+                alt={event?.name || 'Event NFT'} 
+                style={{
+                  width: '100%',
+                  height: '240px',
+                  objectFit: 'cover',
+                  display: 'block'
+                }}
+                onError={(e) => {
+                  // 画像読み込みエラー時のフォールバック
+                  (e.target as HTMLImageElement).style.display = 'none';
+                  const parent = (e.target as HTMLImageElement).parentElement;
+                  if (parent) {
+                    parent.innerHTML = `
+                      <div style="
+                        width: 100%;
+                        height: 240px;
+                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        color: white;
+                        font-size: 18px;
+                        font-weight: 600;
+                      ">
+                        🖼️ ${event?.name || 'Event NFT'}
+                      </div>
+                    `;
+                  }
+                }}
+              />
+              <div style={{
+                position: 'absolute',
+                top: '12px',
+                right: '12px',
+                background: 'rgba(0, 0, 0, 0.7)',
+                color: 'white',
+                padding: '4px 12px',
+                borderRadius: '20px',
+                fontSize: '12px',
+                fontWeight: '600'
+              }}>
+                {event?.active ? '🟢 LIVE' : '🔴 ENDED'}
+              </div>
+            </div>
+          ) : (
+            // 画像がない場合のプレースホルダー
+            <div style={{
+              marginBottom: '24px',
+              borderRadius: '16px',
+              overflow: 'hidden',
+              position: 'relative',
+              boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1)'
+            }}>
+              <div style={{
                 width: '100%',
                 height: '240px',
-                objectFit: 'cover',
-                display: 'block'
-              }}
-            />
-            <div style={{
-              position: 'absolute',
-              top: '12px',
-              right: '12px',
-              background: 'rgba(0, 0, 0, 0.7)',
-              color: 'white',
-              padding: '4px 12px',
-              borderRadius: '20px',
-              fontSize: '12px',
-              fontWeight: '600'
-            }}>
-              {event?.active ? '🟢 LIVE' : '🔴 ENDED'}
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'white',
+                fontSize: '18px',
+                fontWeight: '600'
+              }}>
+                🎨 {event?.name || 'Event NFT'}
+              </div>
+              <div style={{
+                position: 'absolute',
+                top: '12px',
+                right: '12px',
+                background: 'rgba(0, 0, 0, 0.7)',
+                color: 'white',
+                padding: '4px 12px',
+                borderRadius: '20px',
+                fontSize: '12px',
+                fontWeight: '600'
+              }}>
+                {event?.active ? '🟢 LIVE' : '🔴 ENDED'}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Event Title */}
         <div style={{ textAlign: 'center', marginBottom: '24px' }}>
@@ -328,26 +459,47 @@ export default function MintPage() {
             textAlign: 'center',
             marginBottom: '16px',
             fontSize: '14px',
-            fontWeight: '600'
+            fontWeight: '600',
+            border: '1px solid #f59e0b'
           }}>
             ⏰ このイベントは現在ミント期間外です
           </div>
         )}
 
         {message && (
-          <div style={{
-            background: message.includes('完了') 
-              ? 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)'
-              : 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)',
-            color: message.includes('完了') ? '#065f46' : '#991b1b',
-            padding: '12px 16px',
-            borderRadius: '12px',
-            textAlign: 'center',
-            marginBottom: '16px',
-            fontSize: '14px',
-            fontWeight: '600'
-          }}>
-            {message.includes('完了') ? '✅ ' : '⚠️ '}
+          <div 
+            className={message.includes('🎉') ? 'success-message' : ''}
+            style={{
+              background: message.includes('🎉') || message.includes('完了') 
+                ? 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)'
+                : message.includes('❌') 
+                ? 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)'
+                : message.includes('🔄') || message.includes('🚀')
+                ? 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)'
+                : 'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)',
+              color: message.includes('🎉') || message.includes('完了') 
+                ? '#065f46' 
+                : message.includes('❌') 
+                ? '#991b1b'
+                : message.includes('🔄') || message.includes('🚀')
+                ? '#1e40af'
+                : '#374151',
+              padding: '12px 16px',
+              borderRadius: '12px',
+              textAlign: 'center',
+              marginBottom: '16px',
+              fontSize: '14px',
+              fontWeight: '600',
+              border: message.includes('🎉') || message.includes('完了') 
+                ? '1px solid #10b981'
+                : message.includes('❌') 
+                ? '1px solid #ef4444'
+                : message.includes('🔄') || message.includes('🚀')
+                ? '1px solid #3b82f6'
+                : '1px solid #d1d5db',
+              animation: (message.includes('🔄') || message.includes('🚀')) ? 'pulse 2s infinite' : 'none'
+            }}
+          >
             {message}
           </div>
         )}
