@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { DmSettings, DmMode } from './types';
 
 import type { NFTCollection, DiscordRole, BatchConfig, BatchStats, VerifiedUser, AdminMintEvent } from './types';
@@ -10,6 +10,21 @@ type AdminMode = 'admin' | 'roles' | 'mint' | undefined;
 
 function AdminPanel({ mode }: { mode?: AdminMode }) {
   const { account, connected, signPersonalMessage } = useWalletWithErrorHandling() as any;
+  
+  // スピンアニメーション用のCSS
+  React.useEffect(() => {
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    `;
+    document.head.appendChild(style);
+    return () => {
+      document.head.removeChild(style);
+    };
+  }, []);
   const [collections, setCollections] = useState<NFTCollection[]>([]);
   const [discordRoles, setDiscordRoles] = useState<DiscordRole[]>([]);
   const [loading, setLoading] = useState(false);
@@ -432,84 +447,128 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
       setMessage('必須項目（イベント名・コレクション・開始/終了）を入力してください');
       return;
     }
-    // 画像自動アップロード（未設定の場合）
-    if (!((newEvent as any).imageUrl) && !((newEvent as any).imageCid) && uploadFile) {
-      try {
-        // tip不要なら自動blob_id算出でリレー送信
-        const tipRes = await fetch(`${API_BASE_URL}/api/walrus/tip-config`).catch(() => null);
-        let needsTip = false;
-        if (tipRes && tipRes.ok) {
-          const tipJson = await tipRes.json().catch(() => ({}));
-          const cfg = tipJson?.data || tipJson;
-          needsTip = !!cfg?.send_tip;
-        }
-        if (!needsTip) {
-          const qp = new URLSearchParams(); // blob_idはWorkers側で自動計算
-          const relayUrl = `${API_BASE_URL}/api/walrus/upload-relay?${qp.toString()}`;
-          const r = await fetch(relayUrl, { method: 'POST', headers: { 'Content-Type': uploadFile.type || 'application/octet-stream' }, body: uploadFile });
-          if (r.ok) {
-            const d = await r.json().catch(() => ({}));
-            const cid = resolveCidFromResponse(d);
-            const base = 'https://gateway.mainnet.walrus.space/';
-            const url = cid && base ? `${base}${cid}` : cid || '';
+
+    setLoading(true);
+    setMessage('🔄 イベントを作成中...');
+
+    try {
+      // 1. 画像自動アップロード＆BLOB登録（未設定の場合）
+      if (!((newEvent as any).imageUrl) && !((newEvent as any).imageCid) && uploadFile) {
+        setMessage('🔄 画像をWalrusにアップロード中...');
+        
+        try {
+          // Walrusアップロード（公式SDK使用でBLOB登録も含む）
+          const compressedFile = await compressImage(uploadFile);
+          const form = new FormData();
+          form.append('file', compressedFile);
+          
+          const uploadRes = await fetch(`${API_BASE_URL}/api/walrus/upload`, {
+            method: 'POST',
+            body: form
+          });
+          
+          if (!uploadRes.ok) {
+            throw new Error(`アップロード失敗 (${uploadRes.status}): ${await uploadRes.text()}`);
+          }
+          
+          const uploadData = await uploadRes.json();
+          if (uploadData.success && uploadData.data) {
+            const cid = uploadData.data.blob_id || uploadData.data.blobId;
             if (cid) {
               (newEvent as any).imageCid = cid;
-              (newEvent as any).imageMimeType = uploadFile.type || 'application/octet-stream';
-              (newEvent as any).imageUrl = url;
+              (newEvent as any).imageMimeType = compressedFile.type || 'application/octet-stream';
+              (newEvent as any).imageUrl = `https://gateway.mainnet.walrus.space/${cid}`;
+              setMessage('✅ 画像アップロード完了！BLOB登録済み');
             }
+          } else {
+            throw new Error(uploadData.error || '画像アップロードに失敗しました');
           }
+        } catch (uploadError: any) {
+          console.error('Image upload error:', uploadError);
+          setMessage(`❌ 画像アップロードエラー: ${uploadError.message}`);
+          setLoading(false);
+          return;
         }
-      } catch {}
-    }
-
-    // Moveターゲットの自動補完
-    if (!newEvent?.moveCall?.target) {
-      try {
-        const mt = await fetch(`${API_BASE_URL}/api/move-targets`).then(r => r.json()).catch(() => null);
-        const target = mt?.data?.defaultMoveTarget || '';
-        if (target) {
-          (newEvent as any).moveCall = {
-            target,
-            typeArguments: [],
-            argumentsTemplate: ['{recipient}', '{imageCid}', '{imageMimeType}'],
-            gasBudget: 50_000_000
-          };
-        }
-      } catch {}
-    }
-    // 日時の整合性チェック
-    try {
-      const st = Date.parse(newEvent.startAt as string);
-      const ed = Date.parse(newEvent.endAt as string);
-      if (isFinite(st) && isFinite(ed) && ed <= st) {
-        setMessage('終了日時は開始日時より後に設定してください');
-        return;
       }
-    } catch {}
-    setLoading(true);
-    try {
+
+      // 2. Moveターゲットの自動補完
+      if (!newEvent?.moveCall?.target) {
+        setMessage('🔄 Move設定を準備中...');
+        try {
+          const mt = await fetch(`${API_BASE_URL}/api/move-targets`).then(r => r.json()).catch(() => null);
+          const target = mt?.data?.defaultMoveTarget || '';
+          if (target) {
+            (newEvent as any).moveCall = {
+              target,
+              typeArguments: [],
+              argumentsTemplate: ['{recipient}', '{imageCid}', '{imageMimeType}'],
+              gasBudget: 50_000_000
+            };
+          }
+        } catch (moveError) {
+          console.warn('Move target setup failed:', moveError);
+        }
+      }
+
+      // 3. 日時の整合性チェック
+      try {
+        const st = Date.parse(newEvent.startAt as string);
+        const ed = Date.parse(newEvent.endAt as string);
+        if (isFinite(st) && isFinite(ed) && ed <= st) {
+          setMessage('❌ 終了日時は開始日時より後に設定してください');
+          setLoading(false);
+          return;
+        }
+      } catch (dateError) {
+        console.warn('Date validation error:', dateError);
+      }
+
+      // 4. イベント作成
+      setMessage('🚀 イベントを作成中...');
       const res = await fetch(`${API_BASE_URL}/api/admin/events`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(newEvent)
       });
+      
       const data = await res.json();
       if (data.success) {
-        setMessage('イベントを作成しました');
+        setMessage('🎉 イベントを作成しました！');
+        
+        // フォームリセット
         setNewEvent({
-          name: '', description: '', collectionId: '', imageUrl: '', active: true,
+          name: '', 
+          description: '', 
+          collectionId: '', 
+          imageUrl: '', 
+          active: true,
           startAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
           endAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-          moveCall: { target: '', typeArguments: [], argumentsTemplate: ['{recipient}', '{imageUrl}'], gasBudget: 20000000 }
+          moveCall: { 
+            target: '', 
+            typeArguments: [], 
+            argumentsTemplate: ['{recipient}', '{imageCid}', '{imageMimeType}'], 
+            gasBudget: 50_000_000 
+          }
         });
+        setUploadFile(null); // アップロードファイルもリセット
+        
+        // イベントリスト更新
         fetchEvents();
+        
+        // 成功メッセージを少し長めに表示
+        setTimeout(() => {
+          setMessage('');
+        }, 3000);
       } else {
-        setMessage(data.error || 'イベントの作成に失敗しました');
+        throw new Error(data.error || 'イベントの作成に失敗しました');
       }
-    } catch (e) {
-      setMessage('イベントの作成に失敗しました');
+    } catch (e: any) {
+      console.error('Event creation error:', e);
+      setMessage(`❌ ${e?.message || 'イベントの作成に失敗しました'}`);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleUpdateEvent = async () => {
@@ -2164,7 +2223,58 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
                     <button onClick={() => setEditingEvent(null)} disabled={loading} style={{ padding: '0.5rem 1rem', background: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1 }}>キャンセル</button>
                   </>
                 ) : (
-                  <button onClick={handleCreateEvent} disabled={loading} style={{ padding: '0.5rem 1rem', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1 }}>作成</button>
+                  <button 
+                    onClick={handleCreateEvent} 
+                    disabled={loading}
+                    style={{
+                      width: '100%',
+                      padding: '16px 24px',
+                      background: loading 
+                        ? 'linear-gradient(135deg, #9ca3af 0%, #6b7280 100%)'
+                        : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '12px',
+                      cursor: loading ? 'not-allowed' : 'pointer',
+                      fontWeight: '700',
+                      fontSize: '16px',
+                      transition: 'all 0.3s ease',
+                      position: 'relative',
+                      overflow: 'hidden'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!loading) {
+                        const target = e.target as HTMLButtonElement;
+                        target.style.transform = 'translateY(-2px)';
+                        target.style.boxShadow = '0 10px 25px -5px rgba(16, 185, 129, 0.4)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!loading) {
+                        const target = e.target as HTMLButtonElement;
+                        target.style.transform = 'translateY(0)';
+                        target.style.boxShadow = 'none';
+                      }
+                    }}
+                  >
+                    {loading && (
+                      <div style={{
+                        position: 'absolute',
+                        left: '20px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        width: '20px',
+                        height: '20px',
+                        border: '2px solid rgba(255,255,255,0.3)',
+                        borderTop: '2px solid white',
+                        borderRadius: '50%',
+                        animation: 'spin 1s linear infinite'
+                      }}></div>
+                    )}
+                    <span style={{ marginLeft: loading ? '32px' : '0' }}>
+                      {loading ? 'イベント作成中...' : '🚀 イベントを作成'}
+                    </span>
+                  </button>
                 )}
               </div>
             </div>
