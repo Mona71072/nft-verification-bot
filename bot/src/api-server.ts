@@ -378,8 +378,24 @@ app.post('/api/walrus/sponsor-upload', async (req, res) => {
     
     // 一時保存実装: Upload Relayのみ
     console.log('Using temporary relay storage (no WAL required)');
-    const blobDigest = crypto.createHash('sha256').update(buf).digest();
-    const blobId = blobDigest.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    
+    // Walrus SDKを使用して正確なblob_idを取得
+    const { WalrusFile } = await import('@mysten/walrus');
+    const file = WalrusFile.from({
+      contents: new Uint8Array(buf),
+      identifier: 'uploaded-file'
+    });
+
+    const flow = walrusClient.writeFilesFlow({
+      files: [file]
+    });
+
+    // エンコードしてblob_idを取得
+    await flow.encode();
+    const files = await flow.listFiles();
+    const blobId = files[0]?.id || 'unknown';
+    
+    console.log(`SDK calculated blob_id: ${blobId.slice(0, 8)}...`);
     
     // tip-config取得
     const relayHost = process.env.WALRUS_UPLOAD_URL?.replace('/v1/blob-upload-relay', '') || 'https://upload-relay.mainnet.walrus.space';
@@ -400,6 +416,7 @@ app.post('/api/walrus/sponsor-upload', async (req, res) => {
       const tipTx = new Transaction();
       
       // Walrus仕様: blob_digest || nonce_digest || unencoded_length を入力0に設定
+      const blobDigest = crypto.createHash('sha256').update(buf).digest();
       const nonceDigest = crypto.createHash('sha256').update(Buffer.from(nonce, 'base64')).digest();
       const lenBuf = Buffer.alloc(8);
       lenBuf.writeBigUInt64LE(BigInt(buf.length));
