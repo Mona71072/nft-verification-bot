@@ -411,13 +411,22 @@ app.post('/api/walrus/sponsor-upload', async (req, res) => {
     }
     
     const relayUrl = `${uploadUrl.split('?')[0]}?${qp.toString()}`;
+    console.log(`Relay URL: ${relayUrl}`);
+    console.log(`Content-Type: ${contentType || 'application/octet-stream'}`);
+    console.log(`Body size: ${buf.length} bytes`);
+    
     const upRes = await fetch(relayUrl, { 
       method: 'POST', 
-      headers: { 'Content-Type': contentType || 'application/octet-stream' }, 
+      headers: { 
+        'Content-Type': contentType || 'application/octet-stream',
+        'User-Agent': 'SXT-Bot/1.0'
+      }, 
       body: buf 
     });
     
     const upTxt = await upRes.text();
+    console.log(`Relay response: ${upRes.status} - ${upTxt.slice(0, 300)}`);
+    
     let upJson: any = null;
     try { upJson = JSON.parse(upTxt); } catch {}
     
@@ -427,7 +436,12 @@ app.post('/api/walrus/sponsor-upload', async (req, res) => {
         success: false, 
         status: upRes.status, 
         error: upJson || upTxt || 'upload failed',
-        debug: { blobId, txId: txId || 'none', tipRequired: !!sendTip }
+        debug: { 
+          blobId, 
+          txId: txId || 'none', 
+          tipRequired: !!sendTip,
+          relayUrl: relayUrl.replace(/nonce=[^&]+/, 'nonce=***') // nonce隠蔽
+        }
       });
     }
 
