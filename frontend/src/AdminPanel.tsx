@@ -1812,7 +1812,7 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
             </div>
             
             <div style={{ display: 'grid', gap: '20px' }}>
-              {/* 基本情報セクション */}
+              {/* 最小限の基本情報 */}
               <div style={{
                 background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
                 borderRadius: '16px',
@@ -1828,10 +1828,11 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
                   alignItems: 'center',
                   gap: '8px'
                 }}>
-                  📝 基本情報
+                  ✨ イベント作成（最小限入力）
                 </h5>
                 
                 <div style={{ display: 'grid', gap: '16px' }}>
+                  {/* イベント名（必須） */}
                   <div>
                     <label style={{
                       display: 'block',
@@ -1862,6 +1863,7 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
                     />
                   </div>
                   
+                  {/* 説明（任意・簡潔） */}
                   <div>
                     <label style={{
                       display: 'block',
@@ -1872,8 +1874,9 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
                     }}>
                       説明（任意）
                     </label>
-                    <textarea
-                      placeholder="イベントの詳細説明を入力してください..."
+                    <input
+                      type="text"
+                      placeholder="簡単な説明を入力..."
                       value={(editingEvent?.description) ?? (newEvent.description || '')}
                       onChange={(e) => editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), description: e.target.value }) : setNewEvent({ ...newEvent, description: e.target.value })}
                       style={{
@@ -1882,12 +1885,9 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
                         borderRadius: '12px',
                         border: '2px solid #e5e7eb',
                         fontSize: '16px',
-                        minHeight: '80px',
-                        resize: 'vertical',
                         transition: 'all 0.2s ease',
                         outline: 'none',
-                        background: 'white',
-                        fontFamily: 'inherit'
+                        background: 'white'
                       }}
                       onFocus={(e) => e.target.style.borderColor = '#667eea'}
                       onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
@@ -1982,62 +1982,140 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
                 onChange={(e) => editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), imageMimeType: e.target.value as any }) : setNewEvent({ ...newEvent, imageMimeType: e.target.value as any })}
                 style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
               />
-              {/* Walrus アップロードUI */}
-              <div style={{ display: 'grid', gap: '0.5rem', border: '1px dashed #d1d5db', padding: '0.75rem', borderRadius: 8 }}>
-                <div style={{ display: 'grid', gap: '0.25rem' }}>
-                  <label style={{ fontSize: '0.85rem', color: '#374151' }}>Walrus Upload Endpoint</label>
-                  <input
-                    type="text"
-                    placeholder="例: https://walrus.example.com/upload"
-                    value={walrusUploadUrl}
-                    onChange={(e) => setWalrusUploadUrl(e.target.value)}
-                    style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
-                  />
-                </div>
-                <div style={{ display: 'grid', gap: '0.25rem' }}>
-                  <label style={{ fontSize: '0.85rem', color: '#374151' }}>Walrus Gateway Base URL</label>
-                  <input
-                    type="text"
-                    placeholder="例: https://walrus.example.com/ipfs"
-                    value={walrusGatewayBase}
-                    onChange={(e) => setWalrusGatewayBase(e.target.value)}
-                    style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
-                  />
-                </div>
-                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                  <input type="file" accept="image/*" onChange={(e) => setUploadFile(e.target.files?.[0] || null)} />
-                  <button onClick={handleWalrusUpload} disabled={uploading || !uploadFile} style={{ padding: '0.5rem 0.75rem', background: '#0ea5e9', color: 'white', border: 'none', borderRadius: 6, cursor: uploading || !uploadFile ? 'not-allowed' : 'pointer' }}>
-                    {uploading ? 'アップロード中...' : 'Walrusにアップロード'}
-                  </button>
-                </div>
-                <div style={{ display: 'grid', gap: '0.5rem', background: '#fafafa', border: '1px solid #eee', borderRadius: 8, padding: '0.75rem' }}>
-                  <label style={{ fontSize: '0.85rem', color: '#374151' }}>
-                    <input type="checkbox" checked={usePublicRelayFlow} onChange={(e) => setUsePublicRelayFlow(e.target.checked)} style={{ marginRight: 8 }} />
-                    公開リレーフローを使用（blob_id 事前取得が必要）
-                  </label>
-                  {usePublicRelayFlow && (
-                    <div style={{ display: 'grid', gap: '0.5rem' }}>
-                      <div style={{ display: 'grid', gap: '0.25rem' }}>
-                        <label style={{ fontSize: '0.85rem', color: '#374151' }}>blob_id（必須）</label>
-                        <input type="text" value={walrusBlobId} onChange={(e) => setWalrusBlobId(e.target.value)} placeholder="例: E7_nN..." style={{ padding: '0.5rem', borderRadius: 4, border: '1px solid #ccc' }} />
-                      </div>
-                      <div style={{ display: 'grid', gap: '0.25rem' }}>
-                        <label style={{ fontSize: '0.85rem', color: '#374151' }}>tx_id（tip必要時）</label>
-                        <input type="text" value={walrusTxId} onChange={(e) => setWalrusTxId(e.target.value)} placeholder="Base58 TxID" style={{ padding: '0.5rem', borderRadius: 4, border: '1px solid #ccc' }} />
-                      </div>
-                      <div style={{ display: 'grid', gap: '0.25rem' }}>
-                        <label style={{ fontSize: '0.85rem', color: '#374151' }}>nonce（tip必要時, Base64URL）</label>
-                        <input type="text" value={walrusNonce} onChange={(e) => setWalrusNonce(e.target.value)} placeholder="rw8xIu...（= Base64URL）" style={{ padding: '0.5rem', borderRadius: 4, border: '1px solid #ccc' }} />
-                      </div>
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button onClick={handleFetchTipConfig} type="button" style={{ padding: '0.35rem 0.6rem', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontSize: '0.85rem' }}>
-                          tip-config を取得
+              {/* 1クリック画像アップロード */}
+              <div style={{
+                background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
+                borderRadius: '16px',
+                padding: '20px',
+                border: '1px solid #bbf7d0'
+              }}>
+                <h5 style={{
+                  margin: '0 0 16px 0',
+                  color: '#1e293b',
+                  fontSize: '16px',
+                  fontWeight: '600',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  🖼️ NFT画像（1クリック自動設定）
+                </h5>
+                
+                <div style={{ display: 'grid', gap: '12px' }}>
+                  <div style={{
+                    display: 'flex',
+                    gap: '12px',
+                    alignItems: 'center',
+                    padding: '12px',
+                    background: 'white',
+                    borderRadius: '12px',
+                    border: '2px dashed #10b981'
+                  }}>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                      style={{ display: 'none' }}
+                      id="image-upload"
+                    />
+                    <label 
+                      htmlFor="image-upload"
+                      style={{
+                        padding: '12px 20px',
+                        background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                        color: 'white',
+                        borderRadius: '12px',
+                        cursor: 'pointer',
+                        fontWeight: '600',
+                        fontSize: '14px',
+                        border: 'none',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      📁 画像を選択
+                    </label>
+                    
+                    {uploadFile && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '14px', color: '#374151' }}>
+                          📎 {uploadFile.name} ({Math.round(uploadFile.size/1024)}KB)
+                        </span>
+                        <button 
+                          onClick={handleWalrusUpload} 
+                          disabled={uploading}
+                          style={{
+                            padding: '8px 16px',
+                            background: uploading ? '#9ca3af' : 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '8px',
+                            cursor: uploading ? 'not-allowed' : 'pointer',
+                            fontWeight: '600',
+                            fontSize: '14px',
+                            transition: 'all 0.2s ease'
+                          }}
+                        >
+                          {uploading ? '⏳ アップロード中...' : '🚀 自動設定'}
                         </button>
-                        <a href="https://docs.wal.app/operator-guide/upload-relay.html" target="_blank" rel="noreferrer" style={{ padding: '0.35rem 0.6rem', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: '0.85rem', textDecoration: 'none' }}>仕様を確認</a>
                       </div>
+                    )}
+                  </div>
+                  
+                  {/* アップロード結果の表示 */}
+                  {((newEvent as any).imageCid || (newEvent as any).imageUrl) && (
+                    <div style={{
+                      padding: '12px',
+                      background: 'rgba(16, 185, 129, 0.1)',
+                      borderRadius: '8px',
+                      fontSize: '14px',
+                      color: '#065f46'
+                    }}>
+                      ✅ 画像設定完了: {((newEvent as any).imageCid) ? `CID: ${(newEvent as any).imageCid}` : `URL: ${(newEvent as any).imageUrl}`}
                     </div>
                   )}
                 </div>
+              </div>
+              {/* 詳細設定（折りたたみ） */}
+              <div style={{
+                background: 'linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%)',
+                borderRadius: '16px',
+                padding: '20px',
+                border: '1px solid #e5e7eb'
+              }}>
+                <button
+                  onClick={() => setAdvancedOpen(!advancedOpen)}
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    background: 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '12px',
+                    cursor: 'pointer',
+                    fontWeight: '600',
+                    fontSize: '14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  {advancedOpen ? '🔽 詳細設定を隠す' : '⚙️ 詳細設定を開く'}
+                </button>
+                
+                {advancedOpen && (
+                  <div style={{ marginTop: '16px', display: 'grid', gap: '12px' }}>
+                    <div style={{
+                      padding: '12px',
+                      background: 'rgba(107, 114, 128, 0.1)',
+                      borderRadius: '8px',
+                      fontSize: '14px',
+                      color: '#6b7280'
+                    }}>
+                      💡 通常は自動設定で十分です。上級者向けオプションです。
+                    </div>
+                  </div>
+                )}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                 <input
