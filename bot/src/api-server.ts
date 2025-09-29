@@ -359,9 +359,13 @@ app.post('/api/walrus/sponsor-upload', async (req, res) => {
     if (sendTip.kind?.const != null) {
       tipAmount = BigInt(sendTip.kind.const);
     } else if (sendTip.kind?.linear != null) {
-      // 仮: 線形係数 [mist/byte] を乗算（仕様は各リレー次第）
-      const k = BigInt(sendTip.kind.linear);
-      tipAmount = k * BigInt(unencodedLength);
+      const linearCfg = sendTip.kind.linear;
+      const base = linearCfg.base != null ? BigInt(linearCfg.base) : 0n;
+      const perKib = linearCfg.encoded_size_mul_per_kib != null
+        ? BigInt(linearCfg.encoded_size_mul_per_kib)
+        : BigInt(linearCfg);
+      const kib = (BigInt(unencodedLength) + 1023n) / 1024n;
+      tipAmount = base + perKib * kib;
     } else {
       tipAmount = 0n;
     }
