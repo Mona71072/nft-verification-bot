@@ -333,8 +333,11 @@ app.post('/api/walrus/sponsor-upload', async (req, res) => {
     const buf = Buffer.from(String(dataBase64), 'base64');
     console.log(`Processing upload with Walrus SDK: size=${buf.length} bytes`);
 
-    // Walrus SDK初期化
+    // 必要なモジュールをimport
     const { WalrusClient } = await import('@mysten/walrus');
+    const { Transaction } = await import('@mysten/sui/transactions');
+    const crypto = require('crypto');
+    
     const client = getSuiClient();
     const signer = getSponsorKeypair();
     
@@ -349,13 +352,52 @@ app.post('/api/walrus/sponsor-upload', async (req, res) => {
       }
     });
 
-    // SDK経由でアップロード
-    const result = await walrusClient.writeBlob({
-      blob: new Uint8Array(buf),
-      deletable: false,
-      epochs: 1,
-      signer: signer
+    // WAL不要の直接Upload Relay使用
+    // blob_id計算
+    const blobDigest = crypto.createHash('sha256').update(buf).digest();
+    const blobId = blobDigest.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    
+    // tip-config取得
+    const relayHost = process.env.WALRUS_UPLOAD_URL?.replace('/v1/blob-upload-relay', '') || 'https://upload-relay.mainnet.walrus.space';
+    const tipConfigRes = await fetch(`${relayHost}/v1/tip-config`);
+    const tipConfig: any = await tipConfigRes.json();
+    
+    let txId = '';
+    if (tipConfig.send_tip) {
+      console.log('Paying tip with SUI...');
+      // SUIでtip支払い（WAL不要）
+      const tipAmount = tipConfig.send_tip.kind?.const || 2579480; // 固定値またはデフォルト
+      
+      const tipTx = new Transaction();
+      const [tipCoin] = tipTx.splitCoins(tipTx.gas, [tipAmount]);
+      tipTx.transferObjects([tipCoin], tipConfig.send_tip.address);
+      tipTx.setGasBudget(50_000_000);
+      
+      const tipResult = await client.signAndExecuteTransaction({ signer: signer, transaction: tipTx });
+      txId = tipResult.digest;
+      console.log(`Tip paid: ${txId}`);
+      
+      // 待機
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+    
+    // Upload Relayに送信
+    const uploadUrl = `${relayHost}/v1/blob-upload-relay?blob_id=${blobId}${txId ? `&tx_id=${txId}` : ''}`;
+    const uploadRes = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': contentType || 'application/octet-stream' },
+      body: buf
     });
+    
+    if (!uploadRes.ok) {
+      const errorText = await uploadRes.text();
+      throw new Error(`Upload failed: ${uploadRes.status} - ${errorText}`);
+    }
+    
+    const result = {
+      blobId: blobId,
+      blobObject: null // WAL不要のためストレージ登録なし
+    };
 
     console.log('Walrus SDK upload successful:', result.blobId);
     return res.json({ 
