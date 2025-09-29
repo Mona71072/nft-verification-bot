@@ -97,11 +97,21 @@ export default function MintPage() {
       setMessage('🔄 署名を準備中...');
       const timestamp = new Date().toISOString();
       const authMessage = `SXT Event Mint\naddress=${account.address}\neventId=${eventId}\nnonce=${nonceData.data.nonce}\ntimestamp=${timestamp}`;
+      
+      console.log('Auth message:', authMessage);
+      console.log('Auth message length:', authMessage.length);
+      
       const bytes = new TextEncoder().encode(authMessage);
+      console.log('Encoded bytes:', Array.from(bytes));
       
       let sig;
       try {
         sig = await signPersonalMessage({ message: bytes });
+        console.log('Signature result:', {
+          signature: sig.signature,
+          bytes: sig.bytes,
+          publicKey: (sig as any)?.publicKey ?? (account as any)?.publicKey
+        });
       } catch (e: any) {
         throw new Error('署名がキャンセルされました');
       }
@@ -514,16 +524,45 @@ export default function MintPage() {
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
             <span>Event ID:</span>
-            <span style={{ fontWeight: '600', color: '#374151' }}>{eventId || 'N/A'}</span>
+            <span style={{ 
+              fontWeight: '600', 
+              color: '#374151',
+              fontFamily: 'monospace',
+              fontSize: '12px',
+              wordBreak: 'break-all'
+            }}>
+              {eventId || 'N/A'}
+            </span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
             <span>Network:</span>
             <span style={{ fontWeight: '600', color: '#374151' }}>Sui Mainnet</span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
             <span>Cost:</span>
             <span style={{ fontWeight: '600', color: '#10b981' }}>FREE (Gas Sponsored)</span>
           </div>
+          {event && (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span>Status:</span>
+                <span style={{ 
+                  fontWeight: '600', 
+                  color: event.active ? '#10b981' : '#ef4444' 
+                }}>
+                  {event.active ? '🟢 Active' : '🔴 Inactive'}
+                </span>
+              </div>
+              {event.startAt && event.endAt && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Period:</span>
+                  <span style={{ fontWeight: '600', color: '#374151', fontSize: '12px' }}>
+                    {new Date(event.startAt).toLocaleDateString('ja-JP')} - {new Date(event.endAt).toLocaleDateString('ja-JP')}
+                  </span>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>
