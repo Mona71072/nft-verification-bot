@@ -379,9 +379,11 @@ app.post('/api/walrus/sponsor-upload', async (req, res) => {
     // 一時保存実装: Upload Relayのみ
     console.log('Using temporary relay storage (no WAL required)');
     
-    // Upload Relayに直接送信（blob_idをリレーに計算させる）
-    // リレーがblob_idを計算して返す方式に変更
-    console.log(`Uploading ${buf.length} bytes to relay...`);
+    // Walrus仕様に従い、blob_idを計算して送信
+    const blobDigest = crypto.createHash('sha256').update(buf).digest();
+    const blobId = blobDigest.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    
+    console.log(`Calculated blob_id: ${blobId.slice(0, 8)}...`);
     
     // tip-config取得
     const relayHost = process.env.WALRUS_UPLOAD_URL?.replace('/v1/blob-upload-relay', '') || 'https://upload-relay.mainnet.walrus.space';
@@ -421,8 +423,8 @@ app.post('/api/walrus/sponsor-upload', async (req, res) => {
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
     
-    // Upload Relayに送信（blob_idパラメータなしでリレーに計算させる）
-    const uploadUrl = `${relayHost}/v1/blob-upload-relay${txId ? `?tx_id=${txId}` : ''}${nonce ? `${txId ? '&' : '?'}nonce=${nonce}` : ''}`;
+    // Upload Relayに送信（blob_idパラメータ必須）
+    const uploadUrl = `${relayHost}/v1/blob-upload-relay?blob_id=${blobId}${txId ? `&tx_id=${txId}` : ''}${nonce ? `&nonce=${nonce}` : ''}`;
     console.log(`Upload URL: ${uploadUrl.replace(/nonce=[^&]+/, 'nonce=***')}`);
     
     const uploadRes = await fetch(uploadUrl, {
@@ -438,10 +440,10 @@ app.post('/api/walrus/sponsor-upload', async (req, res) => {
     
     // リレーからのレスポンスを解析
     const uploadResult: any = await uploadRes.json().catch(() => ({}));
-    const blobId = uploadResult.blob_id || 'unknown';
+    const returnedBlobId = uploadResult.blob_id || blobId; // リレーが返すblob_idまたは計算値
     
     const result = {
-      blobId: blobId,
+      blobId: returnedBlobId,
       blobObject: null // WAL不要のためストレージ登録なし
     };
 
