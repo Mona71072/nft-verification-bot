@@ -20,7 +20,8 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@mysten/sui": "^1.37.1",
+    "@mysten/sui": "^1.38.0",
+    "@mysten/walrus": "^0.7.0",
     "@types/express": "^5.0.3",
     "discord.js": "^14.22.1",
     "dotenv": "^16.3.1",

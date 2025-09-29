@@ -323,168 +323,53 @@ app.post('/api/move-call', async (req, res) => {
 });
 
 // ================
-// Walrus: 簡易版スポンサーアップロード（tip支払い→リレー送信）
+// Walrus: SDK版スポンサーアップロード
 // ================
 app.post('/api/walrus/sponsor-upload', async (req, res) => {
   try {
-    const uploadUrl = (req.body?.uploadUrl as string) || (process.env.WALRUS_UPLOAD_URL as string | undefined);
-    if (!uploadUrl) return res.status(503).json({ success: false, error: 'WALRUS_UPLOAD_URL is not configured' });
-
     const { dataBase64, contentType } = req.body || {};
     if (!dataBase64) return res.status(400).json({ success: false, error: 'dataBase64 is required' });
     
     const buf = Buffer.from(String(dataBase64), 'base64');
-    const unencodedLength = buf.length;
-    
-    // blob_id計算（SHA-256 → base64url）
-    const blobDigest = crypto.createHash('sha256').update(buf).digest();
-    const blobId = blobDigest.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-    
-    console.log(`Processing upload: size=${unencodedLength}, blob_id=${blobId.slice(0, 8)}...`);
+    console.log(`Processing upload with Walrus SDK: size=${buf.length} bytes`);
 
-    // tip-config 取得
-    const tipUrl = uploadUrl.replace(/\/v1\/blob-upload-relay(?:\?.*)?$/, '/v1/tip-config');
-    const tipRes = await fetch(tipUrl);
-    const tipJson = await tipRes.json().catch(() => ({}));
-    const cfg: any = tipJson || {};
-    const sendTip = cfg.send_tip;
+    // Walrus SDK初期化
+    const { WalrusClient } = await import('@mysten/walrus');
+    const client = getSuiClient();
+    const signer = getSponsorKeypair();
     
-    let txId = '';
-    let nonce = Buffer.alloc(0);
-    
-    if (sendTip && sendTip.address) {
-      console.log('Tip required, processing payment...');
-      const tipAddr: string = sendTip.address;
-      let tipAmount = 0;
-      
-                  try {
-                    if (sendTip.kind?.const != null) {
-                      tipAmount = Number(sendTip.kind.const);
-                    } else if (sendTip.kind?.linear != null) {
-                      const linearCfg = sendTip.kind.linear;
-                      const base = Number(linearCfg.base || 0);
-                      const perKib = Number(linearCfg.encoded_size_mul_per_kib || 0);
-                      
-                      // 正確な計算式を実装
-                      // encoded_size_mul_per_kib = 40 は「エンコード後のKiB単位サイズ」に対する係数
-                      // 4バイト → base64 → 8文字（8バイト）→ 1KiB未満なので切り上げて1KiB
-                      // しかし期待値2579480は異常に高い。実際のWalrusの計算を確認
-                      
-                      // 期待値から逆算: 2579480 / 40 = 64487
-                      // これは64487バイト ≈ 63KiBを意味する可能性
-                      // つまり、係数40は「1バイトあたり40 MIST」ではなく「1KiBあたり40 MIST」
-                      
-                      const encodedSizeBytes = Math.ceil(unencodedLength * 4 / 3); // base64は4/3倍
-                      const encodedSizeKiB = Math.ceil(encodedSizeBytes / 1024);
-                      tipAmount = base + perKib * encodedSizeKiB;
-                      
-                      console.log(`Tip calculation: encodedSize=${encodedSizeBytes}B, encodedKiB=${encodedSizeKiB}, tip=${tipAmount}`);
-                      
-                      // まだ合わない場合は、Walrusの内部計算に合わせる
-                      if (tipAmount < 1000000) { // 1 SUI未満の場合
-                        tipAmount = Math.max(tipAmount, 2579480); // 最低限の金額を保証
-                        console.log(`Adjusted tip to minimum: ${tipAmount} MIST`);
-                      }
-                    }
-                    
-                    console.log(`Calculated tip: ${tipAmount} MIST (expected: ~2579480)`);
-
-        if (tipAmount > 0) {
-          nonce = Buffer.from(crypto.randomBytes(32));
-          const nonceDigest = crypto.createHash('sha256').update(nonce).digest();
-          
-          const client = getSuiClient();
-          const kp = getSponsorKeypair();
-          const tipTx = new Transaction();
-          
-          // 入力0: blob_digest || nonce_digest || unencoded_length
-          const lenBuf = Buffer.alloc(8);
-          lenBuf.writeBigUInt64LE(BigInt(unencodedLength));
-          const input0 = Buffer.concat([blobDigest, nonceDigest, lenBuf]);
-          tipTx.pure(Uint8Array.from(input0));
-          
-          // Tip transfer
-          const [tipCoin] = tipTx.splitCoins(tipTx.gas, [tipAmount]);
-          tipTx.transferObjects([tipCoin], tipAddr);
-          
-          tipTx.setGasBudget(50_000_000);
-                      const tipResult = await client.signAndExecuteTransaction({ signer: kp, transaction: tipTx });
-                      txId = tipResult.digest;
-                      console.log(`Tip paid: tx=${txId}`);
-                      
-                      // tip支払い後の待機（ブロックチェーン確認時間）
-                      console.log('Waiting for tip confirmation...');
-                      await new Promise(resolve => setTimeout(resolve, 3000)); // 3秒待機
+    const walrusClient = new WalrusClient({
+      network: 'mainnet',
+      suiClient: client,
+      uploadRelay: {
+        host: process.env.WALRUS_UPLOAD_URL?.replace('/v1/blob-upload-relay', '') || 'https://upload-relay.mainnet.walrus.space',
+        sendTip: {
+          max: 10_000_000 // 最大10 SUI
         }
-      } catch (tipError: any) {
-        console.error('Tip payment failed:', tipError);
-        return res.status(500).json({ success: false, error: `Tip payment failed: ${tipError.message}` });
       }
-    } else {
-      console.log('No tip required');
-    }
-
-    console.log('Uploading to relay...');
-    // upload-relay POST
-    const qp = new URLSearchParams({ blob_id: blobId });
-    if (txId) qp.set('tx_id', txId);
-    if (nonce.length > 0) {
-      const nonceB64 = nonce.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-      qp.set('nonce', nonceB64);
-    }
-    
-    const relayUrl = `${uploadUrl.split('?')[0]}?${qp.toString()}`;
-    console.log(`Relay URL: ${relayUrl}`);
-    console.log(`Content-Type: ${contentType || 'application/octet-stream'}`);
-    console.log(`Body size: ${buf.length} bytes`);
-    
-    const upRes = await fetch(relayUrl, { 
-      method: 'POST', 
-      headers: { 
-        'Content-Type': contentType || 'application/octet-stream',
-        'User-Agent': 'SXT-Bot/1.0',
-        'Accept': '*/*'
-      }, 
-      body: buf,
-      // HTTP/2対応とタイムアウト設定
-      signal: AbortSignal.timeout(30000) // 30秒タイムアウト
     });
-    
-    const upTxt = await upRes.text();
-    console.log(`Relay response: ${upRes.status} - ${upTxt.slice(0, 300)}`);
-    
-    let upJson: any = null;
-    try { upJson = JSON.parse(upTxt); } catch {}
-    
-    if (!upRes.ok) {
-      console.error(`Relay upload failed: ${upRes.status} - ${upTxt.slice(0, 200)}`);
-      return res.status(502).json({ 
-        success: false, 
-        status: upRes.status, 
-        error: upJson || upTxt || 'upload failed',
-        debug: { 
-          blobId, 
-          txId: txId || 'none', 
-          tipRequired: !!sendTip,
-          relayUrl: relayUrl.replace(/nonce=[^&]+/, 'nonce=***') // nonce隠蔽
-        }
-      });
-    }
 
-    console.log('Upload successful');
+    // SDK経由でアップロード
+    const result = await walrusClient.writeBlob({
+      blob: new Uint8Array(buf),
+      deletable: false,
+      epochs: 1,
+      signer: signer
+    });
+
+    console.log('Walrus SDK upload successful:', result.blobId);
     return res.json({ 
       success: true, 
       data: { 
-        ...(upJson || {}), 
-        blob_id: blobId,
-        tx_id: txId || undefined
+        blob_id: result.blobId,
+        blobObject: result.blobObject
       } 
     });
   } catch (e: any) {
-    console.error('sponsor-upload failed:', e);
+    console.error('Walrus SDK upload failed:', e);
     return res.status(500).json({ 
       success: false, 
-      error: e?.message || 'sponsor-upload error',
+      error: e?.message || 'Walrus SDK upload error',
       type: e?.constructor?.name || 'Error'
     });
   }
