@@ -323,7 +323,7 @@ app.post('/api/move-call', async (req, res) => {
 });
 
 // ================
-// Walrus: Sponsor upload (pay tip and relay upload)
+// Walrus: 簡易版スポンサーアップロード（tip支払い→リレー送信）
 // ================
 app.post('/api/walrus/sponsor-upload', async (req, res) => {
   try {
@@ -332,10 +332,15 @@ app.post('/api/walrus/sponsor-upload', async (req, res) => {
 
     const { dataBase64, contentType } = req.body || {};
     if (!dataBase64) return res.status(400).json({ success: false, error: 'dataBase64 is required' });
+    
     const buf = Buffer.from(String(dataBase64), 'base64');
     const unencodedLength = buf.length;
+    
+    // blob_id計算（SHA-256 → base64url）
     const blobDigest = crypto.createHash('sha256').update(buf).digest();
     const blobId = blobDigest.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    
+    console.log(`Processing upload: size=${unencodedLength}, blob_id=${blobId.slice(0, 8)}...`);
 
     // tip-config 取得
     const tipUrl = uploadUrl.replace(/\/v1\/blob-upload-relay(?:\?.*)?$/, '/v1/tip-config');
@@ -343,82 +348,105 @@ app.post('/api/walrus/sponsor-upload', async (req, res) => {
     const tipJson = await tipRes.json().catch(() => ({}));
     const cfg: any = tipJson || {};
     const sendTip = cfg.send_tip;
-    if (!sendTip || !sendTip.address) {
-      // tip不要ならそのままアップロード
-      const relayUrl = `${uploadUrl.split('?')[0]}?blob_id=${encodeURIComponent(blobId)}`;
-      const upRes = await fetch(relayUrl, { method: 'POST', headers: { 'Content-Type': contentType || 'application/octet-stream' }, body: buf });
-      const upTxt = await upRes.text();
-      let upJson: any = null; try { upJson = JSON.parse(upTxt); } catch {}
-      if (!upRes.ok) return res.status(502).json({ success: false, status: upRes.status, error: upJson || upTxt || 'upload failed' });
-      return res.json({ success: true, data: { ...(upJson || {}), blob_id: blobId } });
-    }
-
-    const tipAddr: string = sendTip.address;
-    // 金額（const or linear）
-    let tipAmount = 0n;
-    if (sendTip.kind?.const != null) {
-      tipAmount = BigInt(sendTip.kind.const);
-    } else if (sendTip.kind?.linear != null) {
-      const linearCfg = sendTip.kind.linear;
-      let base = 0n;
-      let perKib = 0n;
-
-      if (typeof linearCfg === 'number') {
-        perKib = BigInt(linearCfg);
-      } else if (linearCfg && typeof linearCfg === 'object') {
-        if ('base' in linearCfg && linearCfg.base != null) {
-          base = BigInt(linearCfg.base);
+    
+    let txId = '';
+    let nonce = Buffer.alloc(0);
+    
+    if (sendTip && sendTip.address) {
+      console.log('Tip required, processing payment...');
+      const tipAddr: string = sendTip.address;
+      let tipAmount = 0;
+      
+      try {
+        if (sendTip.kind?.const != null) {
+          tipAmount = Number(sendTip.kind.const);
+        } else if (sendTip.kind?.linear != null) {
+          const linearCfg = sendTip.kind.linear;
+          const base = Number(linearCfg.base || 0);
+          const perKib = Number(linearCfg.encoded_size_mul_per_kib || 0);
+          const kib = Math.ceil(unencodedLength / 1024);
+          tipAmount = base + perKib * kib;
         }
-        if ('encoded_size_mul_per_kib' in linearCfg && linearCfg.encoded_size_mul_per_kib != null) {
-          perKib = BigInt(linearCfg.encoded_size_mul_per_kib);
-        } else if ('per_kib' in linearCfg && linearCfg.per_kib != null) {
-          perKib = BigInt(linearCfg.per_kib);
-        } else if ('mul_per_kib' in linearCfg && linearCfg.mul_per_kib != null) {
-          perKib = BigInt(linearCfg.mul_per_kib);
+        
+        console.log(`Calculated tip: ${tipAmount} MIST`);
+
+        if (tipAmount > 0) {
+          nonce = Buffer.from(crypto.randomBytes(32));
+          const nonceDigest = crypto.createHash('sha256').update(nonce).digest();
+          
+          const client = getSuiClient();
+          const kp = getSponsorKeypair();
+          const tipTx = new Transaction();
+          
+          // 入力0: blob_digest || nonce_digest || unencoded_length
+          const lenBuf = Buffer.alloc(8);
+          lenBuf.writeBigUInt64LE(BigInt(unencodedLength));
+          const input0 = Buffer.concat([blobDigest, nonceDigest, lenBuf]);
+          tipTx.pure(Uint8Array.from(input0));
+          
+          // Tip transfer
+          const [tipCoin] = tipTx.splitCoins(tipTx.gas, [tipAmount]);
+          tipTx.transferObjects([tipCoin], tipAddr);
+          
+          tipTx.setGasBudget(50_000_000);
+          const tipResult = await client.signAndExecuteTransaction({ signer: kp, transaction: tipTx });
+          txId = tipResult.digest;
+          console.log(`Tip paid: tx=${txId}`);
         }
+      } catch (tipError: any) {
+        console.error('Tip payment failed:', tipError);
+        return res.status(500).json({ success: false, error: `Tip payment failed: ${tipError.message}` });
       }
-
-      const kib = (BigInt(unencodedLength) + 1023n) / 1024n;
-      tipAmount = base + perKib * kib;
     } else {
-      tipAmount = 0n;
+      console.log('No tip required');
     }
 
-    // Nonce 生成（32 bytes）
-    const nonce = crypto.randomBytes(32);
-    const nonceDigest = crypto.createHash('sha256').update(nonce).digest();
-
-    // PTB 準備
-    const client = getSuiClient();
-    const kp = getSponsorKeypair();
-    const tx = new Transaction();
-
-    // 入力0: blob_digest || nonce_digest || unencoded_length のバイト列
-    const lenBuf = Buffer.alloc(8); // u64 LE
-    lenBuf.writeBigUInt64LE(BigInt(unencodedLength));
-    const input0 = Buffer.concat([blobDigest, nonceDigest, lenBuf]);
-    // BCS bytes として入力
-    tx.pure(Uint8Array.from(input0));
-
-    // Tip支払い（SUI MIST単位）
-    if (tipAmount > 0n) {
-      const [tipCoin] = tx.splitCoins(tx.gas, [Number(tipAmount)]);
-      tx.transferObjects([tipCoin], tipAddr);
+    console.log('Uploading to relay...');
+    // upload-relay POST
+    const qp = new URLSearchParams({ blob_id: blobId });
+    if (txId) qp.set('tx_id', txId);
+    if (nonce.length > 0) {
+      const nonceB64 = nonce.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+      qp.set('nonce', nonceB64);
     }
-
-    tx.setGasBudget(50_000_000);
-    const result = await client.signAndExecuteTransaction({ signer: kp, transaction: tx });
-    const txId = result.digest;
-
-    const relayUrl = `${uploadUrl.split('?')[0]}?blob_id=${encodeURIComponent(blobId)}&tx_id=${encodeURIComponent(txId)}&nonce=${encodeURIComponent(nonce.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, ''))}`;
-    const upRes = await fetch(relayUrl, { method: 'POST', headers: { 'Content-Type': contentType || 'application/octet-stream' }, body: buf });
+    
+    const relayUrl = `${uploadUrl.split('?')[0]}?${qp.toString()}`;
+    const upRes = await fetch(relayUrl, { 
+      method: 'POST', 
+      headers: { 'Content-Type': contentType || 'application/octet-stream' }, 
+      body: buf 
+    });
+    
     const upTxt = await upRes.text();
-    let upJson: any = null; try { upJson = JSON.parse(upTxt); } catch {}
-    if (!upRes.ok) return res.status(502).json({ success: false, status: upRes.status, error: upJson || upTxt || 'upload failed' });
-    return res.json({ success: true, data: { ...(upJson || {}), blob_id: blobId, tx_id: txId } });
+    let upJson: any = null;
+    try { upJson = JSON.parse(upTxt); } catch {}
+    
+    if (!upRes.ok) {
+      console.error(`Relay upload failed: ${upRes.status} - ${upTxt.slice(0, 200)}`);
+      return res.status(502).json({ 
+        success: false, 
+        status: upRes.status, 
+        error: upJson || upTxt || 'upload failed',
+        debug: { blobId, txId: txId || 'none', tipRequired: !!sendTip }
+      });
+    }
+
+    console.log('Upload successful');
+    return res.json({ 
+      success: true, 
+      data: { 
+        ...(upJson || {}), 
+        blob_id: blobId,
+        tx_id: txId || undefined
+      } 
+    });
   } catch (e: any) {
     console.error('sponsor-upload failed:', e);
-    return res.status(500).json({ success: false, error: e?.message || 'sponsor-upload error' });
+    return res.status(500).json({ 
+      success: false, 
+      error: e?.message || 'sponsor-upload error',
+      type: e?.constructor?.name || 'Error'
+    });
   }
 });
 
