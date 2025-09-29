@@ -360,10 +360,24 @@ app.post('/api/walrus/sponsor-upload', async (req, res) => {
       tipAmount = BigInt(sendTip.kind.const);
     } else if (sendTip.kind?.linear != null) {
       const linearCfg = sendTip.kind.linear;
-      const base = linearCfg.base != null ? BigInt(linearCfg.base) : 0n;
-      const perKib = linearCfg.encoded_size_mul_per_kib != null
-        ? BigInt(linearCfg.encoded_size_mul_per_kib)
-        : BigInt(linearCfg);
+      let base = 0n;
+      let perKib = 0n;
+
+      if (typeof linearCfg === 'number') {
+        perKib = BigInt(linearCfg);
+      } else if (linearCfg && typeof linearCfg === 'object') {
+        if ('base' in linearCfg && linearCfg.base != null) {
+          base = BigInt(linearCfg.base);
+        }
+        if ('encoded_size_mul_per_kib' in linearCfg && linearCfg.encoded_size_mul_per_kib != null) {
+          perKib = BigInt(linearCfg.encoded_size_mul_per_kib);
+        } else if ('per_kib' in linearCfg && linearCfg.per_kib != null) {
+          perKib = BigInt(linearCfg.per_kib);
+        } else if ('mul_per_kib' in linearCfg && linearCfg.mul_per_kib != null) {
+          perKib = BigInt(linearCfg.mul_per_kib);
+        }
+      }
+
       const kib = (BigInt(unencodedLength) + 1023n) / 1024n;
       tipAmount = base + perKib * kib;
     } else {
