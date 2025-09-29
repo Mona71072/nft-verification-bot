@@ -485,7 +485,35 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
           }
         } catch (uploadError: any) {
           console.error('Image upload error:', uploadError);
-          setMessage(`❌ 画像アップロードエラー: ${uploadError.message}`);
+          
+          // ユーザーフレンドリーなエラーメッセージ
+          let userMessage = uploadError.message;
+          if (uploadError.message?.includes('reserved for another transaction') || 
+              uploadError.message?.includes('object is locked') ||
+              uploadError.message?.includes('quorum of validators')) {
+            userMessage = '⏳ ネットワークが混雑しています。少し待ってから再試行してください。';
+          } else if (uploadError.message?.includes('502') || uploadError.message?.includes('Bad Gateway')) {
+            userMessage = '🔄 サーバーが一時的に利用できません。しばらく待ってから再試行してください。';
+          } else if (uploadError.message?.includes('timeout')) {
+            userMessage = '⏰ アップロードがタイムアウトしました。ネットワーク接続を確認してください。';
+          }
+          
+          setMessage(`❌ 画像アップロードエラー: ${userMessage}`);
+          
+          // リトライ可能なエラーの場合、リトライボタンを表示
+          if (uploadError.message?.includes('reserved for another transaction') || 
+              uploadError.message?.includes('object is locked') ||
+              uploadError.message?.includes('quorum of validators') ||
+              uploadError.message?.includes('502')) {
+            
+            // 3秒後に自動リトライを提案
+            setTimeout(() => {
+              if (confirm('🔄 自動でリトライしますか？（キャンセルで手動操作に戻ります）')) {
+                handleCreateEvent(); // 再実行
+              }
+            }, 3000);
+          }
+          
           setLoading(false);
           return;
         }

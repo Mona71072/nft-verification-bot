@@ -355,23 +355,57 @@ app.post('/api/walrus/sponsor-upload', async (req, res) => {
     // 公式Walrus SDKを使用（WAL必要）
     console.log('Using official Walrus SDK implementation');
     
-    // 公式Walrus SDK実装
-    const result = await walrusClient.writeBlob({
-      blob: new Uint8Array(buf),
-      deletable: false,
-      epochs: 1,
-      signer: signer
-    });
-
-    console.log('Walrus official SDK upload successful:', result.blobId);
-    return res.json({ 
-      success: true, 
-      data: { 
-        blob_id: result.blobId,
-        blobObject: result.blobObject,
-        storage_type: 'official_walrus_sdk'
-      } 
-    });
+    // 公式Walrus SDK実装（リトライ機能付き）
+    let result;
+    let lastError;
+    const maxRetries = 3;
+    const baseDelay = 1000; // 1秒
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`Walrus upload attempt ${attempt}/${maxRetries}`);
+        
+        result = await walrusClient.writeBlob({
+          blob: new Uint8Array(buf),
+          deletable: false,
+          epochs: 1,
+          signer: signer
+        });
+        
+        console.log('Walrus official SDK upload successful:', result.blobId);
+        return res.json({ 
+          success: true, 
+          data: { 
+            blob_id: result.blobId,
+            blobObject: result.blobObject,
+            storage_type: 'official_walrus_sdk',
+            attempt: attempt
+          } 
+        });
+      } catch (attemptError: any) {
+        lastError = attemptError;
+        console.error(`Walrus upload attempt ${attempt} failed:`, attemptError.message);
+        
+        // オブジェクトロック競合エラーの場合はリトライ
+        if (attemptError.message?.includes('reserved for another transaction') || 
+            attemptError.message?.includes('object is locked') ||
+            attemptError.message?.includes('quorum of validators')) {
+          
+          if (attempt < maxRetries) {
+            const delay = baseDelay * Math.pow(2, attempt - 1) + Math.random() * 1000; // 指数バックオフ + ジッター
+            console.log(`Retrying in ${Math.round(delay)}ms due to object lock conflict...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          }
+        } else {
+          // その他のエラーは即座に失敗
+          break;
+        }
+      }
+    }
+    
+    // 全てのリトライが失敗した場合
+    throw lastError;
   } catch (e: any) {
     console.error('Walrus SDK upload failed:', e);
     return res.status(500).json({ 
