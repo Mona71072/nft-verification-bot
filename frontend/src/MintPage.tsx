@@ -119,7 +119,30 @@ export default function MintPage() {
         justifyContent: 'center',
         padding: '1rem'
       }}>
-        <div style={{ color: 'white' }}>読み込み中...</div>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          color: 'white',
+          fontSize: '18px',
+          fontWeight: '500'
+        }}>
+          <div style={{
+            width: '24px',
+            height: '24px',
+            border: '3px solid rgba(255,255,255,0.3)',
+            borderTop: '3px solid white',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite'
+          }}></div>
+          読み込み中...
+        </div>
+        <style>{`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}</style>
       </div>
     );
   }
@@ -133,38 +156,223 @@ export default function MintPage() {
       justifyContent: 'center',
       padding: '1rem'
     }}>
-      <div style={{ background: 'white', borderRadius: 16, padding: 24, width: '100%', maxWidth: 520 }}>
-        <h1 style={{ marginTop: 0, marginBottom: 8 }}>{event?.name || 'Event Mint'}</h1>
-        <p style={{ color: '#666', marginTop: 0, marginBottom: 8 }}>
-          Event ID: <b>{eventId || '(not specified)'}</b>
-        </p>
-        {event?.description && (
-          <p style={{ color: '#444', marginTop: 0, marginBottom: 12 }}>{event.description}</p>
-        )}
+      <div style={{
+        background: 'rgba(255, 255, 255, 0.95)',
+        backdropFilter: 'blur(20px)',
+        borderRadius: '24px',
+        padding: '32px',
+        width: '100%',
+        maxWidth: '480px',
+        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+        border: '1px solid rgba(255, 255, 255, 0.2)',
+        animation: 'slideUp 0.6s ease-out'
+      }}>
+        <style>{`
+          @keyframes slideUp {
+            from {
+              opacity: 0;
+              transform: translateY(30px);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0);
+            }
+          }
+          @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+          }
+          .mint-button {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          }
+          .mint-button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+          }
+          .mint-button:active:not(:disabled) {
+            transform: translateY(0);
+          }
+          .image-container {
+            transition: transform 0.3s ease;
+          }
+          .image-container:hover {
+            transform: scale(1.02);
+          }
+        `}</style>
+
+        {/* Event Image */}
         {event?.imageUrl && (
-          <div style={{ marginBottom: 16 }}>
-            <img src={event.imageUrl} alt={event.name} style={{ width: '100%', borderRadius: 12 }} />
+          <div className="image-container" style={{
+            marginBottom: '24px',
+            borderRadius: '16px',
+            overflow: 'hidden',
+            position: 'relative'
+          }}>
+            <img 
+              src={event.imageUrl} 
+              alt={event.name} 
+              style={{
+                width: '100%',
+                height: '240px',
+                objectFit: 'cover',
+                display: 'block'
+              }}
+            />
+            <div style={{
+              position: 'absolute',
+              top: '12px',
+              right: '12px',
+              background: 'rgba(0, 0, 0, 0.7)',
+              color: 'white',
+              padding: '4px 12px',
+              borderRadius: '20px',
+              fontSize: '12px',
+              fontWeight: '600'
+            }}>
+              {event?.active ? '🟢 LIVE' : '🔴 ENDED'}
+            </div>
           </div>
         )}
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
-          <ConnectButton />
+
+        {/* Event Title */}
+        <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+          <h1 style={{
+            margin: '0 0 8px 0',
+            fontSize: '28px',
+            fontWeight: '800',
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text'
+          }}>
+            {event?.name || 'Event Mint'}
+          </h1>
+          {event?.description && (
+            <p style={{
+              margin: '0 0 16px 0',
+              color: '#6b7280',
+              fontSize: '16px',
+              lineHeight: '1.5'
+            }}>
+              {event.description}
+            </p>
+          )}
         </div>
-        <button
-          onClick={handleMint}
-          disabled={!event?.active || minting}
-          style={{ width: '100%', padding: '12px 16px', background: (!event?.active || minting) ? '#9ca3af' : '#3b82f6', color: 'white', border: 'none', borderRadius: 8, cursor: (!event?.active || minting) ? 'not-allowed' : 'pointer', fontWeight: 700, marginBottom: 8 }}
-        >
-          {minting ? 'ミント中...' : '無料でミント'}
-        </button>
-        {!event?.active && (
-          <div style={{ color: '#b91c1c', textAlign: 'center', marginBottom: 8 }}>
-            現在このイベントはミント不可の期間です
+
+        {/* Wallet Connection */}
+        {!connected && (
+          <div style={{
+            display: 'flex',
+            justifyContent: 'center',
+            marginBottom: '24px'
+          }}>
+            <div style={{
+              padding: '16px',
+              background: 'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)',
+              borderRadius: '16px',
+              border: '2px dashed #d1d5db'
+            }}>
+              <ConnectButton />
+            </div>
           </div>
         )}
-        {message && (
-          <div style={{ color: '#b91c1c', textAlign: 'center', marginBottom: 8 }}>{message}</div>
+
+        {/* Mint Button */}
+        <button
+          className="mint-button"
+          onClick={handleMint}
+          disabled={!connected || !event?.active || minting}
+          style={{
+            width: '100%',
+            padding: '16px 24px',
+            background: (!connected || !event?.active || minting) 
+              ? 'linear-gradient(135deg, #9ca3af 0%, #6b7280 100%)'
+              : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '16px',
+            cursor: (!connected || !event?.active || minting) ? 'not-allowed' : 'pointer',
+            fontWeight: '700',
+            fontSize: '18px',
+            marginBottom: '16px',
+            position: 'relative',
+            overflow: 'hidden'
+          }}
+        >
+          {minting && (
+            <div style={{
+              position: 'absolute',
+              left: '20px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              width: '20px',
+              height: '20px',
+              border: '2px solid rgba(255,255,255,0.3)',
+              borderTop: '2px solid white',
+              borderRadius: '50%',
+              animation: 'spin 1s linear infinite'
+            }}></div>
+          )}
+          <span style={{ marginLeft: minting ? '32px' : '0' }}>
+            {minting ? 'ミント中...' : connected ? '🎁 無料でミント' : 'ウォレットを接続'}
+          </span>
+        </button>
+
+        {/* Status Messages */}
+        {!event?.active && event && (
+          <div style={{
+            background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+            color: '#92400e',
+            padding: '12px 16px',
+            borderRadius: '12px',
+            textAlign: 'center',
+            marginBottom: '16px',
+            fontSize: '14px',
+            fontWeight: '600'
+          }}>
+            ⏰ このイベントは現在ミント期間外です
+          </div>
         )}
-        <p style={{ margin: 0, color: '#444' }}>次のステップでミント実行ボタンと署名連携を追加します。</p>
+
+        {message && (
+          <div style={{
+            background: message.includes('完了') 
+              ? 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)'
+              : 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)',
+            color: message.includes('完了') ? '#065f46' : '#991b1b',
+            padding: '12px 16px',
+            borderRadius: '12px',
+            textAlign: 'center',
+            marginBottom: '16px',
+            fontSize: '14px',
+            fontWeight: '600'
+          }}>
+            {message.includes('完了') ? '✅ ' : '⚠️ '}
+            {message}
+          </div>
+        )}
+
+        {/* Event Details */}
+        <div style={{
+          background: 'rgba(107, 114, 128, 0.1)',
+          borderRadius: '12px',
+          padding: '16px',
+          fontSize: '14px',
+          color: '#6b7280'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <span>Event ID:</span>
+            <span style={{ fontWeight: '600', color: '#374151' }}>{eventId || 'N/A'}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <span>Network:</span>
+            <span style={{ fontWeight: '600', color: '#374151' }}>Sui Mainnet</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span>Cost:</span>
+            <span style={{ fontWeight: '600', color: '#10b981' }}>FREE (Gas Sponsored)</span>
+          </div>
+        </div>
       </div>
     </div>
   );

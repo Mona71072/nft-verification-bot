@@ -1798,43 +1798,168 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
 
           {/* 作成/編集フォーム */}
           <div style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ccc', borderRadius: '8px', maxWidth: '800px' }}>
-            <h4>{editingEvent ? 'イベント編集' : '新規イベント'}</h4>
-            <div style={{ display: 'grid', gap: '0.75rem' }}>
-              <input
-                type="text"
-                placeholder="イベント名"
-                value={(editingEvent?.name) ?? (newEvent.name || '')}
-                onChange={(e) => editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), name: e.target.value }) : setNewEvent({ ...newEvent, name: e.target.value })}
-                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
-              />
-              <textarea
-                placeholder="説明（任意）"
-                value={(editingEvent?.description) ?? (newEvent.description || '')}
-                onChange={(e) => editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), description: e.target.value }) : setNewEvent({ ...newEvent, description: e.target.value })}
-                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', minHeight: 60 }}
-              />
-              {/* コレクション選択（ミント用） */}
-              <div style={{ display: 'grid', gap: '0.25rem' }}>
-                <label style={{ fontSize: '0.85rem', color: '#374151' }}>対象コレクション（ミント用）</label>
-                <select
-                  value={(editingEvent?.collectionId) ?? (newEvent.collectionId || '')}
-                  onChange={(e) => editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), collectionId: e.target.value }) : setNewEvent({ ...newEvent, collectionId: e.target.value })}
-                  style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
-                >
-                  <option value="">コレクションを選択してください</option>
-                  {collections.map(col => (
-                    <option key={col.id} value={col.packageId}>
-                      {col.name} ({(col.packageId || '').slice(0, 10)}...)
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="text"
-                  placeholder="または手動入力（型/パス: 0x...::module::Struct など）"
-                  value={(editingEvent?.collectionId) ?? (newEvent.collectionId || '')}
-                  onChange={(e) => editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), collectionId: e.target.value }) : setNewEvent({ ...newEvent, collectionId: e.target.value })}
-                  style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
-                />
+            <div style={{
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+              fontSize: '24px',
+              fontWeight: '800',
+              marginBottom: '24px',
+              textAlign: 'center'
+            }}>
+              {editingEvent ? '✏️ イベント編集' : '✨ 新規イベント作成'}
+            </div>
+            
+            <div style={{ display: 'grid', gap: '20px' }}>
+              {/* 基本情報セクション */}
+              <div style={{
+                background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+                borderRadius: '16px',
+                padding: '20px',
+                border: '1px solid #e2e8f0'
+              }}>
+                <h5 style={{
+                  margin: '0 0 16px 0',
+                  color: '#1e293b',
+                  fontSize: '16px',
+                  fontWeight: '600',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  📝 基本情報
+                </h5>
+                
+                <div style={{ display: 'grid', gap: '16px' }}>
+                  <div>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      color: '#374151',
+                      marginBottom: '6px'
+                    }}>
+                      イベント名 *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="例: SyndicateX Tokyo NFT Drop"
+                      value={(editingEvent?.name) ?? (newEvent.name || '')}
+                      onChange={(e) => editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), name: e.target.value }) : setNewEvent({ ...newEvent, name: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        borderRadius: '12px',
+                        border: '2px solid #e5e7eb',
+                        fontSize: '16px',
+                        transition: 'all 0.2s ease',
+                        outline: 'none',
+                        background: 'white'
+                      }}
+                      onFocus={(e) => e.target.style.borderColor = '#667eea'}
+                      onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      color: '#374151',
+                      marginBottom: '6px'
+                    }}>
+                      説明（任意）
+                    </label>
+                    <textarea
+                      placeholder="イベントの詳細説明を入力してください..."
+                      value={(editingEvent?.description) ?? (newEvent.description || '')}
+                      onChange={(e) => editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), description: e.target.value }) : setNewEvent({ ...newEvent, description: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        borderRadius: '12px',
+                        border: '2px solid #e5e7eb',
+                        fontSize: '16px',
+                        minHeight: '80px',
+                        resize: 'vertical',
+                        transition: 'all 0.2s ease',
+                        outline: 'none',
+                        background: 'white',
+                        fontFamily: 'inherit'
+                      }}
+                      onFocus={(e) => e.target.style.borderColor = '#667eea'}
+                      onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+                    />
+                  </div>
+                </div>
+              </div>
+              {/* コレクション選択セクション */}
+              <div style={{
+                background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+                borderRadius: '16px',
+                padding: '20px',
+                border: '1px solid #bae6fd'
+              }}>
+                <h5 style={{
+                  margin: '0 0 16px 0',
+                  color: '#1e293b',
+                  fontSize: '16px',
+                  fontWeight: '600',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  🎯 対象コレクション
+                </h5>
+                
+                <div style={{ display: 'grid', gap: '12px' }}>
+                  <div>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      color: '#374151',
+                      marginBottom: '6px'
+                    }}>
+                      コレクション選択 *
+                    </label>
+                    <select
+                      value={(editingEvent?.collectionId) ?? (newEvent.collectionId || '')}
+                      onChange={(e) => editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), collectionId: e.target.value }) : setNewEvent({ ...newEvent, collectionId: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        borderRadius: '12px',
+                        border: '2px solid #e5e7eb',
+                        fontSize: '16px',
+                        background: 'white',
+                        outline: 'none',
+                        transition: 'all 0.2s ease'
+                      }}
+                      onFocus={(e) => e.target.style.borderColor = '#0ea5e9'}
+                      onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+                    >
+                      <option value="">📋 コレクションを選択してください</option>
+                      {collections.map(col => (
+                        <option key={col.id} value={col.packageId}>
+                          🎨 {col.name} ({(col.packageId || '').slice(0, 10)}...)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  <div style={{
+                    padding: '12px',
+                    background: 'rgba(59, 130, 246, 0.1)',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    color: '#1e40af'
+                  }}>
+                    💡 手動入力: 0x...::module::Struct 形式でも入力可能
+                  </div>
+                </div>
               </div>
               <input
                 type="text"
