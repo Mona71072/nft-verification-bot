@@ -352,8 +352,32 @@ app.post('/api/walrus/sponsor-upload', async (req, res) => {
       }
     });
 
-    // WAL不要の直接Upload Relay使用
-    // blob_id計算
+    // ストレージ実装の選択
+    const useWalrusStorage = process.env.USE_WALRUS_STORAGE === 'true';
+    
+    if (useWalrusStorage) {
+      // WAL実装: 完全なWalrusストレージ保存
+      console.log('Using full Walrus storage (WAL required)');
+      const result = await walrusClient.writeBlob({
+        blob: new Uint8Array(buf),
+        deletable: false,
+        epochs: 1,
+        signer: signer
+      });
+      
+      console.log('Walrus permanent storage successful:', result.blobId);
+      return res.json({ 
+        success: true, 
+        data: { 
+          blob_id: result.blobId,
+          blobObject: result.blobObject,
+          storage_type: 'permanent_walrus'
+        } 
+      });
+    }
+    
+    // 一時保存実装: Upload Relayのみ
+    console.log('Using temporary relay storage (no WAL required)');
     const blobDigest = crypto.createHash('sha256').update(buf).digest();
     const blobId = blobDigest.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
     
@@ -399,12 +423,14 @@ app.post('/api/walrus/sponsor-upload', async (req, res) => {
       blobObject: null // WAL不要のためストレージ登録なし
     };
 
-    console.log('Walrus SDK upload successful:', result.blobId);
+    console.log('Walrus temporary upload successful:', result.blobId);
     return res.json({ 
       success: true, 
       data: { 
         blob_id: result.blobId,
-        blobObject: result.blobObject
+        blobObject: result.blobObject,
+        storage_type: 'temporary_relay', // 一時保存であることを明示
+        note: 'This is a temporary upload via relay. For permanent storage, WAL tokens are required.'
       } 
     });
   } catch (e: any) {
