@@ -389,9 +389,13 @@ app.post('/api/walrus/sponsor-upload', async (req, res) => {
           tipTx.transferObjects([tipCoin], tipAddr);
           
           tipTx.setGasBudget(50_000_000);
-          const tipResult = await client.signAndExecuteTransaction({ signer: kp, transaction: tipTx });
-          txId = tipResult.digest;
-          console.log(`Tip paid: tx=${txId}`);
+                      const tipResult = await client.signAndExecuteTransaction({ signer: kp, transaction: tipTx });
+                      txId = tipResult.digest;
+                      console.log(`Tip paid: tx=${txId}`);
+                      
+                      // tip支払い後の待機（ブロックチェーン確認時間）
+                      console.log('Waiting for tip confirmation...');
+                      await new Promise(resolve => setTimeout(resolve, 3000)); // 3秒待機
         }
       } catch (tipError: any) {
         console.error('Tip payment failed:', tipError);
@@ -419,9 +423,12 @@ app.post('/api/walrus/sponsor-upload', async (req, res) => {
       method: 'POST', 
       headers: { 
         'Content-Type': contentType || 'application/octet-stream',
-        'User-Agent': 'SXT-Bot/1.0'
+        'User-Agent': 'SXT-Bot/1.0',
+        'Accept': '*/*'
       }, 
-      body: buf 
+      body: buf,
+      // HTTP/2対応とタイムアウト設定
+      signal: AbortSignal.timeout(30000) // 30秒タイムアウト
     });
     
     const upTxt = await upRes.text();
