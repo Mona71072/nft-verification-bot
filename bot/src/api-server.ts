@@ -387,26 +387,41 @@ app.post('/api/walrus/sponsor-upload', async (req, res) => {
     const tipConfig: any = await tipConfigRes.json();
     
     let txId = '';
+    let nonce = '';
+    
     if (tipConfig.send_tip) {
       console.log('Paying tip with SUI...');
+      // nonce生成
+      nonce = crypto.randomBytes(32).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+      
       // SUIでtip支払い（WAL不要）
       const tipAmount = tipConfig.send_tip.kind?.const || 2579480; // 固定値またはデフォルト
       
       const tipTx = new Transaction();
+      
+      // Walrus仕様: blob_digest || nonce_digest || unencoded_length を入力0に設定
+      const nonceDigest = crypto.createHash('sha256').update(Buffer.from(nonce, 'base64')).digest();
+      const lenBuf = Buffer.alloc(8);
+      lenBuf.writeBigUInt64LE(BigInt(buf.length));
+      const input0 = Buffer.concat([blobDigest, nonceDigest, lenBuf]);
+      tipTx.pure(Uint8Array.from(input0));
+      
       const [tipCoin] = tipTx.splitCoins(tipTx.gas, [tipAmount]);
       tipTx.transferObjects([tipCoin], tipConfig.send_tip.address);
       tipTx.setGasBudget(50_000_000);
       
       const tipResult = await client.signAndExecuteTransaction({ signer: signer, transaction: tipTx });
       txId = tipResult.digest;
-      console.log(`Tip paid: ${txId}`);
+      console.log(`Tip paid: ${txId}, nonce: ${nonce.slice(0, 8)}...`);
       
       // 待機
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
     
-    // Upload Relayに送信
-    const uploadUrl = `${relayHost}/v1/blob-upload-relay?blob_id=${blobId}${txId ? `&tx_id=${txId}` : ''}`;
+    // Upload Relayに送信（nonceパラメータ追加）
+    const uploadUrl = `${relayHost}/v1/blob-upload-relay?blob_id=${blobId}${txId ? `&tx_id=${txId}` : ''}${nonce ? `&nonce=${nonce}` : ''}`;
+    console.log(`Upload URL: ${uploadUrl.replace(/nonce=[^&]+/, 'nonce=***')}`);
+    
     const uploadRes = await fetch(uploadUrl, {
       method: 'POST',
       headers: { 'Content-Type': contentType || 'application/octet-stream' },
