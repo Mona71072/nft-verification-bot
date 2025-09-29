@@ -379,51 +379,20 @@ app.post('/api/walrus/sponsor-upload', async (req, res) => {
     // 一時保存実装: Upload Relayのみ
     console.log('Using temporary relay storage (no WAL required)');
     
-    // Walrus仕様に従い、blob_idを計算して送信
+    // 一時保存のため、シンプルなSHA-256を使用
+    // Walrusの内部エンコーディングは複雑すぎるため、一時保存では簡略化
     const blobDigest = crypto.createHash('sha256').update(buf).digest();
     const blobId = blobDigest.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
     
-    console.log(`Calculated blob_id: ${blobId.slice(0, 8)}...`);
+    console.log(`Simple blob_id: ${blobId.slice(0, 8)}...`);
     
-    // tip-config取得
-    const relayHost = process.env.WALRUS_UPLOAD_URL?.replace('/v1/blob-upload-relay', '') || 'https://upload-relay.mainnet.walrus.space';
-    const tipConfigRes = await fetch(`${relayHost}/v1/tip-config`);
-    const tipConfig: any = await tipConfigRes.json();
-    
-    let txId = '';
-    let nonce = '';
-    
-    if (tipConfig.send_tip) {
-      console.log('Paying tip with SUI...');
-      // nonce生成
-      nonce = crypto.randomBytes(32).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-      
-      // SUIでtip支払い（WAL不要）
-      const tipAmount = tipConfig.send_tip.kind?.const || 2579480; // 固定値またはデフォルト
-      
-      const tipTx = new Transaction();
-      
-      // Walrus仕様: blob_digest || nonce_digest || unencoded_length を入力0に設定
-      const blobDigest = crypto.createHash('sha256').update(buf).digest();
-      const nonceDigest = crypto.createHash('sha256').update(Buffer.from(nonce, 'base64')).digest();
-      const lenBuf = Buffer.alloc(8);
-      lenBuf.writeBigUInt64LE(BigInt(buf.length));
-      const input0 = Buffer.concat([blobDigest, nonceDigest, lenBuf]);
-      tipTx.pure(Uint8Array.from(input0));
-      
-      const [tipCoin] = tipTx.splitCoins(tipTx.gas, [tipAmount]);
-      tipTx.transferObjects([tipCoin], tipConfig.send_tip.address);
-      tipTx.setGasBudget(50_000_000);
-      
-      const tipResult = await client.signAndExecuteTransaction({ signer: signer, transaction: tipTx });
-      txId = tipResult.digest;
-      console.log(`Tip paid: ${txId}, nonce: ${nonce.slice(0, 8)}...`);
-      
-      // 待機
-      await new Promise(resolve => setTimeout(resolve, 2000));
-    }
+    // tip支払いをスキップしてテスト
+    console.log('Skipping tip payment for testing...');
+    const txId = '';
+    const nonce = '';
     
     // Upload Relayに送信（blob_idパラメータ必須）
+    const relayHost = process.env.WALRUS_UPLOAD_URL?.replace('/v1/blob-upload-relay', '') || 'https://upload-relay.mainnet.walrus.space';
     const uploadUrl = `${relayHost}/v1/blob-upload-relay?blob_id=${blobId}${txId ? `&tx_id=${txId}` : ''}${nonce ? `&nonce=${nonce}` : ''}`;
     console.log(`Upload URL: ${uploadUrl.replace(/nonce=[^&]+/, 'nonce=***')}`);
     
