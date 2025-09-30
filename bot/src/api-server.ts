@@ -287,6 +287,16 @@ app.post('/api/display/setup', async (req, res) => {
     const keysVector = tx.pure.vector('string', keys);
     const valuesVector = tx.pure.vector('string', values);
     
+    // デバッグ情報を追加
+    console.log('Display setup debug:', {
+      type,
+      sampleObjectId,
+      keys,
+      values,
+      keysVector: keysVector,
+      valuesVector: valuesVector
+    });
+    
     tx.moveCall({
       target: '0x2::display::new_with_fields',
       typeArguments: [type],
