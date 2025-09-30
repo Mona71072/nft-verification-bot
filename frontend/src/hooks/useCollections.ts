@@ -13,17 +13,21 @@ export const useCollections = (apiBaseUrl: string) => {
         console.log('🔄 Fetching collections from API...');
         const response = await fetch(`${apiBaseUrl}/api/collections`);
         const data = await response.json();
-        if (data.success) {
+        if (data.success && data.data && data.data.length > 0) {
           setCollections(data.data);
           // デフォルトですべてのコレクションを選択
           setSelectedCollections(data.data.map((col: NFTCollection) => col.id));
           console.log(`✅ Loaded ${data.data.length} collections`);
         } else {
-          console.log('⚠️ No collections found, using default');
+          console.log('⚠️ No collections found');
+          setCollections([]);
+          setSelectedCollections([]);
         }
       } catch (error) {
         console.error('❌ Failed to fetch collections:', error);
-        console.log('⚠️ Using default collection configuration');
+        console.log('⚠️ No collections available');
+        setCollections([]);
+        setSelectedCollections([]);
       }
     };
     

@@ -534,6 +534,90 @@ app.get('/api/admin/verified-users', async (c) => {
   }
 });
 
+// ロール管理用コレクションAPI
+app.get('/api/collections', async (c) => {
+  try {
+    let collections = [];
+    if (c.env.COLLECTION_STORE) {
+      const s = await c.env.COLLECTION_STORE.get('collections');
+      collections = s ? JSON.parse(s) : [];
+    }
+    return c.json({ success: true, data: collections });
+  } catch (e) {
+    console.error('collections get failed', e);
+    return c.json({ success: true, data: [] });
+  }
+});
+
+app.post('/api/collections', async (c) => {
+  try {
+    const admin = c.req.header('X-Admin-Address');
+    if (!admin || !(await isAdmin(c, admin))) return c.json({ success: false, error: 'forbidden' }, 403);
+    
+    const body = await c.req.json();
+    const { name, packageId, roleId, roleName, description = '' } = body || {};
+    if (!name || !packageId || !roleId || !roleName) {
+      return c.json({ success: false, error: 'Missing required fields: name, packageId, roleId, roleName' }, 400);
+    }
+    
+    const s = await c.env.COLLECTION_STORE.get('collections');
+    const list = s ? JSON.parse(s) : [];
+    const item = {
+      id: Date.now().toString(),
+      name,
+      packageId,
+      roleId,
+      roleName,
+      description,
+      isActive: true,
+      createdAt: new Date().toISOString(),
+    };
+    list.push(item);
+    await c.env.COLLECTION_STORE.put('collections', JSON.stringify(list));
+    return c.json({ success: true, data: item });
+  } catch (e) {
+    console.error('collections post failed', e);
+    return c.json({ success: false, error: 'failed' }, 500);
+  }
+});
+
+app.put('/api/collections/:id', async (c) => {
+  try {
+    const admin = c.req.header('X-Admin-Address');
+    if (!admin || !(await isAdmin(c, admin))) return c.json({ success: false, error: 'forbidden' }, 403);
+    
+    const id = c.req.param('id');
+    const patch = await c.req.json().catch(() => ({}));
+    const s = await c.env.COLLECTION_STORE.get('collections');
+    const list = s ? JSON.parse(s) : [];
+    const idx = list.findIndex((x: any) => x.id === id);
+    if (idx < 0) return c.json({ success: false, error: 'not found' }, 404);
+    list[idx] = { ...list[idx], ...patch, id, updatedAt: new Date().toISOString() };
+    await c.env.COLLECTION_STORE.put('collections', JSON.stringify(list));
+    return c.json({ success: true, data: list[idx] });
+  } catch (e) {
+    console.error('collections put failed', e);
+    return c.json({ success: false, error: 'failed' }, 500);
+  }
+});
+
+app.delete('/api/collections/:id', async (c) => {
+  try {
+    const admin = c.req.header('X-Admin-Address');
+    if (!admin || !(await isAdmin(c, admin))) return c.json({ success: false, error: 'forbidden' }, 403);
+    
+    const id = c.req.param('id');
+    const s = await c.env.COLLECTION_STORE.get('collections');
+    const list = s ? JSON.parse(s) : [];
+    const next = list.filter((x: any) => x.id !== id);
+    await c.env.COLLECTION_STORE.put('collections', JSON.stringify(next));
+    return c.json({ success: true });
+  } catch (e) {
+    console.error('collections delete failed', e);
+    return c.json({ success: false, error: 'failed' }, 500);
+  }
+});
+
 // ミント用コレクションAPI（既存維持）
 app.get('/api/mint-collections', async (c) => {
   try {

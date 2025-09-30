@@ -403,8 +403,10 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
 
   const fetchCollections = async () => {
     try {
-      // ミント用コレクションを取得
-      const response = await fetch(`${API_BASE_URL}/api/mint-collections`);
+      // ロール管理用コレクションを取得
+      const response = await fetch(`${API_BASE_URL}/api/collections`, {
+        headers: getAuthHeaders()
+      });
       const data = await response.json();
       if (data.success) {
         setCollections(data.data);
@@ -418,7 +420,9 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
   const fetchDiscordRoles = async () => {
     try {
       console.log('🔄 Fetching Discord roles...');
-      const response = await fetch(`${API_BASE_URL}/api/discord/roles`);
+      const response = await fetch(`${API_BASE_URL}/api/discord/roles`, {
+        headers: getAuthHeaders()
+      });
       const data = await response.json();
       if (data.success) {
         setDiscordRoles(data.data);
@@ -1021,11 +1025,25 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
       });
       const data = await response.json();
       if (data.success) {
-        setBatchConfig(data.data.config);
-        setBatchStats(data.data.stats);
+        setBatchConfig(data.data);
       }
     } catch {
       console.error('Failed to fetch batch config');
+    }
+  };
+
+  // バッチ処理統計取得
+  const fetchBatchStats = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/admin/batch-stats`, {
+        headers: getAuthHeaders()
+      });
+      const data = await response.json();
+      if (data.success) {
+        setBatchStats(data.data);
+      }
+    } catch {
+      console.error('Failed to fetch batch stats');
     }
   };
 
@@ -1035,15 +1053,19 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
 
     setBatchLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/admin/batch-execute`, {
+      const response = await fetch(`${API_BASE_URL}/api/batch-process`, {
         method: 'POST',
-        headers: getAuthHeaders()
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          collectionId: collections[0]?.id || '',
+          action: 'verify'
+        })
       });
 
       const data = await response.json();
       if (data.success) {
         setMessage('バッチ処理が正常に実行されました');
-        fetchBatchConfig(); // 統計を更新
+        fetchBatchStats(); // 統計を更新
       } else {
         setMessage('バッチ処理の実行に失敗しました');
       }
@@ -1073,6 +1095,7 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
         setBatchConfig(data.data);
         setBatchConfigEditing(false);
         setEditingBatchConfig(null);
+        fetchBatchStats(); // 統計を更新
       } else {
         setMessage('バッチ処理設定の更新に失敗しました');
       }
@@ -1114,6 +1137,7 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
     fetchCollections();
     fetchDiscordRoles();
     fetchBatchConfig();
+    fetchBatchStats();
     fetchDmSettings();
     fetchEvents();
   }, []);
@@ -1128,6 +1152,8 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
       fetchDmSettings();
     } else if (activeTab === 'events') {
       fetchEvents();
+    } else if (activeTab === 'batch') {
+      fetchBatchStats();
     }
   }, [activeTab]);
 
