@@ -93,16 +93,19 @@ export default function MintPage() {
         throw new Error(nonceData?.error || 'ナンスの発行に失敗しました');
       }
 
-      // 2) 署名メッセージ
+      // 2) 署名メッセージ（厳格な形式）
       setMessage('🔄 署名を準備中...');
       const timestamp = new Date().toISOString();
+      
+      // 厳格なメッセージ形式（改行・順序を固定）
       const authMessage = `SXT Event Mint\naddress=${account.address}\neventId=${eventId}\nnonce=${nonceData.data.nonce}\ntimestamp=${timestamp}`;
       
-      console.log('Auth message:', authMessage);
-      console.log('Auth message length:', authMessage.length);
+      console.log('🔍 Auth message (exact):', JSON.stringify(authMessage));
+      console.log('🔍 Auth message length:', authMessage.length);
+      console.log('🔍 Auth message bytes:', Array.from(authMessage));
       
       const bytes = new TextEncoder().encode(authMessage);
-      console.log('Encoded bytes:', Array.from(bytes));
+      console.log('🔍 Encoded bytes:', Array.from(bytes));
       
       let sig;
       try {
@@ -125,7 +128,7 @@ export default function MintPage() {
           eventId,
           address: account.address,
           signature: sig.signature,
-          bytes: sig.bytes,
+          bytes: Array.from(bytes), // Uint8Arrayを配列に変換
           publicKey: (sig as any)?.publicKey ?? (account as any)?.publicKey,
           authMessage
         })
@@ -279,7 +282,8 @@ export default function MintPage() {
           // 画像URLの決定ロジック
           let imageUrl = event?.imageUrl;
           if (!imageUrl && event?.imageCid) {
-            imageUrl = `https://gateway.mainnet.walrus.space/${event.imageCid}`;
+            // Walrus公式ポータルを使用（バックエンドで既に生成済み）
+            imageUrl = `https://wal.app/ipfs/${event.imageCid}`;
           }
           
           return imageUrl ? (
@@ -300,9 +304,12 @@ export default function MintPage() {
                   display: 'block'
                 }}
                 onError={(e) => {
-                  // 画像読み込みエラー時のフォールバック
-                  (e.target as HTMLImageElement).style.display = 'none';
-                  const parent = (e.target as HTMLImageElement).parentElement;
+                  console.log('Walrus portal image load error, showing placeholder...');
+                  const img = e.target as HTMLImageElement;
+                  
+                  // 画像読み込み失敗時はプレースホルダーを表示
+                  img.style.display = 'none';
+                  const parent = img.parentElement;
                   if (parent) {
                     parent.innerHTML = `
                       <div style="

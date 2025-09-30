@@ -454,18 +454,28 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
     try {
       // 1. 画像自動アップロード＆BLOB登録（未設定の場合）
       if (!((newEvent as any).imageUrl) && !((newEvent as any).imageCid) && uploadFile) {
-        setMessage('🔄 画像をWalrusにアップロード中...');
+        setMessage('🔄 画像をWalrusにアップロード中...（約30秒かかります）');
         
         try {
-          // Walrusアップロード（公式SDK使用でBLOB登録も含む）
+          // 画像圧縮（高速化）
+          setMessage('🔄 画像を圧縮中...');
           const compressedFile = await compressImage(uploadFile);
+          setMessage('🔄 Walrusにアップロード中...（BLOB登録含む）');
+          
           const form = new FormData();
           form.append('file', compressedFile);
           
+          // タイムアウトを60秒に設定
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 60000);
+          
           const uploadRes = await fetch(`${API_BASE_URL}/api/walrus/upload`, {
             method: 'POST',
-            body: form
+            body: form,
+            signal: controller.signal
           });
+          
+          clearTimeout(timeoutId);
           
           if (!uploadRes.ok) {
             throw new Error(`アップロード失敗 (${uploadRes.status}): ${await uploadRes.text()}`);
@@ -532,6 +542,7 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
               argumentsTemplate: ['{recipient}', '{imageCid}', '{imageMimeType}'],
               gasBudget: 50_000_000
             };
+            setMessage('✅ Move設定完了');
           }
         } catch (moveError) {
           console.warn('Move target setup failed:', moveError);
@@ -553,11 +564,29 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
 
       // 4. イベント作成
       setMessage('🚀 イベントを作成中...');
+      
+      // イベントデータに画像情報を明示的に追加
+      const eventData = {
+        ...newEvent,
+        imageUrl: (newEvent as any).imageUrl || '',
+        imageCid: (newEvent as any).imageCid || '',
+        imageMimeType: (newEvent as any).imageMimeType || ''
+      };
+      
+      console.log('📤 Sending event data:', eventData);
+      
+      // イベント作成のタイムアウト設定
+      const createController = new AbortController();
+      const createTimeoutId = setTimeout(() => createController.abort(), 30000);
+      
       const res = await fetch(`${API_BASE_URL}/api/admin/events`, {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify(newEvent)
+        body: JSON.stringify(eventData),
+        signal: createController.signal
       });
+      
+      clearTimeout(createTimeoutId);
       
       const data = await res.json();
       if (data.success) {

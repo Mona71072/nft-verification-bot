@@ -1,5 +1,7 @@
 import { Hono, Context } from 'hono';
 import * as ed25519 from '@noble/ed25519';
+// Suiの署名検証ユーティリティ（SerializedSignatureを直接検証）
+import { verifyPersonalMessageSignature } from '@mysten/sui/verify';
 import { blake2b } from '@noble/hashes/blake2b';
 import { sha512 } from '@noble/hashes/sha512';
 import { DmSettings, DmTemplate, DmMode, DEFAULT_DM_SETTINGS, BatchConfig, BatchStats, DEFAULT_BATCH_CONFIG } from './types';
@@ -158,13 +160,29 @@ app.post('/api/walrus/upload', async (c) => {
     let res: Response;
     const sponsor = (c.env as any).MINT_SPONSOR_API_URL || (c.env as any).DISCORD_BOT_API_URL;
     const walrusUploadUrl = (c.env as any).WALRUS_UPLOAD_URL;
+    
+    console.log('🔗 Sponsor URL:', sponsor);
+    console.log('🔗 Walrus Upload URL:', walrusUploadUrl);
+    console.log('📊 File size:', buf.byteLength, 'bytes');
+    
     if (sponsor && walrusUploadUrl) {
+      const dataBase64 = arrayBufferToBase64(buf);
+      console.log('📝 Base64 length:', dataBase64.length);
+      
       const payload = {
-        dataBase64: arrayBufferToBase64(buf),
+        dataBase64: dataBase64,
         contentType: finalType || 'application/octet-stream',
         uploadUrl: walrusUploadUrl
       } as any;
-      res = await fetch(`${sponsor}/api/walrus/sponsor-upload`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      
+      console.log('📤 Sending to Bot API:', sponsor + '/api/walrus/sponsor-upload');
+      res = await fetch(`${sponsor}/api/walrus/sponsor-upload`, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify(payload) 
+      });
+      
+      console.log('📥 Bot API response status:', res.status);
     } else {
       return c.json({ success: false, error: 'Sponsor API or WALRUS_UPLOAD_URL is not configured' }, 503);
     }
@@ -321,9 +339,102 @@ app.post('/api/mint', async (c) => {
       }
     }
 
-    // 署名検証
-    const ok = await verifySignedMessage({ signature, bytes, publicKey }, new TextEncoder().encode(authMessage));
-    if (!ok) return c.json({ success: false, error: 'Invalid signature' }, 400);
+    // 署名検証（強化されたデバッグログ）
+    console.log('🔍 Signature verification debug:', {
+      eventId,
+      address,
+      authMessage: JSON.stringify(authMessage),
+      authMessageLength: authMessage.length,
+      authMessageBytes: Array.from(authMessage),
+      signatureLength: signature?.length,
+      bytesLength: bytes?.length,
+      publicKeyLength: publicKey?.length,
+      eventImageCid: ev.imageCid,
+      eventImageMimeType: ev.imageMimeType
+    });
+    
+    // bytesをUint8Arrayに変換（フロントエンドから配列で送信される）
+    const receivedBytes = bytes ? new Uint8Array(bytes) : new Uint8Array();
+    console.log('🔍 Converted received bytes:', Array.from(receivedBytes));
+
+    // 受信bytesからメッセージを復元
+    let decodedMessage = '';
+    try {
+      decodedMessage = new TextDecoder().decode(receivedBytes);
+    } catch (e) {
+      console.log('⚠️ Failed to decode received bytes, falling back to authMessage string');
+      decodedMessage = typeof authMessage === 'string' ? authMessage : '';
+    }
+
+    // 受信メッセージの可視化ログ
+    console.log('🔍 Received message string:', decodedMessage);
+
+    // カノニカル再生成: "SXT Event Mint\naddress=...\neventId=...\nnonce=...\ntimestamp=..."
+    const lines = (decodedMessage || '').split('\n');
+    const header = lines[0] || '';
+    const kvPairs = lines.slice(1).map((l) => l.trim()).filter(Boolean);
+    const kv: Record<string, string> = {};
+    for (const pair of kvPairs) {
+      const idx = pair.indexOf('=');
+      if (idx > 0) {
+        const k = pair.slice(0, idx).trim();
+        const v = pair.slice(idx + 1).trim();
+        kv[k] = v;
+      }
+    }
+
+    // 値を抽出（不足時は空文字）
+    const msgAddress = kv['address'] || '';
+    const msgEventId = kv['eventId'] || '';
+    const msgNonce = kv['nonce'] || '';
+    const msgTimestamp = kv['timestamp'] || '';
+
+    // ヘッダを確認し、足りない場合は明示的に設定
+    const canonicalHeader = 'SXT Event Mint';
+    const canonicalMessage = [
+      canonicalHeader,
+      `address=${msgAddress}`,
+      `eventId=${msgEventId}`,
+      `nonce=${msgNonce}`,
+      `timestamp=${msgTimestamp}`
+    ].join('\n');
+
+    const expectedBytes = new TextEncoder().encode(canonicalMessage);
+    console.log('🔍 Canonical message string:', canonicalMessage);
+    console.log('🔍 Expected (canonical) message bytes:', Array.from(expectedBytes));
+    console.log('🔍 Received (raw) message bytes:', Array.from(receivedBytes));
+    console.log('🔍 Canonical vs Received bytes match:', JSON.stringify(Array.from(expectedBytes)) === JSON.stringify(Array.from(receivedBytes)));
+    console.log('🔍 String equality (received === canonical):', decodedMessage === canonicalMessage);
+
+    // ボディと受信メッセージの一貫性を軽く検証
+    const bodyConsistency = (String(eventId) === String(msgEventId)) && (String(address).toLowerCase() === String(msgAddress).toLowerCase());
+    if (!bodyConsistency) {
+      console.log('❗ Auth message fields mismatch with body', { eventId, address, msgEventId, msgAddress });
+    }
+
+    // Sui SDKでの検証（SerializedSignatureを直接検証）
+    let ok = false;
+    try {
+      if (typeof signature === 'string') {
+        await verifyPersonalMessageSignature(receivedBytes, signature);
+        ok = true;
+        console.log('🔍 Sui verifyPersonalMessageSignature: true');
+      }
+    } catch (e) {
+      console.log('⚠️ Sui verifyPersonalMessageSignature error:', e instanceof Error ? e.message : e);
+      ok = false;
+    }
+
+    // SDKでfalseの場合のみ従来のnoble検証にフォールバック
+    if (!ok) {
+      ok = await verifySignedMessage({ signature, bytes: receivedBytes, publicKey }, expectedBytes);
+      console.log('🔍 Signature verification result (noble fallback):', ok);
+    }
+    
+    if (!ok) {
+      console.log('❌ Signature verification failed');
+      return c.json({ success: false, error: 'Invalid signature' }, 400);
+    }
 
     // スポンサーAPIへ委譲
     const sponsorUrl = (c.env as any).MINT_SPONSOR_API_URL || (c.env as any).DISCORD_BOT_API_URL;
@@ -2652,12 +2763,19 @@ app.post('/api/admin/events', async (c) => {
         }
       : moveCall;
 
+    // Walrus blob IDから正しい画像URLを生成
+    let finalImageUrl = imageUrl;
+    if (imageCid) {
+      // 常にWalrus公式ポータルを使用（既存のURLを上書き）
+      finalImageUrl = `https://wal.app/ipfs/${imageCid}`;
+    }
+
     const ev = {
       id: Date.now().toString(),
       name,
       description,
       collectionId,
-      imageUrl,
+      imageUrl: finalImageUrl,
       imageCid,
       imageMimeType,
       active: Boolean(active),
@@ -2691,6 +2809,12 @@ app.put('/api/admin/events/:id', async (c) => {
     const list = listStr ? JSON.parse(listStr) : [];
     const idx = Array.isArray(list) ? list.findIndex((e: any) => e && e.id === id) : -1;
     if (idx < 0) return c.json({ success: false, error: 'Event not found' }, 404);
+    
+    // Walrus blob IDから正しい画像URLを生成（更新時）
+    if (patch.imageCid) {
+      patch.imageUrl = `https://wal.app/ipfs/${patch.imageCid}`;
+    }
+    
     list[idx] = { ...list[idx], ...patch, id, updatedAt: new Date().toISOString() };
     await store.put('events', JSON.stringify(list));
     return c.json({ success: true, data: list[idx] });

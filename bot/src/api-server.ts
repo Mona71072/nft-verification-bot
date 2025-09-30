@@ -252,6 +252,70 @@ app.post('/api/mint', async (req, res) => {
   }
 });
 
+// 型Display設定エンドポイント（Publisher権限のあるアカウントで実行）
+app.post('/api/display/setup', async (req, res) => {
+  try {
+    const { type, sampleObjectId, fields } = req.body || {};
+    if (!type || !sampleObjectId) {
+      return res.status(400).json({ success: false, error: 'Missing type or sampleObjectId' });
+    }
+
+    // デフォルトDisplayフィールド
+    const defaultKeys = ['name', 'description', 'image_url'];
+    const defaultValues = ['{name}', '{description}', 'https://wal.app/ipfs/{image_cid}'];
+
+    const keys: string[] = Array.isArray(fields?.keys) && fields.keys.length > 0 ? fields.keys : defaultKeys;
+    const values: string[] = Array.isArray(fields?.values) && fields.values.length === keys.length ? fields.values : defaultValues;
+
+    // 型パスの簡易検証
+    if (!/^0x[a-fA-F0-9]+::[a-zA-Z_][a-zA-Z0-9_]*::[a-zA-Z_][a-zA-Z0-9_]*$/.test(type)) {
+      return res.status(400).json({ success: false, error: `Invalid type format: ${type}` });
+    }
+
+    // オブジェクトIDの簡易検証
+    if (!/^0x[0-9a-fA-F]+$/.test(sampleObjectId)) {
+      return res.status(400).json({ success: false, error: `Invalid sampleObjectId: ${sampleObjectId}` });
+    }
+
+    const client = getSuiClient();
+    const kp = getSponsorKeypair();
+    const tx = new Transaction();
+
+    // 0x2::display::new_with_fields<T>(&uid_owner, keys, values, &mut TxContext)
+    // 注意: Move側の署名に依存します。Publisher権限が必要です。
+    tx.moveCall({
+      target: '0x2::display::new_with_fields',
+      typeArguments: [type],
+      arguments: [
+        tx.object(sampleObjectId),
+        tx.pure.vector('string', keys),
+        tx.pure.vector('string', values)
+      ]
+    });
+
+    // 任意: バージョン更新（環境によっては不要）
+    // tx.moveCall({
+    //   target: '0x2::display::update_version',
+    //   typeArguments: [type],
+    //   arguments: [tx.object(sampleObjectId)]
+    // });
+
+    // ガス安全枠
+    tx.setGasBudget(100_000_000);
+
+    const result = await client.signAndExecuteTransaction({
+      signer: kp,
+      transaction: tx,
+      options: { showEffects: true, showEvents: true, showObjectChanges: true }
+    });
+
+    return res.json({ success: true, txDigest: result.digest, result });
+  } catch (e: any) {
+    console.error('Display setup failed:', e);
+    return res.status(500).json({ success: false, error: e?.message || 'display setup failed' });
+  }
+});
+
 // 汎用 Move 呼び出しエンドポイント（管理用途）
 app.post('/api/move-call', async (req, res) => {
   try {
