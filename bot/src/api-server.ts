@@ -283,13 +283,17 @@ app.post('/api/display/setup', async (req, res) => {
 
     // 0x2::display::new_with_fields<T>(&uid_owner, keys, values, &mut TxContext)
     // 注意: Move側の署名に依存します。Publisher権限が必要です。
+    // 正しい引数形式: keysとvaluesはvector<string>として渡す
+    const keysVector = tx.pure.vector('string', keys);
+    const valuesVector = tx.pure.vector('string', values);
+    
     tx.moveCall({
       target: '0x2::display::new_with_fields',
       typeArguments: [type],
       arguments: [
         tx.object(sampleObjectId),
-        tx.pure.vector('string', keys),
-        tx.pure.vector('string', values)
+        keysVector,
+        valuesVector
       ]
     });
 
