@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ConnectButton } from '@suiet/wallet-kit';
 import '@suiet/wallet-kit/style.css';
 import { useWalletWithErrorHandling } from './hooks/useWallet';
+import { getImageDisplayUrl } from './utils/walrus';
 
 export default function MintPage() {
   const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
@@ -279,12 +280,8 @@ export default function MintPage() {
 
         {/* Event Image */}
         {(() => {
-          // 画像URLの決定ロジック
-          let imageUrl = event?.imageUrl;
-          if (!imageUrl && event?.imageCid) {
-            // Walrus公式ポータルを使用（バックエンドで既に生成済み）
-            imageUrl = `https://wal.app/ipfs/${event.imageCid}`;
-          }
+          // Walrus.pdf準拠の画像URL生成
+          const imageUrl = getImageDisplayUrl(event?.imageCid, event?.imageUrl);
           
           return imageUrl ? (
             <div className="image-container" style={{

@@ -3,6 +3,7 @@ import type { DmSettings, DmMode } from './types';
 
 import type { NFTCollection, DiscordRole, BatchConfig, BatchStats, VerifiedUser, AdminMintEvent } from './types';
 import { useWalletWithErrorHandling } from './hooks/useWallet';
+import { getImageDisplayUrl } from './utils/walrus';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
 
@@ -43,9 +44,9 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
   const allowedTabs: Array<'collections' | 'events' | 'batch' | 'users' | 'admins' | 'dm-settings' | 'history'> =
     mode === 'mint'
       ? ['events', 'history']
-      : mode === 'admin'
-      ? ['admins']
-      : ['collections', 'batch', 'users', 'dm-settings'];
+      : mode === 'roles'
+      ? ['collections', 'batch', 'users', 'dm-settings']
+      : ['collections', 'events', 'batch', 'users', 'admins', 'dm-settings', 'history']; // admin mode: 全タブアクセス可能
 
   // Events 管理用ステート
   const [events, setEvents] = useState<AdminMintEvent[]>([]);
@@ -58,7 +59,7 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
     active: true,
     startAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
     endAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-    moveCall: { target: '', typeArguments: [], argumentsTemplate: ['{recipient}', '{imageUrl}'], gasBudget: 20000000 },
+    moveCall: { target: '', typeArguments: [], argumentsTemplate: ['{recipient}', '{imageCid}', '{imageMimeType}'], gasBudget: 20000000 },
     totalCap: undefined
   });
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -305,9 +306,8 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
       if (returnedUrl && /^https?:\/\//.test(returnedUrl)) {
         finalUrl = returnedUrl;
       } else if (cid) {
-        // 一般的なゲートウェイのパス形態に対応
-        // 例: {GATEWAY}/ipfs/{cid} または {GATEWAY}/{cid}
-        const base = 'https://gateway.mainnet.walrus.space/';
+        // Walrus.pdf準拠のAggregator API URL生成
+        const base = 'https://aggregator.mainnet.walrus.space/v1/blobs/';
         finalUrl = `${base}${cid}`;
       }
 
@@ -487,7 +487,7 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
             if (cid) {
               (newEvent as any).imageCid = cid;
               (newEvent as any).imageMimeType = compressedFile.type || 'application/octet-stream';
-              (newEvent as any).imageUrl = `https://gateway.mainnet.walrus.space/${cid}`;
+              (newEvent as any).imageUrl = `https://aggregator.mainnet.walrus.space/v1/blobs/${cid}`;
               setMessage('✅ 画像アップロード完了！BLOB登録済み');
             }
           } else {
@@ -657,7 +657,7 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
             if (r.ok) {
               const d = await r.json().catch(() => ({}));
               const cid = resolveCidFromResponse(d);
-              const base = 'https://gateway.mainnet.walrus.space/';
+              const base = 'https://aggregator.mainnet.walrus.space/v1/blobs/';
               const url = cid && base ? `${base}${cid}` : cid || '';
               if (cid) {
                 (editingEvent as any).imageCid = cid;
@@ -2395,8 +2395,8 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
                       <div style={{ marginTop: '0.25rem' }}>
                         <div style={{ fontSize: '0.85rem', color: '#333', marginBottom: '0.25rem' }}>画像:</div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <img src={ev.imageUrl} alt={ev.name} style={{ width: 120, height: 'auto', borderRadius: 8, border: '1px solid #e5e7eb' }} />
-                          <a href={ev.imageUrl} target="_blank" rel="noreferrer" style={{ fontSize: '0.8rem' }}>新しいタブで開く</a>
+                          <img src={getImageDisplayUrl((ev as any).imageCid, ev.imageUrl)} alt={ev.name} style={{ width: 120, height: 'auto', borderRadius: 8, border: '1px solid #e5e7eb' }} />
+                          <a href={getImageDisplayUrl((ev as any).imageCid, ev.imageUrl)} target="_blank" rel="noreferrer" style={{ fontSize: '0.8rem' }}>新しいタブで開く</a>
                         </div>
                       </div>
                     )}

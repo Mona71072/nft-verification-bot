@@ -6,6 +6,7 @@ import { SuiClient, getFullnodeUrl } from '@mysten/sui/client';
 import { Transaction } from '@mysten/sui/transactions';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
+import { getWalrusConfig, getDisplayImageUrl } from './services/walrus';
 import crypto from 'crypto';
 
 const app = express();
@@ -185,10 +186,10 @@ app.post('/api/discord-action', async (req, res) => {
   }
 });
 
-// スポンサー実行: Suiでのミント処理を代理送信
+// スポンサー実行: Suiでのミント処理を代理送信（Walrus.pdf準拠）
 app.post('/api/mint', async (req, res) => {
   try {
-    const { eventId, recipient, moveCall, imageUrl, imageCid, imageMimeType } = req.body || {};
+    const { eventId, recipient, moveCall, imageCid, imageMimeType } = req.body || {};
     if (!eventId || !recipient || !moveCall?.target) {
       return res.status(400).json({ success: false, error: 'Missing eventId/recipient/moveCall.target' });
     }
@@ -207,7 +208,7 @@ app.post('/api/mint', async (req, res) => {
           }
           return tx.pure.address(recipient);
         }
-        if (a === '{imageUrl}') return tx.pure.string(imageUrl || '');
+        // imageUrl は削除、imageCid と imageMimeType のみ対応（Walrus.pdf準拠）
         if (a === '{imageCid}') return tx.pure.string(imageCid || '');
         if (a === '{imageMimeType}') return tx.pure.string(imageMimeType || '');
         return tx.pure.string(String(a));
@@ -252,17 +253,66 @@ app.post('/api/mint', async (req, res) => {
   }
 });
 
+// PublisherオブジェクトID取得エンドポイント
+app.get('/api/display/publisher/:packageId', async (req, res) => {
+  try {
+    const { packageId } = req.params;
+    if (!packageId) {
+      return res.status(400).json({ success: false, error: 'Missing packageId' });
+    }
+
+    const client = getSuiClient();
+    
+    // パッケージの詳細を取得してPublisherオブジェクトを検索
+    const packageData = await client.getObject({
+      id: packageId,
+      options: { showContent: true, showOwner: true }
+    });
+
+    if (!packageData.data) {
+      return res.status(404).json({ success: false, error: 'Package not found' });
+    }
+
+    // パッケージのオーナーからPublisherオブジェクトを検索
+    const owner = packageData.data.owner;
+    if (owner && typeof owner === 'object' && 'AddressOwner' in owner) {
+      const ownerAddress = (owner as any).AddressOwner;
+      
+      // オーナーが所有するオブジェクトを検索
+      const ownedObjects = await client.getOwnedObjects({
+        owner: ownerAddress,
+        filter: { StructType: '0x2::package::Publisher' },
+        options: { showContent: true }
+      });
+
+      if (ownedObjects.data && ownedObjects.data.length > 0) {
+        const publisher = ownedObjects.data[0];
+        return res.json({ 
+          success: true, 
+          publisherId: publisher.data?.objectId,
+          owner: ownerAddress
+        });
+      }
+    }
+
+    return res.status(404).json({ success: false, error: 'Publisher object not found for this package' });
+  } catch (e: any) {
+    console.error('Publisher lookup failed:', e);
+    return res.status(500).json({ success: false, error: e?.message || 'Publisher lookup failed' });
+  }
+});
+
 // 型Display設定エンドポイント（Publisher権限のあるアカウントで実行）
 app.post('/api/display/setup', async (req, res) => {
   try {
-    const { type, sampleObjectId, fields } = req.body || {};
-    if (!type || !sampleObjectId) {
-      return res.status(400).json({ success: false, error: 'Missing type or sampleObjectId' });
+    const { type, publisherId, fields } = req.body || {};
+    if (!type || !publisherId) {
+      return res.status(400).json({ success: false, error: 'Missing type or publisherId' });
     }
 
-    // デフォルトDisplayフィールド
+    // デフォルトDisplayフィールド（Walrus Aggregator API準拠の画像URL）
     const defaultKeys = ['name', 'description', 'image_url'];
-    const defaultValues = ['{name}', '{description}', 'https://wal.app/ipfs/{image_cid}'];
+    const defaultValues = ['{name}', '{description}', getDisplayImageUrl('{image_cid}', process.env)];
 
     const keys: string[] = Array.isArray(fields?.keys) && fields.keys.length > 0 ? fields.keys : defaultKeys;
     const values: string[] = Array.isArray(fields?.values) && fields.values.length === keys.length ? fields.values : defaultValues;
@@ -272,9 +322,9 @@ app.post('/api/display/setup', async (req, res) => {
       return res.status(400).json({ success: false, error: `Invalid type format: ${type}` });
     }
 
-    // オブジェクトIDの簡易検証
-    if (!/^0x[0-9a-fA-F]+$/.test(sampleObjectId)) {
-      return res.status(400).json({ success: false, error: `Invalid sampleObjectId: ${sampleObjectId}` });
+    // PublisherオブジェクトIDの簡易検証
+    if (!/^0x[0-9a-fA-F]+$/.test(publisherId)) {
+      return res.status(400).json({ success: false, error: `Invalid publisherId: ${publisherId}` });
     }
 
     const client = getSuiClient();
@@ -290,29 +340,29 @@ app.post('/api/display/setup', async (req, res) => {
     // デバッグ情報を追加
     console.log('Display setup debug:', {
       type,
-      sampleObjectId,
+      publisherId,
       keys,
       values,
       keysVector: keysVector,
       valuesVector: valuesVector
     });
     
+    // 0x2::display::new_with_fields<T>(publisher, keys, values)
+    // モナさんの指摘通り、Publisherオブジェクトを使用
     tx.moveCall({
       target: '0x2::display::new_with_fields',
       typeArguments: [type],
       arguments: [
-        tx.object(sampleObjectId),
+        tx.object(publisherId),  // ← ここがPublisher（必須）
         keysVector,
         valuesVector
       ]
     });
 
-    // 任意: バージョン更新（環境によっては不要）
-    // tx.moveCall({
-    //   target: '0x2::display::update_version',
-    //   typeArguments: [type],
-    //   arguments: [tx.object(sampleObjectId)]
-    // });
+    // 2段階フロー（保険）: もしnew_with_fieldsが通らない場合
+    // 1. 0x2::display::new<T>(publisher) で空Displayを作成
+    // 2. 0x2::display::update_version<T>(display, keys, values) でfieldsを追加
+    // どちらも引数0はPublisher/Displayで、keys/valuesはvector<string>
 
     // ガス安全枠
     tx.setGasBudget(100_000_000);
@@ -490,6 +540,100 @@ app.post('/api/walrus/sponsor-upload', async (req, res) => {
       success: false, 
       error: e?.message || 'Walrus SDK upload error',
       type: e?.constructor?.name || 'Error'
+    });
+  }
+});
+
+// 画像アップロード + Display設定の統合エンドポイント
+app.post('/api/display/setup-with-image', async (req, res) => {
+  try {
+    const { type, publisherId, imageBase64, imageContentType, name, description } = req.body || {};
+    if (!type || !publisherId || !imageBase64) {
+      return res.status(400).json({ success: false, error: 'Missing type, publisherId, or imageBase64' });
+    }
+
+    console.log('Starting image upload + display setup process...');
+
+    // 1. 画像をWalrusにアップロード
+    const uploadResponse = await fetch(`${req.protocol}://${req.get('host')}/api/walrus/sponsor-upload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        dataBase64: imageBase64,
+        contentType: imageContentType || 'image/png'
+      })
+    });
+
+    if (!uploadResponse.ok) {
+      const errorData = await uploadResponse.json().catch(() => ({})) as any;
+      return res.status(500).json({ 
+        success: false, 
+        error: `Image upload failed: ${errorData.error || 'Unknown error'}` 
+      });
+    }
+
+    const uploadData = await uploadResponse.json() as any;
+    if (!uploadData.success) {
+      return res.status(500).json({ 
+        success: false, 
+        error: `Image upload failed: ${uploadData.error}` 
+      });
+    }
+
+    const imageCid = uploadData.data.blob_id;
+    console.log(`Image uploaded successfully, CID: ${imageCid}`);
+
+    // 2. Display設定を実行
+    const displayResponse = await fetch(`${req.protocol}://${req.get('host')}/api/display/setup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type,
+        publisherId,
+        fields: {
+          keys: ['name', 'description', 'image_url'],
+          values: [
+            name || '{name}',
+            description || '{description}',
+            `https://wal.app/ipfs/${imageCid}` // Walrus形式の画像URL
+          ]
+        }
+      })
+    });
+
+    if (!displayResponse.ok) {
+      const errorData = await displayResponse.json().catch(() => ({})) as any;
+      return res.status(500).json({ 
+        success: false, 
+        error: `Display setup failed: ${errorData.error || 'Unknown error'}` 
+      });
+    }
+
+    const displayData = await displayResponse.json() as any;
+    if (!displayData.success) {
+      return res.status(500).json({ 
+        success: false, 
+        error: `Display setup failed: ${displayData.error}` 
+      });
+    }
+
+    console.log('Display setup completed successfully');
+
+    return res.json({
+      success: true,
+      data: {
+        imageCid,
+        imageUrl: `https://wal.app/ipfs/${imageCid}`,
+        txDigest: displayData.txDigest,
+        displayResult: displayData.result
+      }
+    });
+
+  } catch (e: any) {
+    console.error('Image upload + display setup failed:', e);
+    return res.status(500).json({ 
+      success: false, 
+      error: e?.message || 'Image upload + display setup failed' 
     });
   }
 });

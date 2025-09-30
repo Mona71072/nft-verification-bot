@@ -1,0 +1,21 @@
+{
+  "name": "nft-verification-scripts",
+  "version": "1.0.0",
+  "description": "Walrus.pdf migration and testing scripts",
+  "main": "index.js",
+  "scripts": {
+    "migrate": "tsx migrate-walrus.ts",
+    "test": "tsx test-walrus-api.ts",
+    "test:walrus": "tsx test-walrus-api.ts",
+    "migrate:walrus": "tsx migrate-walrus.ts",
+    "validate": "tsx validate-migration.ts",
+    "validate:migration": "tsx validate-migration.ts"
+  },
+  "dependencies": {
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0"
+  }
+}
