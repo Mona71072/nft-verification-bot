@@ -423,15 +423,24 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
       const response = await fetch(`${API_BASE_URL}/api/discord/roles`, {
         headers: getAuthHeaders()
       });
+      
+      if (!response.ok) {
+        console.error('❌ Discord roles API not available:', response.status, response.statusText);
+        setDiscordRoles([]);
+        return;
+      }
+      
       const data = await response.json();
       if (data.success) {
-        setDiscordRoles(data.data);
-        console.log(`✅ Loaded ${data.data.length} Discord roles`);
+        setDiscordRoles(data.data || []);
+        console.log(`✅ Loaded ${data.data?.length || 0} Discord roles`);
       } else {
         console.error('❌ Failed to fetch Discord roles:', data.error);
+        setDiscordRoles([]);
       }
     } catch (error) {
       console.error('❌ Error fetching Discord roles:', error);
+      setDiscordRoles([]);
     }
   };
 
@@ -1368,18 +1377,31 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
                 onChange={(e) => setNewCollection({...newCollection, packageId: e.target.value})}
                 style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
               />
-              <select
+              <select 
                 value={newCollection.roleId}
                 onChange={(e) => handleRoleSelect(e.target.value)}
                 style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
               >
                 <option value="">ロールを選択してください</option>
-                {discordRoles.map(role => (
-                  <option key={role.id} value={role.id}>
-                    {role.name} (ID: {role.id})
+                {discordRoles.length > 0 ? (
+                  discordRoles.map(role => (
+                    <option key={role.id} value={role.id}>
+                      {role.name} (ID: {role.id})
+                    </option>
+                  ))
+                ) : (
+                  <option value="" disabled>
+                    Discordロールを読み込み中... (Bot APIが利用できない場合は手動で入力してください)
                   </option>
-                ))}
+                )}
               </select>
+              <input 
+                type="text" 
+                placeholder="ロールID（手動入力、Discordロールが読み込めない場合）" 
+                value={newCollection.roleId} 
+                onChange={(e) => setNewCollection({...newCollection, roleId: e.target.value})}
+                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+              />
               <input 
                 type="text" 
                 placeholder="ロール名（自動設定）" 

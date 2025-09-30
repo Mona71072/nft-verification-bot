@@ -407,14 +407,26 @@ app.get('/api/discord/roles', async (c) => {
 
     // Discord Bot APIからロール一覧を取得
     const botApiUrl = c.env.DISCORD_BOT_API_URL || 'https://nft-verification-bot.onrender.com';
-    const response = await fetch(`${botApiUrl}/api/discord/roles`, {
-      headers: {
-        'User-Agent': 'Cloudflare-Worker'
-      }
-    });
+    
+    try {
+      const response = await fetch(`${botApiUrl}/api/discord/roles`, {
+        headers: {
+          'User-Agent': 'Cloudflare-Worker'
+        },
+        signal: AbortSignal.timeout(10000) // 10秒タイムアウト
+      });
 
-    const result = await response.json();
-    return c.json(result);
+      if (!response.ok) {
+        console.error('Discord Bot API not available:', response.status, response.statusText);
+        return c.json({ success: true, data: [], message: 'Discord Bot API is currently unavailable' });
+      }
+
+      const result = await response.json();
+      return c.json(result);
+    } catch (fetchError) {
+      console.error('Discord Bot API connection failed:', fetchError);
+      return c.json({ success: true, data: [], message: 'Discord Bot API is currently unavailable' });
+    }
 
   } catch (error) {
     console.error('Discord roles API error:', error);
