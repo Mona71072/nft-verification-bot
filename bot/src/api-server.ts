@@ -186,6 +186,41 @@ app.post('/api/discord-action', async (req, res) => {
   }
 });
 
+// Discord ロール一覧取得エンドポイント
+app.get('/api/discord/roles', async (req, res) => {
+  try {
+    const guild = await client.guilds.fetch(config.DISCORD_GUILD_ID);
+    if (!guild) {
+      return res.status(404).json({
+        success: false,
+        error: 'Guild not found'
+      });
+    }
+
+    const roles = await guild.roles.fetch();
+    const rolesList = roles.map(role => ({
+      id: role.id,
+      name: role.name,
+      color: role.color,
+      position: role.position,
+      permissions: role.permissions.toArray(),
+      mentionable: role.mentionable,
+      hoist: role.hoist
+    }));
+
+    res.json({
+      success: true,
+      data: rolesList
+    });
+  } catch (error) {
+    console.error('Discord roles API error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch Discord roles'
+    });
+  }
+});
+
 // スポンサー実行: Suiでのミント処理を代理送信（Walrus.pdf準拠）
 app.post('/api/mint', async (req, res) => {
   try {
