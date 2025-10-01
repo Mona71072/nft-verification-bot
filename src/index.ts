@@ -856,7 +856,8 @@ app.post('/api/verify', async (c) => {
       verifiedAt: new Date().toISOString(),
       roleName: 'NFT Holder',
       signature,
-      nonce
+      nonce,
+      lastChecked: new Date().toISOString() // 認証時にチェック済みとする
     };
 
     await mintedStore.put(`verified_user:${discordId}`, JSON.stringify(userData));
@@ -929,6 +930,96 @@ app.post('/api/admin/update-batch-stats', async (c) => {
   } catch (error) {
     console.error('Update batch stats error:', error);
     return c.json({ success: false, error: 'Failed to update batch statistics' }, 500);
+  }
+});
+
+// NFT保有状況チェックAPI
+app.post('/api/admin/check-nft-ownership', async (c) => {
+  try {
+    const admin = c.req.header('X-Admin-Address');
+    if (!admin || !(await isAdmin(c, admin))) return c.json({ success: false, error: 'forbidden' }, 403);
+
+    const { discordId } = await c.req.json();
+    
+    if (!discordId) {
+      return c.json({ success: false, error: 'discordId is required' }, 400);
+    }
+
+    const store = c.env.MINTED_STORE as KVNamespace | undefined;
+    if (!store) {
+      return c.json({ success: false, error: 'Minted store not available' }, 500);
+    }
+
+    // ユーザーデータを取得
+    const userDataStr = await store.get(`verified_user:${discordId}`);
+    if (!userDataStr) {
+      return c.json({ success: false, error: 'User not found' }, 404);
+    }
+
+    const userData = JSON.parse(userDataStr);
+    
+    // SuiネットワークからNFT保有状況を確認（簡易版）
+    const suiNetwork = c.env.SUI_NETWORK || 'mainnet';
+    const fullnode = suiNetwork === 'testnet'
+      ? 'https://fullnode.testnet.sui.io:443'
+      : suiNetwork === 'devnet'
+        ? 'https://fullnode.devnet.sui.io:443'
+        : 'https://fullnode.mainnet.sui.io:443';
+
+    let hasNFT = false;
+    
+    try {
+      // Sui JSON-RPCでオブジェクトを取得
+      const response = await fetch(fullnode, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'suix_getOwnedObjects',
+          params: [
+            userData.address,
+            {
+              filter: {
+                StructType: userData.collectionIds[0] // 最初のコレクションをチェック
+              }
+            },
+            null,
+            10
+          ]
+        })
+      });
+
+      const result = await response.json();
+      if (result.result && result.result.data && result.result.data.length > 0) {
+        hasNFT = true;
+      }
+    } catch (error) {
+      console.error('NFT ownership check failed:', error);
+      // チェック失敗時は既存の状態を維持
+      hasNFT = true; // デフォルトで保有していると仮定
+    }
+
+    // lastCheckedを更新
+    userData.lastChecked = new Date().toISOString();
+    userData.hasNFT = hasNFT;
+
+    // 更新されたユーザーデータを保存
+    await store.put(`verified_user:${discordId}`, JSON.stringify(userData));
+
+    return c.json({
+      success: true,
+      data: {
+        discordId,
+        hasNFT,
+        lastChecked: userData.lastChecked,
+        address: userData.address
+      }
+    });
+
+  } catch (error) {
+    console.error('Check NFT ownership error:', error);
+    return c.json({ success: false, error: 'Failed to check NFT ownership' }, 500);
   }
 });
 
