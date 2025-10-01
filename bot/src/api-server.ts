@@ -221,6 +221,68 @@ app.get('/api/discord/roles', async (req, res) => {
   }
 });
 
+// Discord DM通知エンドポイント
+app.post('/api/notify-discord', async (req, res) => {
+  try {
+    const { discordId, action, verificationData, timestamp } = req.body;
+
+    if (!discordId || !action) {
+      return res.status(400).json({
+        success: false,
+        error: 'discordId and action are required'
+      });
+    }
+
+    console.log('Discord notification requested:', { discordId, action, verificationData });
+
+    // Discordユーザーを取得
+    const user = await client.users.fetch(discordId);
+    if (!user) {
+      console.error('Discord user not found:', discordId);
+      return res.status(404).json({
+        success: false,
+        error: 'Discord user not found'
+      });
+    }
+
+    // 認証成功時のDM送信
+    if (action === 'grant_roles' && verificationData) {
+      const embed = {
+        title: '🎉 NFT認証完了',
+        description: `**あなたのNFT認証が完了しました！**\n\n**認証されたコレクション:**\n• ${verificationData.roleName || 'NFT Holder'}\n\n**付与されたロール:**\n• ${verificationData.roleName || 'NFT Holder'}\n\nロールがサーバーに表示されるまで少し時間がかかる場合があります。\n\n認証いただき、ありがとうございます！`,
+        color: 0x00ff00,
+        timestamp: timestamp || new Date().toISOString(),
+        footer: {
+          text: 'SXT NFT Verification System'
+        }
+      };
+
+      try {
+        await user.send({ embeds: [embed] });
+        console.log('Successfully sent DM to user:', discordId);
+      } catch (dmError) {
+        console.error('Failed to send DM:', dmError);
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to send DM'
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'Discord notification sent successfully'
+    });
+
+  } catch (error) {
+    console.error('Discord notification API error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to send Discord notification'
+    });
+  }
+});
+
 // バッチ処理実行エンドポイント
 app.post('/api/batch-process', async (req, res) => {
   try {
@@ -286,6 +348,36 @@ app.post('/api/batch-process', async (req, res) => {
     }
 
     console.log(`Batch process completed: ${processedUsers} processed, ${errors} errors`);
+
+    // バッチ処理統計を更新
+    try {
+      const statsUpdate = {
+        lastExecuted: new Date().toISOString(),
+        processedUsers,
+        errors,
+        totalUsers: verifiedUsers.length,
+        collectionId,
+        action
+      };
+
+      const workersStatsResponse = await fetch(`${config.CLOUDFLARE_WORKERS_API_URL}/api/admin/update-batch-stats`, {
+        method: 'POST',
+        headers: {
+          'X-Admin-Address': adminAddress || '0x1234567890abcdef1234567890abcdef12345678',
+          'Content-Type': 'application/json',
+          'User-Agent': 'Discord-Bot'
+        },
+        body: JSON.stringify(statsUpdate)
+      });
+
+      if (workersStatsResponse.ok) {
+        console.log('Batch statistics updated successfully');
+      } else {
+        console.error('Failed to update batch statistics:', workersStatsResponse.status);
+      }
+    } catch (statsError) {
+      console.error('Error updating batch statistics:', statsError);
+    }
 
     res.json({
       success: true,

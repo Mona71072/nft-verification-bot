@@ -890,6 +890,64 @@ app.post('/api/verify', async (c) => {
   }
 });
 
+// バッチ処理統計更新API
+app.post('/api/admin/update-batch-stats', async (c) => {
+  try {
+    const admin = c.req.header('X-Admin-Address');
+    if (!admin || !(await isAdmin(c, admin))) return c.json({ success: false, error: 'forbidden' }, 403);
+
+    const statsData = await c.req.json();
+    
+    const store = c.env.MINTED_STORE as KVNamespace | undefined;
+    if (!store) {
+      return c.json({ success: false, error: 'Minted store not available' }, 500);
+    }
+
+    // バッチ統計データを保存
+    await store.put('batch_stats', JSON.stringify({
+      lastExecuted: statsData.lastExecuted || new Date().toISOString(),
+      processedUsers: statsData.processedUsers || 0,
+      errors: statsData.errors || 0,
+      totalUsers: statsData.totalUsers || 0,
+      collectionId: statsData.collectionId || '',
+      action: statsData.action || '',
+      updatedAt: new Date().toISOString()
+    }));
+
+    return c.json({ success: true, message: 'Batch statistics updated successfully' });
+  } catch (error) {
+    console.error('Update batch stats error:', error);
+    return c.json({ success: false, error: 'Failed to update batch statistics' }, 500);
+  }
+});
+
+// テスト用：認証済みユーザー削除
+app.delete('/api/admin/delete-test-user', async (c) => {
+  try {
+    const admin = c.req.header('X-Admin-Address');
+    if (!admin || !(await isAdmin(c, admin))) return c.json({ success: false, error: 'forbidden' }, 403);
+
+    const { discordId } = await c.req.json();
+    
+    if (!discordId) {
+      return c.json({ success: false, error: 'discordId is required' }, 400);
+    }
+
+    const store = c.env.MINTED_STORE as KVNamespace | undefined;
+    if (!store) {
+      return c.json({ success: false, error: 'Minted store not available' }, 500);
+    }
+
+    // テストユーザーを削除
+    await store.delete(`verified_user:${discordId}`);
+
+    return c.json({ success: true, message: 'Test user deleted successfully' });
+  } catch (error) {
+    console.error('Delete test user error:', error);
+    return c.json({ success: false, error: 'Failed to delete test user' }, 500);
+  }
+});
+
 // テスト用：認証済みユーザーを手動追加
 app.post('/api/admin/set-test-user', async (c) => {
   try {
