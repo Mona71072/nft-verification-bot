@@ -247,17 +247,55 @@ app.post('/api/notify-discord', async (req, res) => {
 
     // 認証成功時のDM送信
     if (action === 'grant_roles' && verificationData) {
-      const embed = {
-        title: '🎉 NFT認証完了',
-        description: `**あなたのNFT認証が完了しました！**\n\n**認証されたコレクション:**\n• ${verificationData.roleName || 'NFT Holder'}\n\n**付与されたロール:**\n• ${verificationData.roleName || 'NFT Holder'}\n\nロールがサーバーに表示されるまで少し時間がかかる場合があります。\n\n認証いただき、ありがとうございます！`,
-        color: 0x00ff00,
-        timestamp: timestamp || new Date().toISOString(),
-        footer: {
-          text: 'SXT NFT Verification System'
-        }
-      };
-
       try {
+        // DM設定テンプレートを取得
+        const dmSettingsResponse = await fetch(`${config.CLOUDFLARE_WORKERS_API_URL}/api/admin/dm-settings`, {
+          headers: {
+            'X-Admin-Address': '0x1234567890abcdef1234567890abcdef12345678',
+            'User-Agent': 'Discord-Bot'
+          }
+        });
+
+        let embed;
+        if (dmSettingsResponse.ok) {
+          const dmSettingsData = await dmSettingsResponse.json();
+          if (dmSettingsData.success && dmSettingsData.data && dmSettingsData.data.templates) {
+            const templates = dmSettingsData.data.templates;
+            const template = templates.successNew || templates.successUpdate;
+            
+            if (template) {
+              // テンプレートを使用してDMを作成
+              const description = template.description
+                .replace('{collectionName}', verificationData.roleName || 'NFT Holder')
+                .replace('{roles}', verificationData.roleName || 'NFT Holder')
+                .replace(/\\n/g, '\n'); // エスケープされた改行を実際の改行に変換
+
+              embed = {
+                title: template.title,
+                description: description,
+                color: template.color,
+                timestamp: timestamp || new Date().toISOString(),
+                footer: {
+                  text: 'SXT NFT Verification System'
+                }
+              };
+            }
+          }
+        }
+
+        // テンプレートが取得できない場合はデフォルトメッセージを使用
+        if (!embed) {
+          embed = {
+            title: '🎉 Verification Completed',
+            description: `**Your NFT verification is complete!**\n\n**Verified NFT Collection:**\n• ${verificationData.roleName || 'NFT Holder'}\n\n**Granted Roles:**\n• ${verificationData.roleName || 'NFT Holder'}\n\nIt may take a moment for roles to appear in the server.\n\nThank you for verifying!`,
+            color: 0x00ff00,
+            timestamp: timestamp || new Date().toISOString(),
+            footer: {
+              text: 'SXT NFT Verification System'
+            }
+          };
+        }
+
         await user.send({ embeds: [embed] });
         console.log('Successfully sent DM to user:', discordId);
       } catch (dmError) {
