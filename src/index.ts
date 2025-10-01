@@ -391,6 +391,24 @@ app.post('/api/batch-process', async (c) => {
     });
 
     const result = await response.json();
+    
+    // バッチ処理実行後にlastRunを更新
+    if (result.success) {
+      const store = c.env.COLLECTION_STORE as KVNamespace | undefined;
+      if (store) {
+        try {
+          const configStr = await store.get('batch_config');
+          if (configStr) {
+            const config = JSON.parse(configStr);
+            config.lastRun = new Date().toISOString();
+            await store.put('batch_config', JSON.stringify(config));
+          }
+        } catch (error) {
+          console.error('Failed to update batch config lastRun:', error);
+        }
+      }
+    }
+    
     return c.json(result);
 
   } catch (error) {
@@ -488,7 +506,34 @@ app.get('/api/admin/batch-config', async (c) => {
     }
 
     const config = await store.get('batch_config');
-    const data = config ? JSON.parse(config) : DEFAULT_BATCH_CONFIG;
+    let data = config ? JSON.parse(config) : DEFAULT_BATCH_CONFIG;
+    
+    // 日付計算ロジックを修正
+    const now = new Date();
+    const nowISO = now.toISOString();
+    
+    // lastRunが設定されていない場合は現在時刻を使用
+    if (!data.lastRun || data.lastRun === '') {
+      data.lastRun = nowISO;
+    }
+    
+    // nextRunを正しく計算
+    if (data.enabled && data.interval) {
+      const lastRunDate = new Date(data.lastRun);
+      // intervalは分単位で設定されているので、ミリ秒に変換
+      const intervalMs = data.interval * 60 * 1000;
+      const nextRunDate = new Date(lastRunDate.getTime() + intervalMs);
+      
+      // 次回実行が過去の場合は現在時刻から再計算
+      if (nextRunDate < now) {
+        data.nextRun = new Date(now.getTime() + intervalMs).toISOString();
+      } else {
+        data.nextRun = nextRunDate.toISOString();
+      }
+    } else {
+      data.nextRun = '';
+    }
+    
     return c.json({ success: true, data });
   } catch (error) {
     return c.json({ success: false, error: 'Failed to get batch config' }, 500);
