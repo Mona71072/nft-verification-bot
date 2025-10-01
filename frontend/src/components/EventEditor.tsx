@@ -2,6 +2,14 @@ import React from 'react';
 import { ToastProvider, useToast } from './ui/ToastProvider';
 import WalrusImageUpload from './WalrusImageUpload';
 
+interface MintCollection {
+  id: string;
+  name: string;
+  packageId: string;
+  description?: string;
+  createdAt: string;
+}
+
 interface Event {
   id?: string;
   name: string;
@@ -23,6 +31,9 @@ interface EventEditorProps {
 
 function EventEditorInner({ event, onSave, onCancel }: EventEditorProps) {
   const { showToast } = useToast();
+  const [mintCollections, setMintCollections] = React.useState<MintCollection[]>([]);
+  const [loadingCollections, setLoadingCollections] = React.useState(false);
+  
   const [formData, setFormData] = React.useState<Event>(event || {
     name: '',
     description: '',
@@ -55,6 +66,32 @@ function EventEditorInner({ event, onSave, onCancel }: EventEditorProps) {
   const hasChanges = React.useMemo(() => {
     return JSON.stringify(formData) !== JSON.stringify(originalData);
   }, [formData, originalData]);
+
+  // ミントコレクション一覧を取得
+  React.useEffect(() => {
+    const fetchMintCollections = async () => {
+      setLoadingCollections(true);
+      try {
+        const apiBase = import.meta.env.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
+        const response = await fetch(`${apiBase}/api/mint-collections`);
+        const data = await response.json();
+        
+        if (data.success && data.data) {
+          setMintCollections(data.data);
+          showToast(`ミントコレクション ${data.data.length}件を取得しました`);
+        } else {
+          showToast('ミントコレクションの取得に失敗しました', 'error');
+        }
+      } catch (error) {
+        console.error('Failed to fetch mint collections:', error);
+        showToast('ミントコレクションの取得に失敗しました', 'error');
+      } finally {
+        setLoadingCollections(false);
+      }
+    };
+
+    fetchMintCollections();
+  }, [showToast]);
 
   // 自動ドラフト保存（5秒間隔）
   React.useEffect(() => {
@@ -261,18 +298,33 @@ function EventEditorInner({ event, onSave, onCancel }: EventEditorProps) {
               </div>
             </div>
 
-            {/* コレクションID */}
+            {/* ミントコレクション選択 */}
             <div>
-              <label style={{ display: 'block', marginBottom: 8, fontWeight: 600 }}>コレクションID</label>
-              <input
-                type="text"
+              <label style={{ display: 'block', marginBottom: 8, fontWeight: 600 }}>
+                ミントコレクション
+                {loadingCollections && <span style={{ marginLeft: 8, fontSize: 12, color: '#6b7280' }}>読み込み中...</span>}
+              </label>
+              <select
                 value={formData.collectionId || ''}
                 onChange={(e) => setFormData(prev => ({ ...prev, collectionId: e.target.value }))}
-                placeholder="コレクションIDを入力"
                 style={{
-                  width: '100%', padding: '12px 16px', borderRadius: 8, border: '1px solid #e5e7eb'
+                  width: '100%', padding: '12px 16px', borderRadius: 8, border: '1px solid #e5e7eb',
+                  backgroundColor: '#fff', fontSize: 14
                 }}
-              />
+                disabled={loadingCollections}
+              >
+                <option value="">コレクションを選択してください</option>
+                {mintCollections.map((collection) => (
+                  <option key={collection.id} value={collection.id}>
+                    {collection.name} ({collection.packageId})
+                  </option>
+                ))}
+              </select>
+              {mintCollections.length === 0 && !loadingCollections && (
+                <div style={{ marginTop: 8, fontSize: 12, color: '#ef4444' }}>
+                  ミントコレクションが見つかりません。先にコレクションを作成してください。
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -316,7 +368,7 @@ function EventEditorInner({ event, onSave, onCancel }: EventEditorProps) {
 
             {formData.collectionId && (
               <div style={{ marginTop: 16, fontSize: 12, color: '#64748b' }}>
-                コレクション: {formData.collectionId}
+                コレクション: {mintCollections.find(c => c.id === formData.collectionId)?.name || formData.collectionId}
               </div>
             )}
           </div>
