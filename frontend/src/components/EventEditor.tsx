@@ -58,7 +58,6 @@ function EventEditorInner({ event, onSave, onCancel }: EventEditorProps) {
     status: 'draft'
   });
 
-  const [isDraft, setIsDraft] = React.useState(false);
   const [isSaving, setIsSaving] = React.useState(false);
   const [previewMode, setPreviewMode] = React.useState(false);
 
@@ -93,40 +92,7 @@ function EventEditorInner({ event, onSave, onCancel }: EventEditorProps) {
     fetchMintCollections();
   }, [showToast]);
 
-  const saveDraft = React.useCallback(async () => {
-    try {
-      console.log('🔄 自動ドラフト保存開始:', formData);
-      setIsDraft(true);
-      const draftData = { ...formData, status: 'draft' as const };
-      await onSave(draftData);
-      console.log('✅ ドラフト保存完了');
-      showToast('ドラフトを保存しました', 'info');
-    } catch (e: any) {
-      console.error('❌ ドラフト保存失敗:', e);
-      showToast(`ドラフト保存に失敗: ${e.message}`, 'error');
-    } finally {
-      setIsDraft(false);
-    }
-  }, [formData, onSave, showToast]);
-
-  // 自動ドラフト保存（5秒間隔）
-  React.useEffect(() => {
-    if (!hasChanges || isDraft) {
-      console.log('🚫 ドラフト保存スキップ:', { hasChanges, isDraft });
-      return;
-    }
-    
-    console.log('⏰ ドラフト保存タイマー開始 (5秒後)');
-    const timer = setTimeout(() => {
-      console.log('⏰ ドラフト保存タイマー発火');
-      saveDraft();
-    }, 5000);
-
-    return () => {
-      console.log('⏰ ドラフト保存タイマークリア');
-      clearTimeout(timer);
-    };
-  }, [hasChanges, isDraft, saveDraft]);
+  // 自動ドラフト保存機能は削除（手動保存のみ）
 
   const handleSave = async (status: 'draft' | 'published') => {
     setIsSaving(true);
@@ -136,6 +102,23 @@ function EventEditorInner({ event, onSave, onCancel }: EventEditorProps) {
       showToast(status === 'published' ? 'イベントを公開しました' : 'ドラフトを保存しました', 'success');
     } catch (e: any) {
       showToast(`保存に失敗: ${e.message}`, 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // 手動ドラフト保存
+  const handleManualDraftSave = async () => {
+    console.log('🔄 手動ドラフト保存開始:', formData);
+    setIsSaving(true);
+    try {
+      const saveData = { ...formData, status: 'draft' as const };
+      await onSave(saveData);
+      showToast('ドラフトを保存しました', 'success');
+      console.log('✅ 手動ドラフト保存完了');
+    } catch (e: any) {
+      console.error('❌ 手動ドラフト保存失敗:', e);
+      showToast(`ドラフト保存に失敗: ${e.message}`, 'error');
     } finally {
       setIsSaving(false);
     }
@@ -180,15 +163,15 @@ function EventEditorInner({ event, onSave, onCancel }: EventEditorProps) {
         }}>
           <span style={{ color: '#92400e' }}>⚠️ 未保存の変更があります</span>
           <button
-            onClick={saveDraft}
-            disabled={isDraft}
+            onClick={handleManualDraftSave}
+            disabled={isSaving}
             style={{
               padding: '4px 8px', borderRadius: 4, border: '1px solid #f59e0b',
-              background: 'white', color: '#92400e', cursor: isDraft ? 'not-allowed' : 'pointer',
+              background: 'white', color: '#92400e', cursor: isSaving ? 'not-allowed' : 'pointer',
               fontSize: 12
             }}
           >
-            {isDraft ? '保存中...' : 'ドラフト保存'}
+            {isSaving ? '保存中...' : 'ドラフト保存'}
           </button>
         </div>
       )}
@@ -392,11 +375,11 @@ function EventEditorInner({ event, onSave, onCancel }: EventEditorProps) {
         borderTop: '1px solid #e5e7eb'
       }}>
         <button
-          onClick={() => handleSave('draft')}
-          disabled={isSaving || isDraft}
+          onClick={handleManualDraftSave}
+          disabled={isSaving}
           style={{
             padding: '12px 24px', borderRadius: 8, border: '1px solid #e5e7eb',
-            background: 'white', color: '#374151', cursor: isSaving || isDraft ? 'not-allowed' : 'pointer'
+            background: 'white', color: '#374151', cursor: isSaving ? 'not-allowed' : 'pointer'
           }}
         >
           {isSaving ? '保存中...' : 'ドラフト保存'}
