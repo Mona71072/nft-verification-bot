@@ -232,6 +232,7 @@ function EventEditorInner({ event, onSave, onCancel }: EventEditorProps) {
               imageCid={formData.imageCid}
               imageMimeType={formData.imageMimeType}
               onUpload={(cid, mimeType) => setFormData(prev => ({ ...prev, imageCid: cid, imageMimeType: mimeType }))}
+              onMessage={showToast}
             />
 
             {/* 期間設定 */}

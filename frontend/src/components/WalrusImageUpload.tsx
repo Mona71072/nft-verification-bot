@@ -1,15 +1,15 @@
 import React from 'react';
-import { useToast } from './ui/ToastProvider';
 
 interface WalrusImageUploadProps {
   imageCid?: string;
   imageMimeType?: string;
   onUpload: (cid: string, mimeType: string) => void;
   apiBase?: string;
+  onMessage?: (message: string, type?: 'info' | 'success' | 'error') => void;
 }
 
-export default function WalrusImageUpload({ imageCid, imageMimeType, onUpload, apiBase }: WalrusImageUploadProps) {
-  const { showToast } = useToast();
+export default function WalrusImageUpload({ imageCid, imageMimeType, onUpload, apiBase, onMessage }: WalrusImageUploadProps) {
+  const showToast = onMessage || ((msg, type) => console.log(`[${type}] ${msg}`));
   const [uploading, setUploading] = React.useState(false);
   const [dragActive, setDragActive] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
