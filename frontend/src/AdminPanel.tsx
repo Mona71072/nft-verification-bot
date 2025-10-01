@@ -43,55 +43,6 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
   const [isCreatingEvent, setIsCreatingEvent] = useState(false);
   const [editingEventData, setEditingEventData] = useState<AdminMintEvent | null>(null);
 
-  // EventEditor用の保存ハンドラー
-  const handleSaveEvent = async (eventData: any) => {
-    try {
-      setLoading(true);
-      setMessage('イベントを保存中...');
-      
-      const url = eventData.id 
-        ? `${API_BASE_URL}/api/admin/events/${eventData.id}`
-        : `${API_BASE_URL}/api/admin/events`;
-      
-      const method = eventData.id ? 'PUT' : 'POST';
-      
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(eventData)
-      });
-      
-      const result = await response.json();
-      
-      if (result.success) {
-        setMessage('イベントを保存しました');
-        setIsCreatingEvent(false);
-        setEditingEventData(null);
-        await fetchEvents();
-      } else {
-        throw new Error(result.error || '保存に失敗しました');
-      }
-    } catch (error: any) {
-      setMessage(`エラー: ${error.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // EventEditorを表示する場合
-  if (isCreatingEvent || editingEventData) {
-    return (
-      <EventEditor
-        event={editingEventData ? { ...editingEventData, moveCall: editingEventData.moveCall || {} } : undefined}
-        onSave={handleSaveEvent}
-        onCancel={() => {
-          setIsCreatingEvent(false);
-          setEditingEventData(null);
-        }}
-      />
-    );
-  }
-
   // 表示タブをmodeで制限
   const allowedTabs: Array<'collections' | 'events' | 'batch' | 'users' | 'admins' | 'dm-settings' | 'history'> =
     mode === 'mint'
@@ -1197,6 +1148,55 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
       setHistoryLoading(false);
     }
   };
+
+  // EventEditor用の保存ハンドラー
+  const handleSaveEvent = async (eventData: any) => {
+    try {
+      setLoading(true);
+      setMessage('イベントを保存中...');
+      
+      const url = eventData.id 
+        ? `${API_BASE_URL}/api/admin/events/${eventData.id}`
+        : `${API_BASE_URL}/api/admin/events`;
+      
+      const method = eventData.id ? 'PUT' : 'POST';
+      
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(eventData)
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        setMessage('イベントを保存しました');
+        setIsCreatingEvent(false);
+        setEditingEventData(null);
+        await fetchEvents();
+      } else {
+        throw new Error(result.error || '保存に失敗しました');
+      }
+    } catch (error: any) {
+      setMessage(`エラー: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // EventEditorを表示する場合
+  if (isCreatingEvent || editingEventData) {
+    return (
+      <EventEditor
+        event={editingEventData ? { ...editingEventData, moveCall: editingEventData.moveCall || {} } : undefined}
+        onSave={handleSaveEvent}
+        onCancel={() => {
+          setIsCreatingEvent(false);
+          setEditingEventData(null);
+        }}
+      />
+    );
+  }
 
   return (
     <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
