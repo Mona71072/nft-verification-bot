@@ -1170,9 +1170,20 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
       const result = await response.json();
       
       if (result.success) {
-        setMessage('イベントを保存しました');
-        setIsCreatingEvent(false);
-        setEditingEventData(null);
+        const isDraft = eventData.status === 'draft';
+        setMessage(isDraft ? 'ドラフトを保存しました' : 'イベントを保存しました');
+        
+        // ドラフトの場合は画面を閉じず、データのみ更新
+        if (!isDraft) {
+          setIsCreatingEvent(false);
+          setEditingEventData(null);
+        } else {
+          // ドラフト保存の場合は、編集中のイベントデータを更新
+          if (result.data) {
+            setEditingEventData(result.data);
+          }
+        }
+        
         await fetchEvents();
       } else {
         throw new Error(result.error || '保存に失敗しました');

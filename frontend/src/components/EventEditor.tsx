@@ -93,29 +93,40 @@ function EventEditorInner({ event, onSave, onCancel }: EventEditorProps) {
     fetchMintCollections();
   }, [showToast]);
 
-  // 自動ドラフト保存（5秒間隔）
-  React.useEffect(() => {
-    if (!hasChanges || isDraft) return;
-    
-    const timer = setTimeout(() => {
-      saveDraft();
-    }, 5000);
-
-    return () => clearTimeout(timer);
-  }, [formData, hasChanges, isDraft]);
-
-  const saveDraft = async () => {
+  const saveDraft = React.useCallback(async () => {
     try {
+      console.log('🔄 自動ドラフト保存開始:', formData);
       setIsDraft(true);
       const draftData = { ...formData, status: 'draft' as const };
       await onSave(draftData);
+      console.log('✅ ドラフト保存完了');
       showToast('ドラフトを保存しました', 'info');
     } catch (e: any) {
+      console.error('❌ ドラフト保存失敗:', e);
       showToast(`ドラフト保存に失敗: ${e.message}`, 'error');
     } finally {
       setIsDraft(false);
     }
-  };
+  }, [formData, onSave, showToast]);
+
+  // 自動ドラフト保存（5秒間隔）
+  React.useEffect(() => {
+    if (!hasChanges || isDraft) {
+      console.log('🚫 ドラフト保存スキップ:', { hasChanges, isDraft });
+      return;
+    }
+    
+    console.log('⏰ ドラフト保存タイマー開始 (5秒後)');
+    const timer = setTimeout(() => {
+      console.log('⏰ ドラフト保存タイマー発火');
+      saveDraft();
+    }, 5000);
+
+    return () => {
+      console.log('⏰ ドラフト保存タイマークリア');
+      clearTimeout(timer);
+    };
+  }, [hasChanges, isDraft, saveDraft]);
 
   const handleSave = async (status: 'draft' | 'published') => {
     setIsSaving(true);
@@ -216,11 +227,11 @@ function EventEditorInner({ event, onSave, onCancel }: EventEditorProps) {
                       const textarea = document.getElementById('description') as HTMLTextAreaElement;
                       const start = textarea.selectionStart;
                       const end = textarea.selectionEnd;
-                      const selectedText = formData.description.substring(start, end);
+                      const selectedText = (formData.description || '').substring(start, end);
                       const newText = `**${selectedText}**`;
                       setFormData(prev => ({
                         ...prev,
-                        description: prev.description.substring(0, start) + newText + prev.description.substring(end)
+                        description: (prev.description || '').substring(0, start) + newText + (prev.description || '').substring(end)
                       }));
                     }}
                     style={{
@@ -236,11 +247,11 @@ function EventEditorInner({ event, onSave, onCancel }: EventEditorProps) {
                       const textarea = document.getElementById('description') as HTMLTextAreaElement;
                       const start = textarea.selectionStart;
                       const end = textarea.selectionEnd;
-                      const selectedText = formData.description.substring(start, end);
+                      const selectedText = (formData.description || '').substring(start, end);
                       const newText = `*${selectedText}*`;
                       setFormData(prev => ({
                         ...prev,
-                        description: prev.description.substring(0, start) + newText + prev.description.substring(end)
+                        description: (prev.description || '').substring(0, start) + newText + (prev.description || '').substring(end)
                       }));
                     }}
                     style={{
@@ -253,7 +264,7 @@ function EventEditorInner({ event, onSave, onCancel }: EventEditorProps) {
                 </div>
                 <textarea
                   id="description"
-                  value={formData.description}
+                  value={formData.description || ''}
                   onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
                   placeholder="イベントの説明を入力（Markdown形式対応）"
                   style={{
