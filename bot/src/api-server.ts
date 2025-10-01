@@ -221,6 +221,42 @@ app.get('/api/discord/roles', async (req, res) => {
   }
 });
 
+// バッチ処理実行エンドポイント
+app.post('/api/batch-process', async (req, res) => {
+  try {
+    const { collectionId, action, adminAddress } = req.body;
+    
+    if (!collectionId || !action) {
+      return res.status(400).json({
+        success: false,
+        error: 'collectionId and action are required'
+      });
+    }
+
+    // バッチ処理の実装（仮実装）
+    console.log('Batch process requested:', { collectionId, action, adminAddress });
+    
+    // 実際のバッチ処理ロジックをここに実装
+    // 現在は仮のレスポンスを返す
+    res.json({
+      success: true,
+      message: 'Batch process completed successfully',
+      data: {
+        collectionId,
+        action,
+        processedUsers: 0,
+        errors: 0
+      }
+    });
+  } catch (error) {
+    console.error('Batch process API error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to execute batch process'
+    });
+  }
+});
+
 // スポンサー実行: Suiでのミント処理を代理送信（Walrus.pdf準拠）
 app.post('/api/mint', async (req, res) => {
   try {

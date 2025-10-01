@@ -396,8 +396,16 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     try {
       const addr = localStorage.getItem('currentWalletAddress');
-      if (addr) headers['X-Admin-Address'] = addr;
-    } catch {}
+      console.log('🔑 Current wallet address from localStorage:', addr);
+      if (addr) {
+        headers['X-Admin-Address'] = addr;
+        console.log('✅ Admin address set in headers');
+      } else {
+        console.warn('⚠️ No wallet address found in localStorage');
+      }
+    } catch (error) {
+      console.error('❌ Error getting wallet address:', error);
+    }
     return headers;
   };
 
@@ -420,9 +428,14 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
   const fetchDiscordRoles = async () => {
     try {
       console.log('🔄 Fetching Discord roles...');
+      const headers = getAuthHeaders();
+      console.log('📋 Request headers:', headers);
+      
       const response = await fetch(`${API_BASE_URL}/api/discord/roles`, {
-        headers: getAuthHeaders()
+        headers
       });
+      
+      console.log('📊 Response status:', response.status, response.statusText);
       
       if (!response.ok) {
         console.error('❌ Discord roles API not available:', response.status, response.statusText);
