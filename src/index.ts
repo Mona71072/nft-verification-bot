@@ -731,4 +731,40 @@ app.delete('/api/mint-collections/:id', async (c) => {
   }
 });
 
+// テスト用：認証済みユーザーを手動追加
+app.post('/api/admin/set-test-user', async (c) => {
+  try {
+    const admin = c.req.header('X-Admin-Address');
+    if (!admin || !(await isAdmin(c, admin))) return c.json({ success: false, error: 'forbidden' }, 403);
+
+    const { discordId, address, collectionId } = await c.req.json();
+    
+    if (!discordId || !address || !collectionId) {
+      return c.json({ success: false, error: 'discordId, address, and collectionId are required' }, 400);
+    }
+
+    const store = c.env.MINTED_STORE as KVNamespace | undefined;
+    if (!store) {
+      return c.json({ success: false, error: 'Minted store not available' }, 500);
+    }
+
+    // テストユーザーデータを作成
+    const userData = {
+      discordId,
+      address,
+      collectionId,
+      verifiedAt: new Date().toISOString(),
+      roleName: 'NFT Holder'
+    };
+
+    // KVストアに保存
+    await store.put(`verified_user:${discordId}`, JSON.stringify(userData));
+
+    return c.json({ success: true, message: 'Test user added successfully', data: userData });
+  } catch (error) {
+    console.error('Set test user error:', error);
+    return c.json({ success: false, error: 'Failed to add test user' }, 500);
+  }
+});
+
 export default app;
