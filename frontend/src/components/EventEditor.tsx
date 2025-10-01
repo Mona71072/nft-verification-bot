@@ -109,15 +109,12 @@ function EventEditorInner({ event, onSave, onCancel }: EventEditorProps) {
 
   // 手動ドラフト保存
   const handleManualDraftSave = async () => {
-    console.log('🔄 手動ドラフト保存開始:', formData);
     setIsSaving(true);
     try {
       const saveData = { ...formData, status: 'draft' as const };
       await onSave(saveData);
       showToast('ドラフトを保存しました', 'success');
-      console.log('✅ 手動ドラフト保存完了');
     } catch (e: any) {
-      console.error('❌ 手動ドラフト保存失敗:', e);
       showToast(`ドラフト保存に失敗: ${e.message}`, 'error');
     } finally {
       setIsSaving(false);
