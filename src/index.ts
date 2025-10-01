@@ -501,8 +501,8 @@ app.get('/api/admin/batch-stats', async (c) => {
     const admin = c.req.header('X-Admin-Address');
     if (!admin || !(await isAdmin(c, admin))) return c.json({ success: false, error: 'forbidden' }, 403);
 
-    // 既存の/api/batch-statsと同じロジックを使用
-    const store = c.env.COLLECTION_STORE as KVNamespace | undefined;
+    // MINTED_STOREからbatch_statsを読み取る（update-batch-statsと同じストア）
+    const store = c.env.MINTED_STORE as KVNamespace | undefined;
     if (!store) {
       return c.json({ success: true, data: { processedUsers: 0, totalUsers: 0, lastProcessed: null } });
     }
