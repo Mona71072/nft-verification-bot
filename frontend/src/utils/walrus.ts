@@ -12,7 +12,8 @@
 export const walrusUrlFromCid = (blobId?: string): string | undefined => {
   if (!blobId) return undefined;
   
-  const aggregatorBase = import.meta.env.VITE_WALRUS_AGGREGATOR_BASE || 'https://aggregator.mainnet.walrus.space';
+  // Mainnet公開Aggregator（PDF準拠）
+  const aggregatorBase = import.meta.env.VITE_WALRUS_AGGREGATOR_BASE || 'https://aggregator.walrus-mainnet.walrus.space';
   return `${aggregatorBase}/v1/blobs/${encodeURIComponent(blobId)}`;
 };
 
@@ -25,7 +26,7 @@ export const walrusUrlFromCid = (blobId?: string): string | undefined => {
 export const walrusUrlFromCidWithBase = (blobId?: string, baseUrl?: string): string | undefined => {
   if (!blobId) return undefined;
   
-  const aggregatorBase = baseUrl || import.meta.env.VITE_WALRUS_AGGREGATOR_BASE || 'https://aggregator.mainnet.walrus.space';
+  const aggregatorBase = baseUrl || import.meta.env.VITE_WALRUS_AGGREGATOR_BASE || 'https://aggregator.walrus-mainnet.walrus.space';
   return `${aggregatorBase}/v1/blobs/${encodeURIComponent(blobId)}`;
 };
 

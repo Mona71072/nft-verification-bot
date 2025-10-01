@@ -11,13 +11,19 @@ NFT_COLLECTION_ID = "0xb908f3c6fea6865d32e2048c520cdfe3b5c5bbcebb658117c41bad70f
 MINT_SPONSOR_API_URL = "https://nft-verification-bot.onrender.com"
 DEFAULT_MOVE_TARGET = "0x7a9695b16975f9a8614a81fc3eb67464699255f42294f4cb7df55e9d8169f506::event_nft::mint_to"
 DEFAULT_COLLECTION_CREATE_TARGET = "0x7a9695b16975f9a8614a81fc3eb67464699255f42294f4cb7df55e9d8169f506::event_nft::create_collection"
-# Walrus.pdf 準拠の設定
-WALRUS_PUBLISHER_BASE = "https://publisher.mainnet.walrus.space"
-WALRUS_AGGREGATOR_BASE = "https://aggregator.mainnet.walrus.space"
-WALRUS_DEFAULT_EPOCHS = "5"
+# Walrus.pdf 準拠の設定（Mainnet）
+# 読み出し（公開Aggregator - PDF準拠）
+WALRUS_AGGREGATOR_BASE = "https://aggregator.walrus-mainnet.walrus.space"
+WALRUS_AGGREGATOR_FALLBACKS = "https://aggregator.suicore.com,https://sui-walrus-mainnet-aggregator.bwarelabs.com,https://walrus-agg.mainnet.obelisk.sh"
+# 書き込み（自前Publisher - 認証必須）
+# ⚠️ Mainnetには公開無認証Publisherは存在しません。自前運用または委託先を使用してください
+WALRUS_PUBLISHER_BASE = "https://publisher.yourdomain.example"
+WALRUS_PUBLISHER_AUTH = ""
+# 保存ポリシー（PDF準拠: 寿命を必ず明示）
+WALRUS_DEFAULT_EPOCHS = "12"
 WALRUS_DEFAULT_PERMANENT = "false"
-# 管理者アドレス（テスト用 - 実際の運用では適切なアドレスに変更）
-ADMIN_ADDRESSES = "0x1234567890abcdef1234567890abcdef12345678"
+# 管理者アドレス
+ADMIN_ADDRESSES = "0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d"
 
 # KVバインディング
 [[kv_namespaces]]
@@ -51,10 +57,12 @@ NFT_COLLECTION_ID = "0xb908f3c6fea6865d32e2048c520cdfe3b5c5bbcebb658117c41bad70f
 MINT_SPONSOR_API_URL = "https://nft-verification-bot.onrender.com"
 DEFAULT_MOVE_TARGET = "0x7a9695b16975f9a8614a81fc3eb67464699255f42294f4cb7df55e9d8169f506::event_nft::mint_to"
 DEFAULT_COLLECTION_CREATE_TARGET = "0x7a9695b16975f9a8614a81fc3eb67464699255f42294f4cb7df55e9d8169f506::event_nft::create_collection"
-# Walrus.pdf 準拠の設定
-WALRUS_PUBLISHER_BASE = "https://publisher.mainnet.walrus.space"
-WALRUS_AGGREGATOR_BASE = "https://aggregator.mainnet.walrus.space"
-WALRUS_DEFAULT_EPOCHS = "5"
+# Walrus.pdf 準拠の設定（Mainnet）
+WALRUS_AGGREGATOR_BASE = "https://aggregator.walrus-mainnet.walrus.space"
+WALRUS_AGGREGATOR_FALLBACKS = "https://aggregator.suicore.com,https://sui-walrus-mainnet-aggregator.bwarelabs.com,https://walrus-agg.mainnet.obelisk.sh"
+WALRUS_PUBLISHER_BASE = "https://publisher.yourdomain.example"
+WALRUS_PUBLISHER_AUTH = ""
+WALRUS_DEFAULT_EPOCHS = "12"
 WALRUS_DEFAULT_PERMANENT = "false"
 
 # KVバインディング
