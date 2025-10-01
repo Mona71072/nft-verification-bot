@@ -180,6 +180,113 @@ app.post('/api/admin/set-addresses', async (c) => {
   }
 });
 
+// 管理者一覧取得API
+app.get('/api/admin/addresses', async (c) => {
+  try {
+    const admin = c.req.header('X-Admin-Address');
+    if (!admin || !(await isAdmin(c, admin))) {
+      return c.json({ success: false, error: 'forbidden' }, 403);
+    }
+
+    const store = c.env.COLLECTION_STORE as KVNamespace | undefined;
+    if (!store) {
+      return c.json({ success: false, error: 'Collection store not available' }, 500);
+    }
+
+    const adminData = await store.get('admin_addresses');
+    const addresses = adminData ? JSON.parse(adminData) : [];
+    
+    return c.json({ success: true, data: addresses });
+  } catch (error) {
+    return c.json({ success: false, error: 'Failed to get admin addresses' }, 500);
+  }
+});
+
+// 管理者追加API
+app.post('/api/admin/addresses', async (c) => {
+  try {
+    const admin = c.req.header('X-Admin-Address');
+    if (!admin || !(await isAdmin(c, admin))) {
+      return c.json({ success: false, error: 'forbidden' }, 403);
+    }
+
+    const { address } = await c.req.json();
+    
+    if (!address || typeof address !== 'string') {
+      return c.json({ success: false, error: 'address is required' }, 400);
+    }
+
+    // アドレス形式の簡易検証
+    if (!address.startsWith('0x') || address.length !== 66) {
+      return c.json({ success: false, error: 'Invalid address format' }, 400);
+    }
+
+    const store = c.env.COLLECTION_STORE as KVNamespace | undefined;
+    if (!store) {
+      return c.json({ success: false, error: 'Collection store not available' }, 500);
+    }
+
+    const adminData = await store.get('admin_addresses');
+    const addresses = adminData ? JSON.parse(adminData) : [];
+    
+    // 重複チェック
+    if (addresses.some((addr: string) => addr.toLowerCase() === address.toLowerCase())) {
+      return c.json({ success: false, error: 'Address already exists' }, 400);
+    }
+
+    addresses.push(address);
+    await store.put('admin_addresses', JSON.stringify(addresses));
+    
+    return c.json({ success: true, data: addresses });
+  } catch (error) {
+    return c.json({ success: false, error: 'Failed to add admin address' }, 500);
+  }
+});
+
+// 管理者削除API
+app.delete('/api/admin/addresses/:address', async (c) => {
+  try {
+    const admin = c.req.header('X-Admin-Address');
+    if (!admin || !(await isAdmin(c, admin))) {
+      return c.json({ success: false, error: 'forbidden' }, 403);
+    }
+
+    const addressToRemove = c.req.param('address');
+    
+    if (!addressToRemove) {
+      return c.json({ success: false, error: 'address is required' }, 400);
+    }
+
+    const store = c.env.COLLECTION_STORE as KVNamespace | undefined;
+    if (!store) {
+      return c.json({ success: false, error: 'Collection store not available' }, 500);
+    }
+
+    const adminData = await store.get('admin_addresses');
+    const addresses = adminData ? JSON.parse(adminData) : [];
+    
+    // 最低1つの管理者を維持
+    if (addresses.length <= 1) {
+      return c.json({ success: false, error: 'Cannot remove the last admin' }, 400);
+    }
+
+    // アドレスを削除（大文字小文字を区別しない）
+    const filteredAddresses = addresses.filter(
+      (addr: string) => addr.toLowerCase() !== addressToRemove.toLowerCase()
+    );
+
+    if (filteredAddresses.length === addresses.length) {
+      return c.json({ success: false, error: 'Address not found' }, 404);
+    }
+
+    await store.put('admin_addresses', JSON.stringify(filteredAddresses));
+    
+    return c.json({ success: true, data: filteredAddresses });
+  } catch (error) {
+    return c.json({ success: false, error: 'Failed to remove admin address' }, 500);
+  }
+});
+
 // Discord ロール管理API
 app.post('/api/discord-action', async (c) => {
   try {
