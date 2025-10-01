@@ -66,32 +66,74 @@ export async function storeBlob(
     body = await input.arrayBuffer();
   }
   
-  const response = await fetch(url, {
-    method: 'PUT',
-    body: body,
-    headers: {
-      'Content-Type': 'application/octet-stream'
+  // 実行関数（リトライ可能）
+  const attempt = async (signal?: AbortSignal) => {
+    const response = await fetch(url, {
+      method: 'PUT',
+      body: body,
+      headers: {
+        'Content-Type': 'application/octet-stream'
+      },
+      signal
+    });
+
+    const text = await response.text().catch(() => '');
+    
+    if (!response.ok) {
+      throw new Error(`Walrus store failed: ${response.status} ${response.statusText} :: ${text.slice(0, 400)}`);
     }
-  });
 
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => 'Unknown error');
-    // 詳細なエラー情報を含める
-    throw new Error(`Walrus store failed: ${response.status} ${response.statusText} :: ${errorText.slice(0, 400)}`);
+    let result: any;
+    try {
+      result = JSON.parse(text);
+    } catch {
+      result = text;
+    }
+    
+    // blobId の抽出（レスポンス形式の違いに対応）
+    const blobId = result?.blobStoreResult?.newlyCreated?.blobObject?.blobId ?? 
+                   result?.blobId ??
+                   (typeof result === 'string' ? result : null);
+    
+    if (!blobId) {
+      throw new Error(`Walrus PUT: blobId missing in response :: ${text.slice(0, 400)}`);
+    }
+
+    return { ...result, blobId };
+  };
+
+  // リトライロジック（5xx/ネットワークエラーのみ、最大3回）
+  const maxRetries = 3;
+  const timeout = 15000; // 15秒
+
+  for (let i = 0; i < maxRetries; i++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    
+    try {
+      const result = await attempt(controller.signal);
+      clearTimeout(timeoutId);
+      return result;
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+      
+      // リトライ可能なエラーかチェック
+      const errorMsg = error?.message || '';
+      const isRetriable = 
+        /5\d\d/.test(errorMsg) || // 5xxエラー
+        /fetch failed|network|timeout|abort|ECONN|ENOTFOUND/i.test(errorMsg);
+      
+      // 最後の試行またはリトライ不可能なエラーの場合は即座にthrow
+      if (i === maxRetries - 1 || !isRetriable) {
+        throw error;
+      }
+      
+      // 指数バックオフ (500ms, 1000ms, 2000ms)
+      await new Promise(resolve => setTimeout(resolve, 500 * Math.pow(2, i)));
+    }
   }
 
-  const result = await response.json().catch(() => ({})) as WalrusStoreResult;
-  
-  // blobId の抽出（レスポンス形式の違いに対応）
-  const blobId = result?.blobStoreResult?.newlyCreated?.blobObject?.blobId ?? 
-                 result?.blobId ??
-                 (typeof result === 'string' ? result : null);
-  
-  if (!blobId) {
-    throw new Error(`Walrus PUT: blobId missing in response :: ${JSON.stringify(result).slice(0, 400)}`);
-  }
-
-  return { ...result, blobId };
+  throw new Error('Unreachable code');
 }
 
 /**

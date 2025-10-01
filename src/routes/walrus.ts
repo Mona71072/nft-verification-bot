@@ -174,9 +174,10 @@ app.get('/api/walrus/config', async (c) => {
 });
 
 /**
- * Walrus診断エンドポイント（Publisher/Aggregator疎通確認）
+ * Walrus診断エンドポイント（Publisher/Aggregator疎通確認 + DNS解決）
  * GET /api/walrus/diagnose
  * Workerから直接Publisher/Aggregatorにアクセスして疎通を確認
+ * DoHでDNS解決も確認し、530/1016エラーの真因を特定
  */
 app.get('/api/walrus/diagnose', async (c) => {
   try {
@@ -186,51 +187,68 @@ app.get('/api/walrus/diagnose', async (c) => {
         publisherBase: config.publisherBase,
         aggregatorBase: config.aggregatorBase,
         defaultEpochs: config.defaultEpochs
+      },
+      timestamp: new Date().toISOString()
+    };
+
+    // DoH (DNS over HTTPS) でDNSレコード確認
+    const dohQuery = async (host: string) => {
+      try {
+        const url = `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(host)}&type=A`;
+        const res = await fetch(url, { headers: { accept: 'application/dns-json' } });
+        if (!res.ok) return { ok: false, status: res.status };
+        return await res.json();
+      } catch (e: any) {
+        return { ok: false, error: e?.message || String(e) };
       }
     };
 
-    // Aggregatorの疎通確認（存在しないblobIdでHEAD）
-    try {
-      const aggregatorUrl = `${config.aggregatorBase}/v1/blobs/does-not-exist-test`;
-      const aggregatorRes = await fetch(aggregatorUrl, { method: 'HEAD' });
-      result.aggregator = {
-        ok: true,
-        url: aggregatorUrl,
-        status: aggregatorRes.status,
-        statusText: aggregatorRes.statusText,
-        reachable: true
-      };
-    } catch (e: any) {
-      result.aggregator = {
-        ok: false,
-        error: e?.message || String(e),
-        name: e?.name,
-        cause: e?.cause,
-        reachable: false
-      };
-    }
+    const publisherHost = new URL(config.publisherBase).host;
+    const aggregatorHost = new URL(config.aggregatorBase).host;
 
-    // Publisherの疎通確認（/v1/healthまたはオプションエンドポイント）
-    try {
-      // まずはベースURLへのGETで到達性を確認
-      const publisherUrl = `${config.publisherBase}/v1/blobs`; // OPTIONSかGETで確認
-      const publisherRes = await fetch(publisherUrl, { method: 'OPTIONS' });
-      result.publisher = {
-        ok: true,
-        url: publisherUrl,
-        status: publisherRes.status,
-        statusText: publisherRes.statusText,
-        reachable: true
-      };
-    } catch (e: any) {
-      result.publisher = {
-        ok: false,
-        error: e?.message || String(e),
-        name: e?.name,
-        cause: e?.cause,
-        reachable: false
-      };
-    }
+    result.dns = {
+      publisherA: await dohQuery(publisherHost),
+      aggregatorA: await dohQuery(aggregatorHost)
+    };
+
+    // HTTP到達性確認（HEAD/GET）
+    const probe = async (url: string, method: 'HEAD' | 'GET' = 'HEAD') => {
+      try {
+        const res = await fetch(url, { method });
+        return { 
+          ok: res.ok, 
+          status: res.status, 
+          statusText: res.statusText,
+          reachable: true
+        };
+      } catch (e: any) {
+        return { 
+          ok: false, 
+          error: e?.message || String(e),
+          name: e?.name,
+          cause: e?.cause ? String(e.cause) : undefined,
+          reachable: false
+        };
+      }
+    };
+
+    result.probe = {
+      aggregator: await probe(`${config.aggregatorBase}/v1/blobs/does-not-exist-test`, 'HEAD'),
+      publisher: await probe(`${config.publisherBase}/v1/blobs`, 'GET')
+    };
+
+    // ヘルスステータスの判定
+    const aggregatorHealthy = result.probe.aggregator.reachable && result.probe.aggregator.status !== 530;
+    const publisherHealthy = result.probe.publisher.reachable && result.probe.publisher.status !== 530;
+
+    result.health = {
+      aggregator: aggregatorHealthy ? 'healthy' : 'unhealthy',
+      publisher: publisherHealthy ? 'healthy' : 'unhealthy',
+      overall: (aggregatorHealthy && publisherHealthy) ? 'healthy' : 
+               (aggregatorHealthy && !publisherHealthy) ? 'degraded' : 'unhealthy',
+      canRead: aggregatorHealthy,
+      canWrite: publisherHealthy
+    };
 
     return c.json({
       success: true,
