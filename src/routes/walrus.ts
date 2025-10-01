@@ -12,7 +12,7 @@ const app = new Hono();
 
 // セキュリティミドルウェアの適用
 app.use('/api/walrus/store', 
-  rateLimitMiddleware(10), // 10 requests per minute
+  rateLimitMiddleware(60), // 60 requests per minute（開発・テスト用に緩和）
   securityCorsMiddleware(),
   securityHeadersMiddleware(),
   fileSizeLimitMiddleware(),
