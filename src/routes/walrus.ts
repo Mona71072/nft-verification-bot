@@ -83,7 +83,14 @@ app.post('/api/walrus/store', async (c) => {
     logError('Walrus store API error', error);
     return c.json({ 
       success: false, 
-      error: error?.message || 'Failed to store image' 
+      error: error?.message || 'Failed to store image',
+      errorName: error?.name,
+      errorCause: error?.cause,
+      details: {
+        name: error?.name,
+        message: error?.message,
+        cause: error?.cause ? String(error.cause) : undefined
+      }
     }, 500);
   }
 });
@@ -162,6 +169,82 @@ app.get('/api/walrus/config', async (c) => {
     return c.json({ 
       success: false, 
       error: error?.message || 'Failed to get Walrus config' 
+    }, 500);
+  }
+});
+
+/**
+ * Walrus診断エンドポイント（Publisher/Aggregator疎通確認）
+ * GET /api/walrus/diagnose
+ * Workerから直接Publisher/Aggregatorにアクセスして疎通を確認
+ */
+app.get('/api/walrus/diagnose', async (c) => {
+  try {
+    const config = getWalrusConfig(c.env);
+    const result: Record<string, any> = {
+      config: {
+        publisherBase: config.publisherBase,
+        aggregatorBase: config.aggregatorBase,
+        defaultEpochs: config.defaultEpochs
+      }
+    };
+
+    // Aggregatorの疎通確認（存在しないblobIdでHEAD）
+    try {
+      const aggregatorUrl = `${config.aggregatorBase}/v1/blobs/does-not-exist-test`;
+      const aggregatorRes = await fetch(aggregatorUrl, { method: 'HEAD' });
+      result.aggregator = {
+        ok: true,
+        url: aggregatorUrl,
+        status: aggregatorRes.status,
+        statusText: aggregatorRes.statusText,
+        reachable: true
+      };
+    } catch (e: any) {
+      result.aggregator = {
+        ok: false,
+        error: e?.message || String(e),
+        name: e?.name,
+        cause: e?.cause,
+        reachable: false
+      };
+    }
+
+    // Publisherの疎通確認（/v1/healthまたはオプションエンドポイント）
+    try {
+      // まずはベースURLへのGETで到達性を確認
+      const publisherUrl = `${config.publisherBase}/v1/blobs`; // OPTIONSかGETで確認
+      const publisherRes = await fetch(publisherUrl, { method: 'OPTIONS' });
+      result.publisher = {
+        ok: true,
+        url: publisherUrl,
+        status: publisherRes.status,
+        statusText: publisherRes.statusText,
+        reachable: true
+      };
+    } catch (e: any) {
+      result.publisher = {
+        ok: false,
+        error: e?.message || String(e),
+        name: e?.name,
+        cause: e?.cause,
+        reachable: false
+      };
+    }
+
+    return c.json({
+      success: true,
+      data: result,
+      message: 'Walrus疎通診断完了'
+    });
+
+  } catch (error: any) {
+    logError('Walrus diagnose error', error);
+    return c.json({ 
+      success: false, 
+      error: error?.message || 'Failed to diagnose Walrus connectivity',
+      name: error?.name,
+      cause: error?.cause
     }, 500);
   }
 });

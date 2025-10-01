@@ -44,22 +44,31 @@ export async function storeBlob(
   
   // 寿命指定を必須で実装（v1.33以降の既定がdeletableのため明示が必要）
   // PDF準拠: 必ず ?epochs=n or ?permanent=true / ?deletable=true を明示
-  if (options.epochs) {
-    qs.set('epochs', String(options.epochs));
-  } else if (options.permanent) {
+  if (options.permanent) {
     qs.set('permanent', 'true');
   } else if (options.deletable) {
     qs.set('deletable', 'true');
   } else {
-    // デフォルト値を使用（明示的な寿命指定）
-    qs.set('epochs', String(config.defaultEpochs));
+    // デフォルトでepochsを明示（PDF準拠）
+    qs.set('epochs', String(options.epochs ?? config.defaultEpochs ?? 5));
   }
 
   const url = `${config.publisherBase}/v1/blobs?${qs.toString()}`;
   
+  // PDF準拠: バイト列をそのまま送信（multipart/form-dataではない）
+  let body: ArrayBuffer;
+  if (input instanceof ArrayBuffer) {
+    body = input;
+  } else if (input instanceof Uint8Array) {
+    body = input.buffer;
+  } else {
+    // Blobの場合はArrayBufferに変換
+    body = await input.arrayBuffer();
+  }
+  
   const response = await fetch(url, {
     method: 'PUT',
-    body: input as BodyInit,
+    body: body,
     headers: {
       'Content-Type': 'application/octet-stream'
     }
@@ -67,17 +76,19 @@ export async function storeBlob(
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => 'Unknown error');
-    throw new Error(`Walrus store failed: ${response.status} ${errorText}`);
+    // 詳細なエラー情報を含める
+    throw new Error(`Walrus store failed: ${response.status} ${response.statusText} :: ${errorText.slice(0, 400)}`);
   }
 
-  const result = await response.json() as WalrusStoreResult;
+  const result = await response.json().catch(() => ({})) as WalrusStoreResult;
   
   // blobId の抽出（レスポンス形式の違いに対応）
   const blobId = result?.blobStoreResult?.newlyCreated?.blobObject?.blobId ?? 
-                 result?.blobId;
+                 result?.blobId ??
+                 (typeof result === 'string' ? result : null);
   
   if (!blobId) {
-    throw new Error('Walrus response missing blobId');
+    throw new Error(`Walrus PUT: blobId missing in response :: ${JSON.stringify(result).slice(0, 400)}`);
   }
 
   return { ...result, blobId };
