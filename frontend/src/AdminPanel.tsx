@@ -4,6 +4,7 @@ import type { DmSettings, DmMode } from './types';
 import type { NFTCollection, DiscordRole, BatchConfig, BatchStats, VerifiedUser, AdminMintEvent } from './types';
 import { useWalletWithErrorHandling } from './hooks/useWallet';
 import { getImageDisplayUrl } from './utils/walrus';
+import EventEditor from './components/EventEditor';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
 
@@ -39,6 +40,57 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
   const [activeTab, setActiveTab] = useState<'collections' | 'events' | 'batch' | 'users' | 'admins' | 'dm-settings' | 'history'>(
     mode === 'mint' ? 'events' : mode === 'admin' ? 'admins' : 'collections'
   );
+  const [isCreatingEvent, setIsCreatingEvent] = useState(false);
+  const [editingEventData, setEditingEventData] = useState<AdminMintEvent | null>(null);
+
+  // EventEditor用の保存ハンドラー
+  const handleSaveEvent = async (eventData: any) => {
+    try {
+      setLoading(true);
+      setMessage('イベントを保存中...');
+      
+      const url = eventData.id 
+        ? `${API_BASE_URL}/api/admin/events/${eventData.id}`
+        : `${API_BASE_URL}/api/admin/events`;
+      
+      const method = eventData.id ? 'PUT' : 'POST';
+      
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(eventData)
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        setMessage('イベントを保存しました');
+        setIsCreatingEvent(false);
+        setEditingEventData(null);
+        await fetchEvents();
+      } else {
+        throw new Error(result.error || '保存に失敗しました');
+      }
+    } catch (error: any) {
+      setMessage(`エラー: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // EventEditorを表示する場合
+  if (isCreatingEvent || editingEventData) {
+    return (
+      <EventEditor
+        event={editingEventData ? { ...editingEventData, moveCall: editingEventData.moveCall || {} } : undefined}
+        onSave={handleSaveEvent}
+        onCancel={() => {
+          setIsCreatingEvent(false);
+          setEditingEventData(null);
+        }}
+      />
+    );
+  }
 
   // 表示タブをmodeで制限
   const allowedTabs: Array<'collections' | 'events' | 'batch' | 'users' | 'admins' | 'dm-settings' | 'history'> =
@@ -50,7 +102,6 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
 
   // Events 管理用ステート
   const [events, setEvents] = useState<AdminMintEvent[]>([]);
-  const [editingEvent, setEditingEvent] = useState<AdminMintEvent | null>(null);
   const [newEvent, setNewEvent] = useState<Partial<AdminMintEvent>>({
     name: '',
     description: '',
@@ -325,8 +376,7 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
           imageCid: cid || '',
           imageMimeType: compressedFile.type || 'application/octet-stream'
         };
-        if (editingEvent) setEditingEvent({ ...(editingEvent as AdminMintEvent), ...updates });
-        else setNewEvent({ ...newEvent, ...updates });
+        setNewEvent({ ...newEvent, ...updates });
         setMessage(`画像アップロード完了: ${cid ? `CID=${cid}` : 'URL設定済み'}`);
       }
     } catch (e: any) {
@@ -654,65 +704,7 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
     }
   };
 
-  const handleUpdateEvent = async () => {
-    if (!editingEvent) return;
-    // 更新時も日時整合性を軽くチェック
-    try {
-      const st = Date.parse(editingEvent.startAt);
-      const ed = Date.parse(editingEvent.endAt);
-      if (isFinite(st) && isFinite(ed) && ed <= st) {
-        setMessage('終了日時は開始日時より後に設定してください');
-        return;
-      }
-    } catch {}
-    setLoading(true);
-    try {
-      // 画像自動アップロード（未設定でファイル選択がある場合）
-      if (!((editingEvent as any).imageUrl) && !((editingEvent as any).imageCid) && uploadFile) {
-        try {
-          const tipRes = await fetch(`${API_BASE_URL}/api/walrus/tip-config`).catch(() => null);
-          let needsTip = false;
-          if (tipRes && tipRes.ok) {
-            const tipJson = await tipRes.json().catch(() => ({}));
-            const cfg = tipJson?.data || tipJson;
-            needsTip = !!cfg?.send_tip;
-          }
-          if (!needsTip) {
-            const relayUrl = `${API_BASE_URL}/api/walrus/upload-relay`;
-            const r = await fetch(relayUrl, { method: 'POST', headers: { 'Content-Type': uploadFile.type || 'application/octet-stream' }, body: uploadFile });
-            if (r.ok) {
-              const d = await r.json().catch(() => ({}));
-              const cid = resolveCidFromResponse(d);
-              const base = 'https://aggregator.mainnet.walrus.space/v1/blobs/';
-              const url = cid && base ? `${base}${cid}` : cid || '';
-              if (cid) {
-                (editingEvent as any).imageCid = cid;
-                (editingEvent as any).imageMimeType = uploadFile.type || 'application/octet-stream';
-                (editingEvent as any).imageUrl = url;
-              }
-            }
-          }
-        } catch {}
-      }
-
-      const res = await fetch(`${API_BASE_URL}/api/admin/events/${editingEvent.id}`, {
-        method: 'PUT',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(editingEvent)
-      });
-      const data = await res.json();
-      if (data.success) {
-        setMessage('イベントを更新しました');
-        setEditingEvent(null);
-        fetchEvents();
-      } else {
-        setMessage(data.error || 'イベントの更新に失敗しました');
-      }
-    } catch (e) {
-      setMessage('イベントの更新に失敗しました');
-    }
-    setLoading(false);
-  };
+  // handleUpdateEvent は新しいEventEditorに移行したため削除
 
   const handleDeleteEvent = async (id: string) => {
     if (!confirm('このイベントを削除しますか？')) return;
@@ -1390,7 +1382,7 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
                 onChange={(e) => setNewCollection({...newCollection, packageId: e.target.value})}
                 style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
               />
-              <select 
+              <select
                 value={newCollection.roleId}
                 onChange={(e) => handleRoleSelect(e.target.value)}
                 style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
@@ -1398,9 +1390,9 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
                 <option value="">ロールを選択してください</option>
                 {discordRoles.length > 0 ? (
                   discordRoles.map(role => (
-                    <option key={role.id} value={role.id}>
-                      {role.name} (ID: {role.id})
-                    </option>
+                  <option key={role.id} value={role.id}>
+                    {role.name} (ID: {role.id})
+                  </option>
                   ))
                 ) : (
                   <option value="" disabled>
@@ -1831,7 +1823,17 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
 
       {activeTab === 'events' && (
         <div>
-          <h3>イベント管理</h3>
+          <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 style={{ margin: 0 }}>イベント管理</h3>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => setIsCreatingEvent(true)}
+                style={{ padding: '0.25rem 0.75rem', background: '#28a745', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem' }}
+              >
+                新規イベント作成
+              </button>
+            </div>
+          </div>
 
           {/* コレクション作成（Move呼び出し） */}
           <div style={{ marginBottom: '1.5rem', padding: '1rem', border: '1px solid #d1d5db', borderRadius: 8, background: '#f8fafc' }}>
@@ -1920,484 +1922,7 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
             </div>
           )}
 
-          {/* 作成/編集フォーム */}
-          <div style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ccc', borderRadius: '8px', maxWidth: '800px' }}>
-            <div style={{
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
-              fontSize: '24px',
-              fontWeight: '800',
-              marginBottom: '24px',
-              textAlign: 'center'
-            }}>
-              {editingEvent ? '✏️ イベント編集' : '✨ 新規イベント作成'}
-            </div>
-            
-            <div style={{ display: 'grid', gap: '20px' }}>
-              {/* 最小限の基本情報 */}
-              <div style={{
-                background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
-                borderRadius: '16px',
-                padding: '20px',
-                border: '1px solid #e2e8f0'
-              }}>
-                <h5 style={{
-                  margin: '0 0 16px 0',
-                  color: '#1e293b',
-                  fontSize: '16px',
-                  fontWeight: '600',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}>
-                  ✨ イベント作成（最小限入力）
-                </h5>
-                
-                <div style={{ display: 'grid', gap: '16px' }}>
-                  {/* イベント名（必須） */}
-                  <div>
-                    <label style={{
-                      display: 'block',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      color: '#374151',
-                      marginBottom: '6px'
-                    }}>
-                      イベント名 *
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="例: SyndicateX Tokyo NFT Drop"
-                      value={(editingEvent?.name) ?? (newEvent.name || '')}
-                      onChange={(e) => editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), name: e.target.value }) : setNewEvent({ ...newEvent, name: e.target.value })}
-                      style={{
-                        width: '100%',
-                        padding: '12px 16px',
-                        borderRadius: '12px',
-                        border: '2px solid #e5e7eb',
-                        fontSize: '16px',
-                        transition: 'all 0.2s ease',
-                        outline: 'none',
-                        background: 'white'
-                      }}
-                      onFocus={(e) => e.target.style.borderColor = '#667eea'}
-                      onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
-                    />
-                  </div>
-                  
-                  {/* 説明（任意・簡潔） */}
-                  <div>
-                    <label style={{
-                      display: 'block',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      color: '#374151',
-                      marginBottom: '6px'
-                    }}>
-                      説明（任意）
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="簡単な説明を入力..."
-                      value={(editingEvent?.description) ?? (newEvent.description || '')}
-                      onChange={(e) => editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), description: e.target.value }) : setNewEvent({ ...newEvent, description: e.target.value })}
-                      style={{
-                        width: '100%',
-                        padding: '12px 16px',
-                        borderRadius: '12px',
-                        border: '2px solid #e5e7eb',
-                        fontSize: '16px',
-                        transition: 'all 0.2s ease',
-                        outline: 'none',
-                        background: 'white'
-                      }}
-                      onFocus={(e) => e.target.style.borderColor = '#667eea'}
-                      onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
-                    />
-                  </div>
-                </div>
-              </div>
-              {/* コレクション選択セクション */}
-              <div style={{
-                background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
-                borderRadius: '16px',
-                padding: '20px',
-                border: '1px solid #bae6fd'
-              }}>
-                <h5 style={{
-                  margin: '0 0 16px 0',
-                  color: '#1e293b',
-                  fontSize: '16px',
-                  fontWeight: '600',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}>
-                  🎯 対象コレクション
-                </h5>
-                
-                <div style={{ display: 'grid', gap: '12px' }}>
-                  <div>
-                    <label style={{
-                      display: 'block',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      color: '#374151',
-                      marginBottom: '6px'
-                    }}>
-                      コレクション選択 *
-                    </label>
-                    <select
-                      value={(editingEvent?.collectionId) ?? (newEvent.collectionId || '')}
-                      onChange={(e) => editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), collectionId: e.target.value }) : setNewEvent({ ...newEvent, collectionId: e.target.value })}
-                      style={{
-                        width: '100%',
-                        padding: '12px 16px',
-                        borderRadius: '12px',
-                        border: '2px solid #e5e7eb',
-                        fontSize: '16px',
-                        background: 'white',
-                        outline: 'none',
-                        transition: 'all 0.2s ease'
-                      }}
-                      onFocus={(e) => e.target.style.borderColor = '#0ea5e9'}
-                      onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
-                    >
-                      <option value="">📋 コレクションを選択してください</option>
-                      {collections.map(col => (
-                        <option key={col.id} value={col.packageId}>
-                          🎨 {col.name} ({(col.packageId || '').slice(0, 10)}...)
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  
-                  <div style={{
-                    padding: '12px',
-                    background: 'rgba(59, 130, 246, 0.1)',
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    color: '#1e40af'
-                  }}>
-                    💡 手動入力: 0x...::module::Struct 形式でも入力可能
-                  </div>
-                </div>
-              </div>
-              <input
-                type="text"
-                placeholder="Walrus画像URL（任意）"
-                value={(editingEvent?.imageUrl) ?? (newEvent.imageUrl || '')}
-                onChange={(e) => editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), imageUrl: e.target.value }) : setNewEvent({ ...newEvent, imageUrl: e.target.value })}
-                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
-              />
-              <input
-                type="text"
-                placeholder="Walrus CID（任意）"
-                value={(editingEvent?.imageCid) ?? ((newEvent as any).imageCid ?? '')}
-                onChange={(e) => editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), imageCid: e.target.value as any }) : setNewEvent({ ...newEvent, imageCid: e.target.value as any })}
-                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
-              />
-              <input
-                type="text"
-                placeholder="MIME Type（例: image/png）"
-                value={(editingEvent?.imageMimeType) ?? ((newEvent as any).imageMimeType ?? '')}
-                onChange={(e) => editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), imageMimeType: e.target.value as any }) : setNewEvent({ ...newEvent, imageMimeType: e.target.value as any })}
-                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
-              />
-              {/* 1クリック画像アップロード */}
-              <div style={{
-                background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
-                borderRadius: '16px',
-                padding: '20px',
-                border: '1px solid #bbf7d0'
-              }}>
-                <h5 style={{
-                  margin: '0 0 16px 0',
-                  color: '#1e293b',
-                  fontSize: '16px',
-                  fontWeight: '600',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}>
-                  🖼️ NFT画像（1クリック自動設定）
-                </h5>
-                
-                <div style={{ display: 'grid', gap: '12px' }}>
-                  <div style={{
-                    display: 'flex',
-                    gap: '12px',
-                    alignItems: 'center',
-                    padding: '12px',
-                    background: 'white',
-                    borderRadius: '12px',
-                    border: '2px dashed #10b981'
-                  }}>
-                    <input 
-                      type="file" 
-                      accept="image/*" 
-                      onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                      style={{ display: 'none' }}
-                      id="image-upload"
-                    />
-                    <label 
-                      htmlFor="image-upload"
-                      style={{
-                        padding: '12px 20px',
-                        background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                        color: 'white',
-                        borderRadius: '12px',
-                        cursor: 'pointer',
-                        fontWeight: '600',
-                        fontSize: '14px',
-                        border: 'none',
-                        transition: 'all 0.2s ease'
-                      }}
-                    >
-                      📁 画像を選択
-                    </label>
-                    
-                    {uploadFile && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '14px', color: '#374151' }}>
-                          📎 {uploadFile.name} ({Math.round(uploadFile.size/1024)}KB)
-                        </span>
-                        <button 
-                          onClick={handleWalrusUpload} 
-                          disabled={uploading}
-                          style={{
-                            padding: '8px 16px',
-                            background: uploading ? '#9ca3af' : 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '8px',
-                            cursor: uploading ? 'not-allowed' : 'pointer',
-                            fontWeight: '600',
-                            fontSize: '14px',
-                            transition: 'all 0.2s ease'
-                          }}
-                        >
-                          {uploading ? '⏳ アップロード中...' : '🚀 自動設定'}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* アップロード結果の表示 */}
-                  {((newEvent as any).imageCid || (newEvent as any).imageUrl) && (
-                    <div style={{
-                      padding: '12px',
-                      background: 'rgba(16, 185, 129, 0.1)',
-                      borderRadius: '8px',
-                      fontSize: '14px',
-                      color: '#065f46'
-                    }}>
-                      ✅ 画像設定完了: {((newEvent as any).imageCid) ? `CID: ${(newEvent as any).imageCid}` : `URL: ${(newEvent as any).imageUrl}`}
-                    </div>
-                  )}
-                </div>
-              </div>
-              {/* 詳細設定（折りたたみ） */}
-              <div style={{
-                background: 'linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%)',
-                borderRadius: '16px',
-                padding: '20px',
-                border: '1px solid #e5e7eb'
-              }}>
-                <button
-                  onClick={() => setAdvancedOpen(!advancedOpen)}
-                  style={{
-                    width: '100%',
-                    padding: '12px 16px',
-                    background: 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '12px',
-                    cursor: 'pointer',
-                    fontWeight: '600',
-                    fontSize: '14px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '8px'
-                  }}
-                >
-                  {advancedOpen ? '🔽 詳細設定を隠す' : '⚙️ 詳細設定を開く'}
-                </button>
-                
-                {advancedOpen && (
-                  <div style={{ marginTop: '16px', display: 'grid', gap: '12px' }}>
-                    <div style={{
-                      padding: '12px',
-                      background: 'rgba(107, 114, 128, 0.1)',
-                      borderRadius: '8px',
-                      fontSize: '14px',
-                      color: '#6b7280'
-                    }}>
-                      💡 通常は自動設定で十分です。上級者向けオプションです。
-                    </div>
-                  </div>
-                )}
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                <input
-                  type="datetime-local"
-                  value={(() => {
-                    const v = (editingEvent?.startAt) ?? (newEvent.startAt || '');
-                    return v ? new Date(v).toISOString().slice(0,16) : '';
-                  })()}
-                  onChange={(e) => {
-                    const iso = new Date(e.target.value).toISOString();
-                    editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), startAt: iso }) : setNewEvent({ ...newEvent, startAt: iso });
-                  }}
-                  style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
-                />
-                <input
-                  type="datetime-local"
-                  value={(() => {
-                    const v = (editingEvent?.endAt) ?? (newEvent.endAt || '');
-                    return v ? new Date(v).toISOString().slice(0,16) : '';
-                  })()}
-                  onChange={(e) => {
-                    const iso = new Date(e.target.value).toISOString();
-                    editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), endAt: iso }) : setNewEvent({ ...newEvent, endAt: iso });
-                  }}
-                  style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
-                />
-              </div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <input
-                  type="checkbox"
-                  checked={Boolean((editingEvent?.active) ?? (newEvent.active ?? true))}
-                  onChange={(e) => editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), active: e.target.checked }) : setNewEvent({ ...newEvent, active: e.target.checked })}
-                />
-                有効化
-              </label>
-              <input
-                type="number"
-                placeholder="総ミント上限（未設定可）"
-                value={typeof (editingEvent?.totalCap ?? newEvent.totalCap) === 'number' ? (editingEvent?.totalCap ?? (newEvent.totalCap as number)) : ''}
-                onChange={(e) => {
-                  const v = e.target.value.trim() === '' ? undefined : Number(e.target.value);
-                  if (editingEvent) setEditingEvent({ ...(editingEvent as AdminMintEvent), totalCap: v as any });
-                  else setNewEvent({ ...newEvent, totalCap: v as any });
-                }}
-                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
-              />
-              {/* 詳細設定（折り畳み） */}
-              <div style={{ marginTop: '0.5rem' }}>
-                <button type="button" onClick={() => setAdvancedOpen(!advancedOpen)} style={{ padding: '0.35rem 0.6rem', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontSize: '0.85rem' }}>
-                  {advancedOpen ? '詳細設定を閉じる' : '詳細設定を開く'}
-                </button>
-                {advancedOpen && (
-                  <div style={{ display: 'grid', gap: '0.5rem', marginTop: '0.5rem', background: '#fafafa', border: '1px solid #eee', borderRadius: 8, padding: '0.75rem' }}>
-                    <input
-                      type="text"
-                      placeholder="Move呼び出しターゲット（例: 0xabc::module::mint)"
-                      value={(editingEvent?.moveCall?.target) ?? (newEvent.moveCall?.target || '')}
-                      onChange={(e) => editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), moveCall: { ...(editingEvent.moveCall || {}), target: e.target.value } }) : setNewEvent({ ...newEvent, moveCall: { ...(newEvent.moveCall || {}), target: e.target.value } })}
-                      style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
-                    />
-                    <input
-                      type="text"
-                      placeholder="Type Arguments（カンマ区切り）"
-                      value={((editingEvent?.moveCall?.typeArguments) ?? (newEvent.moveCall?.typeArguments || [])).join(',')}
-                      onChange={(e) => {
-                        const arr = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
-                        editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), moveCall: { ...(editingEvent.moveCall || {}), typeArguments: arr } }) : setNewEvent({ ...newEvent, moveCall: { ...(newEvent.moveCall || {}), typeArguments: arr } });
-                      }}
-                      style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
-                    />
-                    <input
-                      type="text"
-                      placeholder="Arguments Template（カンマ区切り）。例: {recipient},{imageUrl}"
-                      value={((editingEvent?.moveCall?.argumentsTemplate) ?? (newEvent.moveCall?.argumentsTemplate || [])).join(',')}
-                      onChange={(e) => {
-                        const arr = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
-                        editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), moveCall: { ...(editingEvent.moveCall || {}), argumentsTemplate: arr } }) : setNewEvent({ ...newEvent, moveCall: { ...(newEvent.moveCall || {}), argumentsTemplate: arr } });
-                      }}
-                      style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
-                    />
-                    <input
-                      type="number"
-                      placeholder="Gas Budget（任意）"
-                      value={Number((editingEvent?.moveCall?.gasBudget) ?? (newEvent.moveCall?.gasBudget || '')) || ''}
-                      onChange={(e) => {
-                        const v = Number(e.target.value || 0);
-                        editingEvent ? setEditingEvent({ ...(editingEvent as AdminMintEvent), moveCall: { ...(editingEvent.moveCall || {}), gasBudget: v } }) : setNewEvent({ ...newEvent, moveCall: { ...(newEvent.moveCall || {}), gasBudget: v } });
-                      }}
-                      style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
-                    />
-                  </div>
-                )}
-              </div>
-
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                {editingEvent ? (
-                  <>
-                    <button onClick={handleUpdateEvent} disabled={loading} style={{ padding: '0.5rem 1rem', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1 }}>更新</button>
-                    <button onClick={() => setEditingEvent(null)} disabled={loading} style={{ padding: '0.5rem 1rem', background: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1 }}>キャンセル</button>
-                  </>
-                ) : (
-                  <button 
-                    onClick={handleCreateEvent} 
-                    disabled={loading}
-                    style={{
-                      width: '100%',
-                      padding: '16px 24px',
-                      background: loading 
-                        ? 'linear-gradient(135deg, #9ca3af 0%, #6b7280 100%)'
-                        : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '12px',
-                      cursor: loading ? 'not-allowed' : 'pointer',
-                      fontWeight: '700',
-                      fontSize: '16px',
-                      transition: 'all 0.3s ease',
-                      position: 'relative',
-                      overflow: 'hidden'
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!loading) {
-                        const target = e.target as HTMLButtonElement;
-                        target.style.transform = 'translateY(-2px)';
-                        target.style.boxShadow = '0 10px 25px -5px rgba(16, 185, 129, 0.4)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!loading) {
-                        const target = e.target as HTMLButtonElement;
-                        target.style.transform = 'translateY(0)';
-                        target.style.boxShadow = 'none';
-                      }
-                    }}
-                  >
-                    {loading && (
-                      <div style={{
-                        position: 'absolute',
-                        left: '20px',
-                        top: '50%',
-                        transform: 'translateY(-50%)',
-                        width: '20px',
-                        height: '20px',
-                        border: '2px solid rgba(255,255,255,0.3)',
-                        borderTop: '2px solid white',
-                        borderRadius: '50%',
-                        animation: 'spin 1s linear infinite'
-                      }}></div>
-                    )}
-                    <span style={{ marginLeft: loading ? '32px' : '0' }}>
-                      {loading ? 'イベント作成中...' : '🚀 イベントを作成'}
-                    </span>
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-
+          {/* 作成/編集フォームは新しいEventEditorに移行しました（旧フォーム削除済み） */}
           {/* イベント一覧 */}
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -2412,7 +1937,7 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
             {events.map(ev => (
               <div key={ev.id} style={{ border: '1px solid #ccc', padding: '1rem', borderRadius: '8px', marginBottom: '0.5rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
+                  <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 600 }}>{ev.name}</div>
                     <div style={{ fontSize: '0.9rem', color: '#555' }}>{ev.description}</div>
                     <div style={{ fontSize: '0.85rem', color: '#333' }}>期間: {new Date(ev.startAt).toLocaleString('ja-JP')} - {new Date(ev.endAt).toLocaleString('ja-JP')}</div>
@@ -2484,7 +2009,7 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
                     >
                       URLコピー
                     </button>
-                    <button onClick={() => setEditingEvent(ev)} style={{ padding: '0.25rem 0.5rem', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}>編集</button>
+                    <button onClick={() => setEditingEventData(ev)} style={{ padding: '0.25rem 0.5rem', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}>編集</button>
                     <button onClick={() => handleDeleteEvent(ev.id)} style={{ padding: '0.25rem 0.5rem', background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}>削除</button>
                   </div>
                 </div>

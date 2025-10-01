@@ -509,8 +509,8 @@ app.post('/api/batch-process', async (c) => {
             const config = JSON.parse(configStr);
             config.lastRun = new Date().toISOString();
             await store.put('batch_config', JSON.stringify(config));
-          }
-        } catch (error) {
+        }
+      } catch (error) {
           console.error('Failed to update batch config lastRun:', error);
         }
       }
@@ -634,7 +634,7 @@ app.get('/api/admin/batch-config', async (c) => {
       // 次回実行が過去の場合は現在時刻から再計算
       if (nextRunDate < now) {
         data.nextRun = new Date(now.getTime() + intervalMs).toISOString();
-      } else {
+    } else {
         data.nextRun = nextRunDate.toISOString();
       }
     } else {
@@ -925,7 +925,7 @@ app.post('/api/nonce', async (c) => {
         createdAt: new Date().toISOString()
       }), { expirationTtl: 300 }); // 5分間
     }
-
+    
     return c.json({
       success: true,
       data: { nonce }
@@ -1028,7 +1028,7 @@ app.post('/api/verify', async (c) => {
           action: 'grant_roles',
           verificationData: {
             collectionId: collectionIds[0],
-            roleName: 'NFT Holder',
+      roleName: 'NFT Holder',
             notifyUser: true
           },
           timestamp: new Date().toISOString()
@@ -1038,7 +1038,7 @@ app.post('/api/verify', async (c) => {
       console.error('Discord notification failed:', botError);
       // 通知失敗は認証成功を妨げない
     }
-
+    
     return c.json({
       success: true,
       data: {
@@ -1146,7 +1146,7 @@ app.post('/api/admin/check-nft-ownership', async (c) => {
       if (result.result && result.result.data && result.result.data.length > 0) {
         hasNFT = true;
       }
-    } catch (error) {
+  } catch (error) {
       console.error('NFT ownership check failed:', error);
       // チェック失敗時は既存の状態を維持
       hasNFT = true; // デフォルトで保有していると仮定
@@ -1196,7 +1196,7 @@ app.delete('/api/admin/delete-test-user', async (c) => {
     await store.delete(`verified_user:${discordId}`);
 
     return c.json({ success: true, message: 'Test user deleted successfully' });
-  } catch (error) {
+    } catch (error) {
     console.error('Delete test user error:', error);
     return c.json({ success: false, error: 'Failed to delete test user' }, 500);
   }
@@ -1221,8 +1221,8 @@ app.post('/api/admin/set-test-user', async (c) => {
 
     // テストユーザーデータを作成
     const userData = {
-      discordId,
-      address,
+          discordId,
+              address,
       collectionId,
       verifiedAt: new Date().toISOString(),
       roleName: 'NFT Holder'
@@ -1232,7 +1232,7 @@ app.post('/api/admin/set-test-user', async (c) => {
     await store.put(`verified_user:${discordId}`, JSON.stringify(userData));
 
     return c.json({ success: true, message: 'Test user added successfully', data: userData });
-  } catch (error) {
+      } catch (error) {
     console.error('Set test user error:', error);
     return c.json({ success: false, error: 'Failed to add test user' }, 500);
   }

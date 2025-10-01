@@ -179,6 +179,14 @@ function App() {
                   );
                 }
                 if (path === '/admin') return <AdminPanel mode="admin" />;
+                if (path.startsWith('/admin/mints')) {
+                  const Page = (require('./pages/AdminMintPage').default);
+                  return <Page />;
+                }
+                if (path === '/mint-flow') {
+                  const Page = (require('./pages/MintFlowPage').default);
+                  return <Page />;
+                }
                 if (path.startsWith('/admin/roles')) return <AdminPanel mode="roles" />;
                 if (path.startsWith('/admin/mint')) return <AdminPanel mode="mint" />;
               }
