@@ -251,7 +251,7 @@ app.post('/api/batch-process', async (req, res) => {
       });
     }
 
-    const usersData = await workersResponse.json();
+    const usersData = await workersResponse.json() as any;
     const verifiedUsers = usersData.success ? usersData.data : [];
 
     console.log(`Found ${verifiedUsers.length} verified users`);
