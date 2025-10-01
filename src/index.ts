@@ -731,6 +731,103 @@ app.delete('/api/mint-collections/:id', async (c) => {
   }
 });
 
+// NFT認証API
+app.post('/api/verify', async (c) => {
+  try {
+    const { signature, bytes, publicKey, address, discordId, nonce, authMessage, walletType, collectionIds } = await c.req.json();
+    
+    if (!signature || !address || !discordId || !collectionIds) {
+      return c.json({ success: false, error: 'Missing required fields' }, 400);
+    }
+
+    // 署名検証（簡易版）
+    if (!signature || signature.length < 10) {
+      return c.json({ success: false, error: 'Invalid signature format' }, 400);
+    }
+
+    // アドレス形式検証
+    if (!address.startsWith('0x') || address.length !== 66) {
+      return c.json({ success: false, error: 'Invalid address format' }, 400);
+    }
+
+    // Discord ID検証
+    if (!discordId.match(/^\d{17,19}$/)) {
+      return c.json({ success: false, error: 'Invalid Discord ID format' }, 400);
+    }
+
+    // コレクション検証（簡易版）
+    const store = c.env.COLLECTION_STORE as KVNamespace | undefined;
+    if (!store) {
+      return c.json({ success: false, error: 'Collection store not available' }, 500);
+    }
+
+    const collectionsData = await store.get('collections');
+    const collections = collectionsData ? JSON.parse(collectionsData) : [];
+    
+    // 選択されたコレクションが存在するかチェック
+    const validCollections = collections.filter((col: any) => collectionIds.includes(col.id));
+    if (validCollections.length === 0) {
+      return c.json({ success: false, error: 'No valid collections found' }, 400);
+    }
+
+    // 認証済みユーザーデータを保存
+    const mintedStore = c.env.MINTED_STORE as KVNamespace | undefined;
+    if (!mintedStore) {
+      return c.json({ success: false, error: 'Minted store not available' }, 500);
+    }
+
+    const userData = {
+      discordId,
+      address,
+      collectionIds,
+      verifiedAt: new Date().toISOString(),
+      roleName: 'NFT Holder',
+      signature,
+      nonce
+    };
+
+    await mintedStore.put(`verified_user:${discordId}`, JSON.stringify(userData));
+
+    // Discord Bot APIに通知
+    try {
+      const botApiUrl = c.env.DISCORD_BOT_API_URL || 'https://nft-verification-bot.onrender.com';
+      await fetch(`${botApiUrl}/api/notify-discord`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'Cloudflare-Worker'
+        },
+        body: JSON.stringify({
+          discordId,
+          action: 'grant_roles',
+          verificationData: {
+            collectionId: collectionIds[0],
+            roleName: 'NFT Holder',
+            notifyUser: true
+          },
+          timestamp: new Date().toISOString()
+        })
+      });
+    } catch (botError) {
+      console.error('Discord notification failed:', botError);
+      // 通知失敗は認証成功を妨げない
+    }
+
+    return c.json({
+      success: true,
+      data: {
+        roleName: 'NFT Holder',
+        collectionIds,
+        verifiedAt: userData.verifiedAt
+      }
+    });
+
+  } catch (error) {
+    console.error('Verification API error:', error);
+    return c.json({ success: false, error: 'Verification failed' }, 500);
+  }
+});
+
 // テスト用：認証済みユーザーを手動追加
 app.post('/api/admin/set-test-user', async (c) => {
   try {
