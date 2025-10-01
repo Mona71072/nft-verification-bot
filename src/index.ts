@@ -731,6 +731,49 @@ app.delete('/api/mint-collections/:id', async (c) => {
   }
 });
 
+// Nonce生成API
+app.post('/api/nonce', async (c) => {
+  try {
+    const { discordId, address } = await c.req.json();
+    
+    if (!discordId || !address) {
+      return c.json({ success: false, error: 'discordId and address are required' }, 400);
+    }
+
+    // アドレス形式検証
+    if (!address.startsWith('0x') || address.length !== 66) {
+      return c.json({ success: false, error: 'Invalid address format' }, 400);
+    }
+
+    // Discord ID検証
+    if (!discordId.match(/^\d{17,19}$/)) {
+      return c.json({ success: false, error: 'Invalid Discord ID format' }, 400);
+    }
+
+    // ランダムなnonceを生成
+    const nonce = crypto.randomUUID();
+    
+    // NONCE_STOREに保存（5分間有効）
+    const nonceStore = c.env.NONCE_STORE as KVNamespace;
+    if (nonceStore) {
+      await nonceStore.put(`nonce:${nonce}`, JSON.stringify({
+        discordId,
+        address,
+        createdAt: new Date().toISOString()
+      }), { expirationTtl: 300 }); // 5分間
+    }
+
+    return c.json({
+      success: true,
+      data: { nonce }
+    });
+
+  } catch (error) {
+    console.error('Nonce generation error:', error);
+    return c.json({ success: false, error: 'Failed to generate nonce' }, 500);
+  }
+});
+
 // NFT認証API
 app.post('/api/verify', async (c) => {
   try {
@@ -753,6 +796,25 @@ app.post('/api/verify', async (c) => {
     // Discord ID検証
     if (!discordId.match(/^\d{17,19}$/)) {
       return c.json({ success: false, error: 'Invalid Discord ID format' }, 400);
+    }
+
+    // Nonce検証
+    if (nonce) {
+      const nonceStore = c.env.NONCE_STORE as KVNamespace;
+      if (nonceStore) {
+        const nonceData = await nonceStore.get(`nonce:${nonce}`);
+        if (!nonceData) {
+          return c.json({ success: false, error: 'Invalid or expired nonce' }, 400);
+        }
+        
+        const parsedNonceData = JSON.parse(nonceData);
+        if (parsedNonceData.discordId !== discordId || parsedNonceData.address !== address) {
+          return c.json({ success: false, error: 'Nonce mismatch' }, 400);
+        }
+        
+        // 使用済みnonceを削除
+        await nonceStore.delete(`nonce:${nonce}`);
+      }
     }
 
     // コレクション検証（簡易版）
