@@ -15,9 +15,11 @@ DEFAULT_COLLECTION_CREATE_TARGET = "0x7a9695b16975f9a8614a81fc3eb67464699255f422
 # 読み出し（公開Aggregator - PDF準拠）
 WALRUS_AGGREGATOR_BASE = "https://aggregator.walrus-mainnet.walrus.space"
 WALRUS_AGGREGATOR_FALLBACKS = "https://aggregator.suicore.com,https://sui-walrus-mainnet-aggregator.bwarelabs.com,https://walrus-agg.mainnet.obelisk.sh"
-# 書き込み（自前Publisher - 認証必須）
+# 書き込み（自前Publisher - JWT認証必須）
 # ⚠️ Mainnetには公開無認証Publisherは存在しません。自前運用または委託先を使用してください
 WALRUS_PUBLISHER_BASE = "https://publisher.yourdomain.example"
+# 都度JWT署名方式（推奨）: wrangler secret put WALRUS_PUBLISHER_JWT_SECRET でシークレットを設定
+# または固定トークン方式（非推奨）: WALRUS_PUBLISHER_AUTH = "Bearer eyJhbGc..."
 WALRUS_PUBLISHER_AUTH = ""
 # 保存ポリシー（PDF準拠: 寿命を必ず明示）
 WALRUS_DEFAULT_EPOCHS = "12"
@@ -61,6 +63,7 @@ DEFAULT_COLLECTION_CREATE_TARGET = "0x7a9695b16975f9a8614a81fc3eb67464699255f422
 WALRUS_AGGREGATOR_BASE = "https://aggregator.walrus-mainnet.walrus.space"
 WALRUS_AGGREGATOR_FALLBACKS = "https://aggregator.suicore.com,https://sui-walrus-mainnet-aggregator.bwarelabs.com,https://walrus-agg.mainnet.obelisk.sh"
 WALRUS_PUBLISHER_BASE = "https://publisher.yourdomain.example"
+# 都度JWT署名（推奨）: wrangler secret put WALRUS_PUBLISHER_JWT_SECRET
 WALRUS_PUBLISHER_AUTH = ""
 WALRUS_DEFAULT_EPOCHS = "12"
 WALRUS_DEFAULT_PERMANENT = "false"

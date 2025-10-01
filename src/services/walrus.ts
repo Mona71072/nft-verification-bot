@@ -3,6 +3,8 @@
  * Publisher API での書き込み、Aggregator API での読み出しを提供
  */
 
+import { createPublisherJWT } from '../utils/jwt';
+
 export interface WalrusStoreOptions {
   epochs?: number | 'max';
   permanent?: boolean;
@@ -27,7 +29,8 @@ export interface WalrusConfig {
   aggregatorBase: string;
   defaultEpochs: number;
   defaultPermanent: boolean;
-  publisherAuth?: string; // JWT Bearer token for authenticated Publisher
+  publisherAuth?: string; // JWT Bearer token for authenticated Publisher (固定トークン用)
+  publisherJwtSecret?: string; // JWT署名秘密鍵（都度署名用、推奨）
 }
 
 /**
@@ -80,7 +83,18 @@ export async function storeBlob(
     };
     
     // JWT認証（Mainnet認証付きPublisher対応）
-    if (config.publisherAuth) {
+    // 優先順位: 1) 都度署名（publisherJwtSecret）、2) 固定トークン（publisherAuth）
+    if (config.publisherJwtSecret) {
+      // 都度JWT生成（推奨方式）
+      const jwt = await createPublisherJWT({
+        subject: 'worker-upload',
+        expiresIn: 180, // 3分
+        maxSize: body.byteLength,
+        maxEpochs: typeof options.epochs === 'number' ? options.epochs : config.defaultEpochs
+      }, config.publisherJwtSecret);
+      headers['Authorization'] = `Bearer ${jwt}`;
+    } else if (config.publisherAuth) {
+      // 固定トークン方式（後方互換）
       headers['Authorization'] = config.publisherAuth;
     }
     
@@ -191,7 +205,8 @@ export function getWalrusConfig(env: any): WalrusConfig {
   const aggregatorBase = env.WALRUS_AGGREGATOR_BASE;
   const defaultEpochs = parseInt(env.WALRUS_DEFAULT_EPOCHS || '12', 10);
   const defaultPermanent = env.WALRUS_DEFAULT_PERMANENT === 'true';
-  const publisherAuth = env.WALRUS_PUBLISHER_AUTH; // JWT Bearer token
+  const publisherAuth = env.WALRUS_PUBLISHER_AUTH; // JWT Bearer token（固定トークン用）
+  const publisherJwtSecret = env.WALRUS_PUBLISHER_JWT_SECRET; // JWT署名秘密鍵（都度署名用、推奨）
 
   if (!publisherBase || !aggregatorBase) {
     throw new Error('WALRUS_PUBLISHER_BASE and WALRUS_AGGREGATOR_BASE must be configured');
@@ -202,7 +217,8 @@ export function getWalrusConfig(env: any): WalrusConfig {
     aggregatorBase,
     defaultEpochs,
     defaultPermanent,
-    publisherAuth
+    publisherAuth,
+    publisherJwtSecret
   };
 }
 
