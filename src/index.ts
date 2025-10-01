@@ -504,11 +504,22 @@ app.get('/api/admin/batch-stats', async (c) => {
     // MINTED_STOREからbatch_statsを読み取る（update-batch-statsと同じストア）
     const store = c.env.MINTED_STORE as KVNamespace | undefined;
     if (!store) {
-      return c.json({ success: true, data: { processedUsers: 0, totalUsers: 0, lastProcessed: null } });
+      return c.json({ success: true, data: { totalUsers: 0, processed: 0, revoked: 0, errors: 0, lastRun: null, duration: 0 } });
     }
 
     const stats = await store.get('batch_stats');
-    const data = stats ? JSON.parse(stats) : { processedUsers: 0, totalUsers: 0, lastProcessed: null };
+    const rawData = stats ? JSON.parse(stats) : { processedUsers: 0, totalUsers: 0, errors: 0, lastExecuted: null };
+    
+    // フロントエンドが期待する形式に変換
+    const data = {
+      totalUsers: rawData.totalUsers || 0,
+      processed: rawData.processedUsers || 0,
+      revoked: 0, // 現在は未実装
+      errors: rawData.errors || 0,
+      lastRun: rawData.lastExecuted || null,
+      duration: 0 // 現在は未実装
+    };
+    
     return c.json({ success: true, data });
   } catch (error) {
     return c.json({ success: false, error: 'Failed to get batch stats' }, 500);
