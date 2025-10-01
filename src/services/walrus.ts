@@ -7,6 +7,7 @@ export interface WalrusStoreOptions {
   epochs?: number | 'max';
   permanent?: boolean;
   deletable?: boolean;
+  sendTo?: string; // send_object_to: BlobオブジェクトをSuiアドレスに送付
 }
 
 export interface WalrusStoreResult {
@@ -26,6 +27,7 @@ export interface WalrusConfig {
   aggregatorBase: string;
   defaultEpochs: number;
   defaultPermanent: boolean;
+  publisherAuth?: string; // JWT Bearer token for authenticated Publisher
 }
 
 /**
@@ -53,6 +55,11 @@ export async function storeBlob(
     qs.set('epochs', String(options.epochs ?? config.defaultEpochs ?? 5));
   }
 
+  // send_object_to オプション（Blobオブジェクトを指定Suiアドレスに送付）
+  if (options.sendTo) {
+    qs.set('send_object_to', options.sendTo);
+  }
+
   const url = `${config.publisherBase}/v1/blobs?${qs.toString()}`;
   
   // PDF準拠: バイト列をそのまま送信（multipart/form-dataではない）
@@ -68,12 +75,19 @@ export async function storeBlob(
   
   // 実行関数（リトライ可能）
   const attempt = async (signal?: AbortSignal) => {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/octet-stream'
+    };
+    
+    // JWT認証（Mainnet認証付きPublisher対応）
+    if (config.publisherAuth) {
+      headers['Authorization'] = config.publisherAuth;
+    }
+    
     const response = await fetch(url, {
       method: 'PUT',
       body: body,
-      headers: {
-        'Content-Type': 'application/octet-stream'
-      },
+      headers,
       signal
     });
 
@@ -175,8 +189,9 @@ export function getBlobUrl(blobId: string, config: WalrusConfig): string {
 export function getWalrusConfig(env: any): WalrusConfig {
   const publisherBase = env.WALRUS_PUBLISHER_BASE;
   const aggregatorBase = env.WALRUS_AGGREGATOR_BASE;
-  const defaultEpochs = parseInt(env.WALRUS_DEFAULT_EPOCHS || '5', 10);
+  const defaultEpochs = parseInt(env.WALRUS_DEFAULT_EPOCHS || '12', 10);
   const defaultPermanent = env.WALRUS_DEFAULT_PERMANENT === 'true';
+  const publisherAuth = env.WALRUS_PUBLISHER_AUTH; // JWT Bearer token
 
   if (!publisherBase || !aggregatorBase) {
     throw new Error('WALRUS_PUBLISHER_BASE and WALRUS_AGGREGATOR_BASE must be configured');
@@ -186,7 +201,8 @@ export function getWalrusConfig(env: any): WalrusConfig {
     publisherBase,
     aggregatorBase,
     defaultEpochs,
-    defaultPermanent
+    defaultPermanent,
+    publisherAuth
   };
 }
 
