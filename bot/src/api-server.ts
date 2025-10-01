@@ -225,7 +225,7 @@ app.get('/api/discord/roles', async (req, res) => {
 app.post('/api/batch-process', async (req, res) => {
   try {
     const { collectionId, action, adminAddress } = req.body;
-    
+
     if (!collectionId || !action) {
       return res.status(400).json({
         success: false,
@@ -233,19 +233,69 @@ app.post('/api/batch-process', async (req, res) => {
       });
     }
 
-    // バッチ処理の実装（仮実装）
     console.log('Batch process requested:', { collectionId, action, adminAddress });
-    
-    // 実際のバッチ処理ロジックをここに実装
-    // 現在は仮のレスポンスを返す
+
+    // Cloudflare Workersから認証済みユーザーを取得
+    const workersResponse = await fetch(`${config.CLOUDFLARE_WORKERS_API_URL}/api/admin/verified-users`, {
+      headers: {
+        'X-Admin-Address': adminAddress || '0x1234567890abcdef1234567890abcdef12345678',
+        'User-Agent': 'Discord-Bot'
+      }
+    });
+
+    if (!workersResponse.ok) {
+      console.error('Failed to fetch verified users from Workers');
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch verified users'
+      });
+    }
+
+    const usersData = await workersResponse.json();
+    const verifiedUsers = usersData.success ? usersData.data : [];
+
+    console.log(`Found ${verifiedUsers.length} verified users`);
+
+    let processedUsers = 0;
+    let errors = 0;
+
+    // 認証済みユーザーのロールを処理
+    for (const user of verifiedUsers) {
+      try {
+        if (action === 'revoke') {
+          // ロールを剥奪
+          const success = await revokeRoleFromUser(user.discordId);
+          if (success) {
+            processedUsers++;
+          } else {
+            errors++;
+          }
+        } else if (action === 'verify') {
+          // ロールを確認・付与
+          const success = await grantRoleToUser(user.discordId, collectionId);
+          if (success) {
+            processedUsers++;
+          } else {
+            errors++;
+          }
+        }
+      } catch (error) {
+        console.error(`Error processing user ${user.discordId}:`, error);
+        errors++;
+      }
+    }
+
+    console.log(`Batch process completed: ${processedUsers} processed, ${errors} errors`);
+
     res.json({
       success: true,
       message: 'Batch process completed successfully',
       data: {
         collectionId,
         action,
-        processedUsers: 0,
-        errors: 0
+        processedUsers,
+        errors,
+        totalUsers: verifiedUsers.length
       }
     });
   } catch (error) {
