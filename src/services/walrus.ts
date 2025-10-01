@@ -40,6 +40,16 @@ export async function storeBlob(
   options: WalrusStoreOptions,
   config: WalrusConfig
 ): Promise<WalrusStoreResult> {
+  console.log('🔄 Walrus storeBlob開始:', {
+    inputType: input.constructor.name,
+    inputSize: 'size' in input ? input.size : 'unknown',
+    options,
+    config: {
+      publisherBase: config.publisherBase,
+      defaultEpochs: config.defaultEpochs
+    }
+  });
+
   const qs = new URLSearchParams();
   
   // 寿命指定を必須で実装（v1.33以降の既定がdeletableのため明示が必要）
@@ -56,6 +66,7 @@ export async function storeBlob(
   }
 
   const url = `${config.publisherBase}/v1/blobs?${qs.toString()}`;
+  console.log('📤 Walrus Publisher URL:', url);
   
   const response = await fetch(url, {
     method: 'PUT',
@@ -65,21 +76,32 @@ export async function storeBlob(
     }
   });
 
+  console.log('📥 Walrus Publisher レスポンス:', {
+    status: response.status,
+    statusText: response.statusText,
+    ok: response.ok,
+    headers: Object.fromEntries(response.headers.entries())
+  });
+
   if (!response.ok) {
     const errorText = await response.text().catch(() => 'Unknown error');
+    console.error('❌ Walrus Publisher エラー:', errorText);
     throw new Error(`Walrus store failed: ${response.status} ${errorText}`);
   }
 
   const result = await response.json() as WalrusStoreResult;
+  console.log('📄 Walrus Publisher レスポンスデータ:', result);
   
   // blobId の抽出（レスポンス形式の違いに対応）
   const blobId = result?.blobStoreResult?.newlyCreated?.blobObject?.blobId ?? 
                  result?.blobId;
   
   if (!blobId) {
+    console.error('❌ Walrus レスポンスにblobIdがありません:', result);
     throw new Error('Walrus response missing blobId');
   }
 
+  console.log('✅ Walrus storeBlob成功:', { blobId });
   return { ...result, blobId };
 }
 

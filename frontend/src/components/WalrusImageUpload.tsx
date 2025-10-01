@@ -26,27 +26,46 @@ export default function WalrusImageUpload({ imageCid, imageMimeType, onUpload, a
     showToast('Walrusに画像をアップロード中...', 'info');
 
     try {
+      console.log('🔄 Walrus画像アップロード開始:', {
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type,
+        apiBase: API_BASE
+      });
+
       const formData = new FormData();
       formData.append('file', file);
       formData.append('epochs', '10'); // デフォルト10エポック
 
-      const response = await fetch(`${API_BASE}/api/walrus/store`, {
+      const uploadUrl = `${API_BASE}/api/walrus/store`;
+      console.log('📤 アップロードURL:', uploadUrl);
+
+      const response = await fetch(uploadUrl, {
         method: 'POST',
         body: formData
       });
 
+      console.log('📥 レスポンス:', {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok
+      });
+
       const result = await response.json();
+      console.log('📄 レスポンスデータ:', result);
 
       if (!response.ok || !result.success) {
-        throw new Error(result.error || 'アップロードに失敗しました');
+        throw new Error(result.error || `アップロードに失敗しました (${response.status})`);
       }
 
       const { blobId } = result.data || result;
       if (!blobId) throw new Error('Blob IDが返されませんでした');
 
+      console.log('✅ アップロード成功:', { blobId, mimeType: file.type });
       onUpload(blobId, file.type);
       showToast('画像をアップロードしました', 'success');
     } catch (error: any) {
+      console.error('❌ Walrus画像アップロード失敗:', error);
       showToast(`アップロード失敗: ${error.message}`, 'error');
     } finally {
       setUploading(false);
