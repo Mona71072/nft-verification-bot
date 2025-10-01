@@ -390,7 +390,7 @@ app.post('/api/batch-process', async (c) => {
       })
     });
 
-    const result = await response.json();
+    const result = await response.json() as any;
     
     // バッチ処理実行後にlastRunを更新
     if (result.success) {
@@ -1035,7 +1035,7 @@ app.post('/api/admin/check-nft-ownership', async (c) => {
         })
       });
 
-      const result = await response.json();
+      const result = await response.json() as any;
       if (result.result && result.result.data && result.result.data.length > 0) {
         hasNFT = true;
       }

@@ -258,7 +258,7 @@ app.post('/api/notify-discord', async (req, res) => {
 
         let embed;
         if (dmSettingsResponse.ok) {
-          const dmSettingsData = await dmSettingsResponse.json();
+          const dmSettingsData = await dmSettingsResponse.json() as any;
           if (dmSettingsData.success && dmSettingsData.data && dmSettingsData.data.templates) {
             const templates = dmSettingsData.data.templates;
             const template = templates.successNew || templates.successUpdate;
