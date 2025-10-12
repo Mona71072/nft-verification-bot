@@ -1,0 +1,301 @@
+[warning] Client/Server api version mismatch, client api version : 1.51.3, server api version : 1.57.3
+[warning] CLI's protocol version is 87, but the active network's protocol version is 97. 
+ Consider installing the latest version of the CLI - https://docs.sui.io/guides/developer/getting-started/sui-install 
+
+ If publishing/upgrading returns a dependency verification error, then install the latest CLI version.
+[Warning]: Dependency sources are no longer verified automatically during publication and upgrade, so the `--skip-dependency-verification` flag is no longer necessary.
+[warning]: The network is using protocol version ProtocolVersion(87), but this binary only recognizes protocol version ProtocolVersion(97); the system packages used for compilation (e.g. MoveStdlib) may be out of date. If you have errors related to system packages, you may need to update your CLI.
+INCLUDING DEPENDENCY Bridge
+INCLUDING DEPENDENCY SuiSystem
+INCLUDING DEPENDENCY Sui
+INCLUDING DEPENDENCY MoveStdlib
+BUILDING sxt_nft
+warning[W02021]: duplicate alias
+  ┌─ /Users/user/sui/NFT Verification /sxt_nft/sources/sxt_nft.move:8:22
+  │
+8 │     use sui::object::UID;
+  │                      ^^^ Unnecessary alias 'UID' for module member 'sui::object::UID'. This alias is provided by default
+  │
+  = This warning can be suppressed with '#[allow(duplicate_alias)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+warning[W02021]: duplicate alias
+   ┌─ /Users/user/sui/NFT Verification /sxt_nft/sources/sxt_nft.move:10:26
+   │
+10 │     use sui::tx_context::TxContext;
+   │                          ^^^^^^^^^ Unnecessary alias 'TxContext' for module member 'sui::tx_context::TxContext'. This alias is provided by default
+   │
+   = This warning can be suppressed with '#[allow(duplicate_alias)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+warning[W02021]: duplicate alias
+   ┌─ /Users/user/sui/NFT Verification /sxt_nft/sources/sxt_nft.move:11:14
+   │
+11 │     use sui::transfer;
+   │              ^^^^^^^^ Unnecessary alias 'transfer' for module 'sui::transfer'. This alias is provided by default
+   │
+   = This warning can be suppressed with '#[allow(duplicate_alias)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
+
+Total number of linter warnings suppressed: 1 (unique lints: 1)
+Skipping dependency verification
+{
+  "digest": "HriXiLGcHVQPTXhuKRTvx6AXo6F4z4hn5sykR7kspon",
+  "transaction": {
+    "data": {
+      "messageVersion": "v1",
+      "transaction": {
+        "kind": "ProgrammableTransaction",
+        "inputs": [
+          {
+            "type": "pure",
+            "valueType": "address",
+            "value": "0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d"
+          }
+        ],
+        "transactions": [
+          {
+            "Publish": [
+              "0x0000000000000000000000000000000000000000000000000000000000000001",
+              "0x0000000000000000000000000000000000000000000000000000000000000002"
+            ]
+          },
+          {
+            "TransferObjects": [
+              [
+                {
+                  "Result": 0
+                }
+              ],
+              {
+                "Input": 0
+              }
+            ]
+          }
+        ]
+      },
+      "sender": "0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d",
+      "gasData": {
+        "payment": [
+          {
+            "objectId": "0x750448bcdb5c4b0fb3ed1d659b3f3ed59f1fd7ca657f39681d70d741127e3d73",
+            "version": 644760957,
+            "digest": "FZ9gDVb9BfahnVVmHA5FZPmVQ16E33YDGBLy3Wy4eNbt"
+          }
+        ],
+        "owner": "0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d",
+        "price": "495",
+        "budget": "100000000"
+      }
+    },
+    "txSignatures": [
+      "AH8KgOlVIBLjXeOn0aRRyUEGxgiMFWLRVLMJYYZnfSniUHIS0nv9XRz53Sv9pOlcZQzs2sWEfRXBvCM42LJ9yAKDSInOkeWV3gJFXgJmxznoUo1YRfd1rWSlIVVgeuZmRQ=="
+    ]
+  },
+  "effects": {
+    "messageVersion": "v1",
+    "status": {
+      "status": "success"
+    },
+    "executedEpoch": "913",
+    "gasUsed": {
+      "computationCost": "495000",
+      "storageCost": "17168400",
+      "storageRebate": "978120",
+      "nonRefundableStorageFee": "9880"
+    },
+    "modifiedAtVersions": [
+      {
+        "objectId": "0x750448bcdb5c4b0fb3ed1d659b3f3ed59f1fd7ca657f39681d70d741127e3d73",
+        "sequenceNumber": "644760957"
+      }
+    ],
+    "transactionDigest": "HriXiLGcHVQPTXhuKRTvx6AXo6F4z4hn5sykR7kspon",
+    "created": [
+      {
+        "owner": {
+          "AddressOwner": "0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d"
+        },
+        "reference": {
+          "objectId": "0x1325070f2b5d488d8bc039953c9fc42697754ca75f49b31bce3966c76fa1a6f7",
+          "version": 644760958,
+          "digest": "BngPYjhAvCf55vvhA8akcV2NwjULdJxkZj5iUEWFba5c"
+        }
+      },
+      {
+        "owner": {
+          "Shared": {
+            "initial_shared_version": 644760958
+          }
+        },
+        "reference": {
+          "objectId": "0x31077986b1c28f1944d9f307691abefa2198142ad664f11cc98cbd579da4cb65",
+          "version": 644760958,
+          "digest": "wJKgMNwsAiSWGLMG4Dum7UBk1oRVN7JooXp14WhiDjr"
+        }
+      },
+      {
+        "owner": {
+          "AddressOwner": "0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d"
+        },
+        "reference": {
+          "objectId": "0xb4ef3aadb9317d5394a8dca3a08c58a4bb6a0490dd8edcbf52d045419e07cbd1",
+          "version": 644760958,
+          "digest": "5qvURdfv7ArNvimdvkVHRouHChVeh6rsVH5LTqqQtu8L"
+        }
+      },
+      {
+        "owner": "Immutable",
+        "reference": {
+          "objectId": "0xd4e30c04858a3643e9e18749e801381ff25e24bcf30fc4a13ab688001464a5ba",
+          "version": 1,
+          "digest": "9csTm3J1g2VkZQeezetKiRMJFYChFxyn4G41sPgjV6wo"
+        }
+      }
+    ],
+    "mutated": [
+      {
+        "owner": {
+          "AddressOwner": "0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d"
+        },
+        "reference": {
+          "objectId": "0x750448bcdb5c4b0fb3ed1d659b3f3ed59f1fd7ca657f39681d70d741127e3d73",
+          "version": 644760958,
+          "digest": "8CM171ZS3AmYGHvXQA3KRVjyB5Dozh4nrKAtiXykyrME"
+        }
+      }
+    ],
+    "gasObject": {
+      "owner": {
+        "AddressOwner": "0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d"
+      },
+      "reference": {
+        "objectId": "0x750448bcdb5c4b0fb3ed1d659b3f3ed59f1fd7ca657f39681d70d741127e3d73",
+        "version": 644760958,
+        "digest": "8CM171ZS3AmYGHvXQA3KRVjyB5Dozh4nrKAtiXykyrME"
+      }
+    },
+    "eventsDigest": "DwMDdRgG2UX9Rq4WU1msPCVbs7gv5w7umzi8Ccgh2nsG",
+    "dependencies": [
+      "yqtELKLqAuSGkt6PX52KHKvmDKCrV3KCLxm6HAqL6DZ",
+      "9nATGuLyuZfaHKhhkmyBSjSJDq5k4yuPqqPwbNsKq4je",
+      "C7SxX5VAiqQv6pHsjBPqZaNR6JM36S8xH6X69v5dwV95"
+    ]
+  },
+  "events": [
+    {
+      "id": {
+        "txDigest": "HriXiLGcHVQPTXhuKRTvx6AXo6F4z4hn5sykR7kspon",
+        "eventSeq": "0"
+      },
+      "packageId": "0xd4e30c04858a3643e9e18749e801381ff25e24bcf30fc4a13ab688001464a5ba",
+      "transactionModule": "event_nft",
+      "sender": "0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d",
+      "type": "0x2::display::DisplayCreated<0xd4e30c04858a3643e9e18749e801381ff25e24bcf30fc4a13ab688001464a5ba::event_nft::EventNFT>",
+      "parsedJson": {
+        "id": "0x31077986b1c28f1944d9f307691abefa2198142ad664f11cc98cbd579da4cb65"
+      },
+      "bcsEncoding": "base64",
+      "bcs": "MQd5hrHCjxlE2fMHaRq++iGYFCrWZPEcyYy9V52ky2U="
+    },
+    {
+      "id": {
+        "txDigest": "HriXiLGcHVQPTXhuKRTvx6AXo6F4z4hn5sykR7kspon",
+        "eventSeq": "1"
+      },
+      "packageId": "0xd4e30c04858a3643e9e18749e801381ff25e24bcf30fc4a13ab688001464a5ba",
+      "transactionModule": "event_nft",
+      "sender": "0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d",
+      "type": "0x2::display::VersionUpdated<0xd4e30c04858a3643e9e18749e801381ff25e24bcf30fc4a13ab688001464a5ba::event_nft::EventNFT>",
+      "parsedJson": {
+        "fields": {
+          "contents": [
+            {
+              "key": "name",
+              "value": "{name}"
+            },
+            {
+              "key": "image_url",
+              "value": "https://aggregator.walrus.space/v1/{image_cid}"
+            },
+            {
+              "key": "description",
+              "value": "SXT Event NFT"
+            }
+          ]
+        },
+        "id": "0x31077986b1c28f1944d9f307691abefa2198142ad664f11cc98cbd579da4cb65",
+        "version": 1
+      },
+      "bcsEncoding": "base64",
+      "bcs": "MQd5hrHCjxlE2fMHaRq++iGYFCrWZPEcyYy9V52ky2UBAAMEbmFtZQZ7bmFtZX0JaW1hZ2VfdXJsLmh0dHBzOi8vYWdncmVnYXRvci53YWxydXMuc3BhY2UvdjEve2ltYWdlX2NpZH0LZGVzY3JpcHRpb24NU1hUIEV2ZW50IE5GVA=="
+    }
+  ],
+  "objectChanges": [
+    {
+      "type": "mutated",
+      "sender": "0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d",
+      "owner": {
+        "AddressOwner": "0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d"
+      },
+      "objectType": "0x2::coin::Coin<0x2::sui::SUI>",
+      "objectId": "0x750448bcdb5c4b0fb3ed1d659b3f3ed59f1fd7ca657f39681d70d741127e3d73",
+      "version": "644760958",
+      "previousVersion": "644760957",
+      "digest": "8CM171ZS3AmYGHvXQA3KRVjyB5Dozh4nrKAtiXykyrME"
+    },
+    {
+      "type": "created",
+      "sender": "0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d",
+      "owner": {
+        "AddressOwner": "0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d"
+      },
+      "objectType": "0x2::package::UpgradeCap",
+      "objectId": "0x1325070f2b5d488d8bc039953c9fc42697754ca75f49b31bce3966c76fa1a6f7",
+      "version": "644760958",
+      "digest": "BngPYjhAvCf55vvhA8akcV2NwjULdJxkZj5iUEWFba5c"
+    },
+    {
+      "type": "created",
+      "sender": "0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d",
+      "owner": {
+        "Shared": {
+          "initial_shared_version": 644760958
+        }
+      },
+      "objectType": "0x2::display::Display<0xd4e30c04858a3643e9e18749e801381ff25e24bcf30fc4a13ab688001464a5ba::event_nft::EventNFT>",
+      "objectId": "0x31077986b1c28f1944d9f307691abefa2198142ad664f11cc98cbd579da4cb65",
+      "version": "644760958",
+      "digest": "wJKgMNwsAiSWGLMG4Dum7UBk1oRVN7JooXp14WhiDjr"
+    },
+    {
+      "type": "created",
+      "sender": "0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d",
+      "owner": {
+        "AddressOwner": "0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d"
+      },
+      "objectType": "0x2::package::Publisher",
+      "objectId": "0xb4ef3aadb9317d5394a8dca3a08c58a4bb6a0490dd8edcbf52d045419e07cbd1",
+      "version": "644760958",
+      "digest": "5qvURdfv7ArNvimdvkVHRouHChVeh6rsVH5LTqqQtu8L"
+    },
+    {
+      "type": "published",
+      "packageId": "0xd4e30c04858a3643e9e18749e801381ff25e24bcf30fc4a13ab688001464a5ba",
+      "version": "1",
+      "digest": "9csTm3J1g2VkZQeezetKiRMJFYChFxyn4G41sPgjV6wo",
+      "modules": [
+        "event_nft"
+      ]
+    }
+  ],
+  "balanceChanges": [
+    {
+      "owner": {
+        "AddressOwner": "0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d"
+      },
+      "coinType": "0x2::sui::SUI",
+      "amount": "-16685280"
+    }
+  ],
+  "timestampMs": "1760258316516",
+  "confirmedLocalExecution": true,
+  "checkpoint": "199930839"
+}

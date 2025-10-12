@@ -63,7 +63,7 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
     active: true,
     startAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
     endAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-    moveCall: { target: '', typeArguments: [], argumentsTemplate: ['{recipient}', '{imageCid}', '{imageMimeType}'], gasBudget: 20000000 },
+    moveCall: { target: '', typeArguments: [], argumentsTemplate: ['{recipient}', '{name}', '{imageCid}', '{imageMimeType}'], gasBudget: 20000000 },
     totalCap: undefined
   });
 
@@ -515,7 +515,7 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
             (newEvent as any).moveCall = {
               target,
               typeArguments: [],
-              argumentsTemplate: ['{recipient}', '{imageCid}', '{imageMimeType}'],
+              argumentsTemplate: ['{recipient}', '{name}', '{imageCid}', '{imageMimeType}'],
               gasBudget: 50_000_000
             };
             setMessage('✅ Move設定完了');
@@ -580,7 +580,7 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
           moveCall: { 
             target: '', 
             typeArguments: [], 
-            argumentsTemplate: ['{recipient}', '{imageCid}', '{imageMimeType}'], 
+            argumentsTemplate: ['{recipient}', '{name}', '{imageCid}', '{imageMimeType}'], 
             gasBudget: 50_000_000 
           }
         });

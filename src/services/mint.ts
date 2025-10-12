@@ -189,7 +189,8 @@ export async function delegateToSponsor(
     moveCall: event.moveCall,
     imageCid: event.imageCid,
     imageMimeType: event.imageMimeType,
-    collectionId: event.collectionId
+    collectionId: event.collectionId,
+    eventName: event.name || 'Event NFT'
   };
 
   const response = await fetch(`${sponsorUrl}/api/mint`, {
