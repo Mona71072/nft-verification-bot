@@ -15,6 +15,7 @@ function App() {
   const { account, connected } = useWalletWithErrorHandling() as any;
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [currentPage, setCurrentPage] = useState<'verification' | 'admin'>('verification');
+  const [renderKey, setRenderKey] = useState<number>(0);
 
   // 管理者チェック（ヘッダー表示制御用）
   useEffect(() => {
@@ -62,6 +63,8 @@ function App() {
         } else {
           setCurrentPage('verification');
         }
+        // 強制的に再レンダリング
+        setRenderKey(prev => prev + 1);
       }
     };
 
@@ -160,12 +163,15 @@ function App() {
       <ConnectModal />
 
       {/* Content */}
-      <div style={{ 
-        maxWidth: '1200px', 
-        margin: '0 auto', 
-        padding: '1rem',
-        minHeight: 'calc(100vh - 56px)'
-      }}>
+      <div 
+        key={renderKey}
+        style={{ 
+          maxWidth: '1200px', 
+          margin: '0 auto', 
+          padding: '1rem',
+          minHeight: 'calc(100vh - 56px)'
+        }}
+      >
         {(() => {
           try {
             if (typeof window !== 'undefined') {
