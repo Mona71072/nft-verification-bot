@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import '@suiet/wallet-kit/style.css';
+import { ConnectButton } from '@suiet/wallet-kit';
 import { useWalletWithErrorHandling } from './hooks/useWallet';
 import { NFTVerification } from './components/NFTVerification';
 import AdminPanel from './AdminPanel';
@@ -82,8 +83,8 @@ function App() {
             SyndicateXTokyo
           </a>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            {/* ウォレット情報表示 */}
-            {connected && account?.address && (
+            {/* ウォレット接続ボタンまたはウォレット情報表示 */}
+            {connected && account?.address ? (
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -111,6 +112,23 @@ function App() {
                 </span>
                 {copied && <span style={{ color: '#10b981', fontSize: '11px' }}>✓</span>}
                 {isAdmin && <span style={{ color: '#2563eb', fontWeight: 600 }}>🔑</span>}
+              </div>
+            ) : (
+              <div style={{ 
+                fontSize: '0.875rem',
+                display: 'flex',
+                alignItems: 'center'
+              }}>
+                <ConnectButton 
+                  style={{
+                    padding: '0.5rem 1rem',
+                    borderRadius: '8px',
+                    fontSize: '0.875rem',
+                    fontWeight: 600
+                  }}
+                >
+                  ウォレット接続
+                </ConnectButton>
               </div>
             )}
             {isAdmin && (

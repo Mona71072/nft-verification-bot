@@ -2933,9 +2933,11 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
                             {it.recipient && (
                               <button
                                 onClick={() => {
-                                  navigator.clipboard.writeText(it.recipient);
-                                  setMessage('アドレスをコピーしました');
-                                  setTimeout(() => setMessage(''), 2000);
+                                  if (it.recipient) {
+                                    navigator.clipboard.writeText(it.recipient);
+                                    setMessage('アドレスをコピーしました');
+                                    setTimeout(() => setMessage(''), 2000);
+                                  }
                                 }}
                                 style={{
                                   padding: '0.25rem 0.5rem',

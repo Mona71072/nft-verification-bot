@@ -235,7 +235,7 @@ async function handleVerifyNFT(interaction: ButtonInteraction) {
     const startDescription = unescapeText(startTemplate?.description);
     
     const baseUrl = templates.verificationUrl || config.VERIFICATION_URL;
-    const verificationUrl = `${baseUrl}?discord_id=${interaction.user.id}`;
+    const verificationUrl = `${baseUrl}/Verification?discord_id=${interaction.user.id}`;
     
     const verifyEmbed = new EmbedBuilder()
       .setTitle(startTitle)
