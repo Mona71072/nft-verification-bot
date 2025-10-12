@@ -9,8 +9,8 @@ SUI_NETWORK = "mainnet"
 # Claynosaurz Popkinsコレクション
 NFT_COLLECTION_ID = "0xb908f3c6fea6865d32e2048c520cdfe3b5c5bbcebb658117c41bad70f52b7ccc::popkins_nft::Popkins"
 MINT_SPONSOR_API_URL = "https://nft-verification-bot.onrender.com"
-DEFAULT_MOVE_TARGET = "0x5547e16927687494164569a33543bad37817abfb0ff2ba33a15596c1974923e7::event_nft::mint_to"
-DEFAULT_COLLECTION_CREATE_TARGET = "0x5547e16927687494164569a33543bad37817abfb0ff2ba33a15596c1974923e7::event_nft::create_collection"
+DEFAULT_MOVE_TARGET = "0xf9184e632f45705372e057be7b48d0b1d5c239e2932f041f2e49b7801677fcc3::event_nft::mint_to"
+DEFAULT_COLLECTION_CREATE_TARGET = "0xf9184e632f45705372e057be7b48d0b1d5c239e2932f041f2e49b7801677fcc3::event_nft::create_collection"
 # Walrus.pdf 準拠の設定（Mainnet）
 # 読み出し（Mainnet用Aggregator）
 WALRUS_AGGREGATOR_BASE = "https://wal-aggregator-mainnet.staketab.org"
@@ -55,8 +55,8 @@ SUI_NETWORK = "mainnet"
 # Claynosaurz Popkinsコレクション
 NFT_COLLECTION_ID = "0xb908f3c6fea6865d32e2048c520cdfe3b5c5bbcebb658117c41bad70f52b7ccc::popkins_nft::Popkins"
 MINT_SPONSOR_API_URL = "https://nft-verification-bot.onrender.com"
-DEFAULT_MOVE_TARGET = "0x5547e16927687494164569a33543bad37817abfb0ff2ba33a15596c1974923e7::event_nft::mint_to"
-DEFAULT_COLLECTION_CREATE_TARGET = "0x5547e16927687494164569a33543bad37817abfb0ff2ba33a15596c1974923e7::event_nft::create_collection"
+DEFAULT_MOVE_TARGET = "0xf9184e632f45705372e057be7b48d0b1d5c239e2932f041f2e49b7801677fcc3::event_nft::mint_to"
+DEFAULT_COLLECTION_CREATE_TARGET = "0xf9184e632f45705372e057be7b48d0b1d5c239e2932f041f2e49b7801677fcc3::event_nft::create_collection"
 # Walrus.pdf 準拠の設定（Mainnet）
 WALRUS_AGGREGATOR_BASE = "https://wal-aggregator-mainnet.staketab.org"
 WALRUS_AGGREGATOR_FALLBACKS = "https://aggregator.suicore.com,https://sui-walrus-mainnet-aggregator.bwarelabs.com,https://walrus-agg.mainnet.obelisk.sh"
