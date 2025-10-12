@@ -63,7 +63,7 @@ export async function storeBlob(
     qs.set('send_object_to', options.sendTo);
   }
 
-  const url = `${config.publisherBase}/v1/store?${qs.toString()}`;
+  const url = `${config.publisherBase}/v1/blobs?${qs.toString()}`;
   
   // PDF準拠: バイト列をそのまま送信（multipart/form-dataではない）
   let body: ArrayBuffer;
