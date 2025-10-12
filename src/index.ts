@@ -1157,6 +1157,75 @@ app.delete('/api/mint-collections/:id', async (c) => {
   }
 });
 
+// Discord OAuth トークン交換API
+app.post('/api/discord/oauth/exchange', async (c) => {
+  try {
+    const { code, redirectUri } = await c.req.json();
+    
+    if (!code || !redirectUri) {
+      return c.json({ success: false, error: 'code and redirectUri are required' }, 400);
+    }
+
+    const clientId = c.env.DISCORD_CLIENT_ID;
+    const clientSecret = c.env.DISCORD_CLIENT_SECRET;
+
+    if (!clientId || !clientSecret) {
+      return c.json({ success: false, error: 'Discord OAuth not configured' }, 500);
+    }
+
+    // トークン交換
+    const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        grant_type: 'authorization_code',
+        code: code,
+        redirect_uri: redirectUri
+      })
+    });
+
+    if (!tokenResponse.ok) {
+      const errorText = await tokenResponse.text();
+      console.error('Discord token exchange failed:', errorText);
+      return c.json({ success: false, error: 'Failed to exchange Discord code' }, 400);
+    }
+
+    const tokenData = await tokenResponse.json();
+    const accessToken = tokenData.access_token;
+
+    // ユーザー情報取得
+    const userResponse = await fetch('https://discord.com/api/users/@me', {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+
+    if (!userResponse.ok) {
+      return c.json({ success: false, error: 'Failed to fetch Discord user' }, 400);
+    }
+
+    const userData = await userResponse.json();
+
+    return c.json({
+      success: true,
+      data: {
+        discordId: userData.id,
+        username: userData.username,
+        discriminator: userData.discriminator,
+        avatar: userData.avatar
+      }
+    });
+
+  } catch (error) {
+    console.error('Discord OAuth exchange error:', error);
+    return c.json({ success: false, error: 'OAuth exchange failed' }, 500);
+  }
+});
+
 // Nonce生成API
 app.post('/api/nonce', async (c) => {
   try {

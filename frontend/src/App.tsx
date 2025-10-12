@@ -4,6 +4,7 @@ import { useWalletWithErrorHandling } from './hooks/useWallet';
 import { NFTVerification } from './components/NFTVerification';
 import AdminPanel from './AdminPanel';
 import MintPage from './MintPage';
+import Dashboard from './pages/Dashboard';
 
 // APIベースURLの設定（本番環境用）
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
@@ -130,6 +131,7 @@ function App() {
           try {
             if (typeof window !== 'undefined') {
               const path = window.location.pathname;
+              if (path === '/Verification') return <NFTVerification />;
               if (path.startsWith('/mint')) return <MintPage />;
               if (path.startsWith('/admin')) {
                 if (!isAdmin) {
@@ -170,7 +172,7 @@ function App() {
                 if (path.startsWith('/admin/mint')) return <AdminPanel mode="mint" />;
               }
             }
-            return <NFTVerification />;
+            return <Dashboard />;
           } catch (error) {
             console.error('Component rendering error:', error);
             return (
