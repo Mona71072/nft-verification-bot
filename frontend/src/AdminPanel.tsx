@@ -2750,7 +2750,106 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
       )}
 
       {activeTab === 'history' && (
-        <div style={{ display: 'grid', gap: '1rem' }}>
+        <div style={{ display: 'grid', gap: '1.5rem' }}>
+          {/* コレクション管理セクション */}
+          <div style={{ 
+            background: '#f9fafb', 
+            padding: '1.5rem', 
+            borderRadius: '8px',
+            border: '1px solid #e5e7eb'
+          }}>
+            <h3 style={{ marginTop: 0, marginBottom: '1rem', color: '#111827' }}>🗂️ コレクション管理</h3>
+            <div style={{ display: 'grid', gap: '0.75rem' }}>
+              {mintCollections.length === 0 ? (
+                <p style={{ color: '#6b7280', margin: 0 }}>登録されたコレクションがありません</p>
+              ) : (
+                mintCollections.map(col => (
+                  <div key={col.id} style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '1rem',
+                    background: 'white',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '6px'
+                  }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: '600', color: '#111827', marginBottom: '0.25rem' }}>
+                        {col.name}
+                      </div>
+                      <div style={{ fontSize: '0.875rem', color: '#6b7280', fontFamily: 'monospace' }}>
+                        {col.packageId || 'N/A'}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.25rem' }}>
+                        作成日時: {new Date(Number(col.id)).toLocaleString('ja-JP')}
+                      </div>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        if (!confirm(`本当に「${col.name}」を削除しますか？\n\nこの操作は取り消せません。`)) {
+                          return;
+                        }
+                        try {
+                          setLoading(true);
+                          setMessage('🗑️ 削除中...');
+                          const res = await fetch(`${API_BASE_URL}/api/mint-collections/${col.id}`, {
+                            method: 'DELETE',
+                            headers: {
+                              'Content-Type': 'application/json',
+                              'X-Admin-Address': account?.address || localStorage.getItem('currentWalletAddress') || '',
+                              'X-Wallet-Connected': 'true'
+                            }
+                          });
+                          const data = await res.json();
+                          if (data.success) {
+                            setMessage('✅ コレクションを削除しました');
+                            // リストから削除
+                            setMintCollections(prev => prev.filter(c => c.id !== col.id));
+                            setTimeout(() => setMessage(''), 3000);
+                          } else {
+                            setMessage(`❌ 削除失敗: ${data.error}`);
+                            setTimeout(() => setMessage(''), 5000);
+                          }
+                        } catch (err: any) {
+                          console.error('Collection delete error:', err);
+                          setMessage(`❌ エラー: ${err.message}`);
+                          setTimeout(() => setMessage(''), 5000);
+                        } finally {
+                          setLoading(false);
+                        }
+                      }}
+                      disabled={loading}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        background: '#ef4444',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: loading ? 'not-allowed' : 'pointer',
+                        opacity: loading ? 0.6 : 1,
+                        fontWeight: '500',
+                        fontSize: '0.875rem',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseOver={(e) => !loading && (e.currentTarget.style.background = '#dc2626')}
+                      onMouseOut={(e) => !loading && (e.currentTarget.style.background = '#ef4444')}
+                    >
+                      🗑️ 削除
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* ミント履歴セクション */}
+          <div style={{ 
+            background: '#f9fafb', 
+            padding: '1.5rem', 
+            borderRadius: '8px',
+            border: '1px solid #e5e7eb'
+          }}>
+            <h3 style={{ marginTop: 0, marginBottom: '1rem', color: '#111827' }}>📜 ミント履歴</h3>
           <div style={{ display: 'grid', gap: '0.5rem' }}>
             <label style={{ fontSize: '0.9rem', color: '#374151' }}>コレクションを選択</label>
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -2834,6 +2933,7 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
                 )}
               </tbody>
             </table>
+          </div>
           </div>
         </div>
       )}

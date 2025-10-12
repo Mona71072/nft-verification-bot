@@ -1008,6 +1008,56 @@ app.get('/api/mint-collections', async (c) => {
   }
 });
 
+// ミント用コレクション削除API
+app.delete('/api/mint-collections/:id', async (c) => {
+  try {
+    // 管理者チェック
+    const adminAddresses = (c.env.ADMIN_ADDRESSES || '').split(',').map(a => a.trim().toLowerCase());
+    const walletAddr = c.req.header('X-Admin-Address')?.toLowerCase();
+    const walletConnected = c.req.header('X-Wallet-Connected');
+    
+    if (!walletConnected || walletConnected !== 'true') {
+      return c.json({ success: false, error: 'Wallet not connected' }, 401);
+    }
+    
+    if (!walletAddr || !adminAddresses.includes(walletAddr)) {
+      return c.json({ success: false, error: 'Unauthorized: Admin only' }, 403);
+    }
+
+    const collectionId = c.req.param('id');
+    if (!collectionId) {
+      return c.json({ success: false, error: 'Collection ID required' }, 400);
+    }
+
+    if (!c.env.COLLECTION_STORE) {
+      return c.json({ success: false, error: 'COLLECTION_STORE not available' }, 503);
+    }
+
+    // コレクション一覧を取得
+    const s = await c.env.COLLECTION_STORE.get('mint_collections');
+    let collections = s ? JSON.parse(s) : [];
+    
+    // 指定IDのコレクションを除外
+    const filteredCollections = collections.filter((col: any) => col.id !== collectionId);
+    
+    if (filteredCollections.length === collections.length) {
+      return c.json({ success: false, error: 'Collection not found' }, 404);
+    }
+
+    // 更新後のコレクションリストを保存
+    await c.env.COLLECTION_STORE.put('mint_collections', JSON.stringify(filteredCollections));
+    
+    return c.json({ 
+      success: true, 
+      message: 'Collection deleted successfully',
+      deletedId: collectionId
+    });
+  } catch (e: any) {
+    console.error('mint-collection delete failed', e);
+    return c.json({ success: false, error: e?.message || 'Failed to delete collection' }, 500);
+  }
+});
+
 // コレクション別ミント履歴（既存維持）
 app.get('/api/mint-collections/:typePath/mints', async (c) => {
   try {
