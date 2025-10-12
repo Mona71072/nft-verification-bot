@@ -27,7 +27,8 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
       document.head.removeChild(style);
     };
   }, []);
-  const [collections, setCollections] = useState<NFTCollection[]>([]);
+  const [collections, setCollections] = useState<NFTCollection[]>([]); // ロール管理用コレクション
+  const [mintCollections, setMintCollections] = useState<any[]>([]); // ミント管理用コレクション
   const [discordRoles, setDiscordRoles] = useState<DiscordRole[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
@@ -355,6 +356,21 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
       }
     } catch (error) {
       console.error('Failed to fetch collections:', error);
+    }
+  };
+
+  // ミント用コレクション取得
+  const fetchMintCollections = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/mint-collections`, {
+        headers: getAuthHeaders()
+      });
+      const data = await response.json();
+      if (data.success) {
+        setMintCollections(data.data || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch mint collections:', error);
     }
   };
 
@@ -1052,6 +1068,8 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
       fetchEvents();
     } else if (activeTab === 'batch') {
       fetchBatchStats();
+    } else if (activeTab === 'history') {
+      fetchMintCollections(); // ミント管理用コレクションを取得
     }
   }, [activeTab]);
 
@@ -2722,7 +2740,7 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
                 style={{ padding: '0.5rem', borderRadius: 4, border: '1px solid #ccc', minWidth: 280 }}
               >
                 <option value="">選択してください</option>
-                {collections.map(col => (
+                {mintCollections.map(col => (
                   <option key={col.id} value={col.packageId}>
                     {col.name} ({(col.packageId || '').slice(0, 10)}...)
                   </option>
