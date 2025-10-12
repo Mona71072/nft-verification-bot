@@ -667,7 +667,7 @@ app.post('/api/admin/events', async (c) => {
     }
 
     const body = await c.req.json();
-    const { name, description, startAt, endAt, active = false, imageUrl, maxMints, mintPrice, collectionId, roleId, roleName } = body;
+    const { name, description, startAt, endAt, active = false, imageUrl, imageCid, imageMimeType, maxMints, mintPrice, collectionId, roleId, roleName, moveCall, totalCap } = body;
 
     // 必須フィールドの検証
     if (!name || !description || !startAt || !endAt) {
@@ -687,11 +687,15 @@ app.post('/api/admin/events', async (c) => {
       endAt,
       active: Boolean(active),
       imageUrl: imageUrl || '',
+      imageCid: imageCid || '',
+      imageMimeType: imageMimeType || '',
       maxMints: maxMints || null,
       mintPrice: mintPrice || null,
       collectionId: collectionId || '',
       roleId: roleId || '',
       roleName: roleName || '',
+      moveCall: moveCall || null,
+      totalCap: totalCap || null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -732,7 +736,7 @@ app.put('/api/admin/events/:id', async (c) => {
     }
 
     const body = await c.req.json();
-    const { name, description, startAt, endAt, active, imageUrl, maxMints, mintPrice, collectionId, roleId, roleName } = body;
+    const { name, description, startAt, endAt, active, imageUrl, imageCid, imageMimeType, maxMints, mintPrice, collectionId, roleId, roleName, moveCall, totalCap } = body;
 
     // イベントリストを取得
     const listStr = await store.get('events');
@@ -753,11 +757,15 @@ app.put('/api/admin/events/:id', async (c) => {
       ...(endAt !== undefined && { endAt }),
       ...(active !== undefined && { active: Boolean(active) }),
       ...(imageUrl !== undefined && { imageUrl }),
+      ...(imageCid !== undefined && { imageCid }),
+      ...(imageMimeType !== undefined && { imageMimeType }),
       ...(maxMints !== undefined && { maxMints }),
       ...(mintPrice !== undefined && { mintPrice }),
       ...(collectionId !== undefined && { collectionId }),
       ...(roleId !== undefined && { roleId }),
       ...(roleName !== undefined && { roleName }),
+      ...(moveCall !== undefined && { moveCall }),
+      ...(totalCap !== undefined && { totalCap }),
       updatedAt: new Date().toISOString()
     };
 
