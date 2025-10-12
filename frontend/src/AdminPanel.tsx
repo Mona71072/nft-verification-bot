@@ -1106,6 +1106,26 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
       setLoading(true);
       setMessage('イベントを保存中...');
       
+      // moveCall の自動設定（空または target がない場合）
+      if (!eventData.moveCall || !eventData.moveCall.target) {
+        setMessage('🔄 Move設定を準備中...');
+        try {
+          const mt = await fetch(`${API_BASE_URL}/api/move-targets`).then(r => r.json()).catch(() => null);
+          const target = mt?.data?.defaultMoveTarget || '';
+          if (target) {
+            eventData.moveCall = {
+              target,
+              typeArguments: [],
+              argumentsTemplate: ['{recipient}', '{name}', '{imageCid}', '{imageMimeType}'],
+              gasBudget: 50_000_000
+            };
+            setMessage('✅ Move設定完了');
+          }
+        } catch (moveError) {
+          console.warn('Move target setup failed:', moveError);
+        }
+      }
+      
       const url = eventData.id 
         ? `${API_BASE_URL}/api/admin/events/${eventData.id}`
         : `${API_BASE_URL}/api/admin/events`;
