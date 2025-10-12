@@ -1,8 +1,6 @@
 import React from 'react';
-import { useWalletWithErrorHandling } from '../hooks/useWallet';
 
 const Dashboard: React.FC = () => {
-  const { account, connected } = useWalletWithErrorHandling();
 
   return (
     <div style={{
@@ -37,47 +35,6 @@ const Dashboard: React.FC = () => {
             NFTの管理と各種機能へのアクセス
           </p>
         </div>
-
-        {/* ウォレット接続状態 */}
-        {connected && account?.address ? (
-          <div style={{
-            background: '#f9fafb',
-            border: '2px solid #e5e7eb',
-            borderRadius: '12px',
-            padding: '1.5rem',
-            marginBottom: '2rem'
-          }}>
-            <div style={{ 
-              fontSize: '0.875rem', 
-              color: '#6b7280', 
-              marginBottom: '0.5rem',
-              fontWeight: 600
-            }}>
-              接続済みウォレット
-            </div>
-            <div style={{
-              fontFamily: 'monospace',
-              fontSize: '1rem',
-              color: '#1a1a1a',
-              wordBreak: 'break-all'
-            }}>
-              {account.address}
-            </div>
-          </div>
-        ) : (
-          <div style={{
-            background: '#fef3c7',
-            border: '2px solid #fbbf24',
-            borderRadius: '12px',
-            padding: '1.5rem',
-            marginBottom: '2rem',
-            textAlign: 'center'
-          }}>
-            <div style={{ color: '#92400e', fontSize: '1rem' }}>
-              ウォレットを接続してください
-            </div>
-          </div>
-        )}
 
         {/* 機能ナビゲーション */}
         <div style={{
