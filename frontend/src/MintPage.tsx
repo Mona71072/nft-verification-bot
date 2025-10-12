@@ -148,7 +148,17 @@ export default function MintPage() {
       
       const mintData = await mintResp.json();
       if (mintData?.success) {
-        setMessage(`🎉 ミント完了！ トランザクション: ${mintData?.data?.txDigest || 'N/A'}`);
+        const txDigest = mintData?.data?.txDigest || 'N/A';
+        const nftObjectIds = mintData?.data?.nftObjectIds || [];
+        
+        if (nftObjectIds.length > 0) {
+          const nftLinks = nftObjectIds.map((id: string) => 
+            `https://suiscan.xyz/mainnet/object/${id}`
+          ).join('\n');
+          setMessage(`🎉 ミント完了！\n\n🎁 NFT Object ID:\n${nftObjectIds.join('\n')}\n\n📋 トランザクション: ${txDigest}\n\n詳細: ${nftLinks}`);
+        } else {
+          setMessage(`🎉 ミント完了！ トランザクション: ${txDigest}`);
+        }
       } else {
         throw new Error(mintData?.error || 'ミントに失敗しました');
       }

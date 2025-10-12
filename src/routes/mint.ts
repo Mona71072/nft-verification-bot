@@ -110,16 +110,23 @@ app.post('/api/mint', async (c) => {
     // ミント数の更新
     await incrementMintCount(eventId, mintedStore);
 
-    // ミント詳細ログ（コレクション別）
+    // ミント詳細ログ（コレクション別）& NFTオブジェクトID取得
+    let nftObjectIds: string[] = [];
     try {
       if (mintResult.txDigest && ev.collectionId) {
-        await logMintDetails(mintResult.txDigest, ev, address, c.env);
+        nftObjectIds = await logMintDetails(mintResult.txDigest, ev, address, c.env);
       }
     } catch (e) {
       logError('Mint log enrichment failed', e);
     }
 
-    return c.json({ success: true, data: { txDigest: mintResult.txDigest } });
+    return c.json({ 
+      success: true, 
+      data: { 
+        txDigest: mintResult.txDigest,
+        nftObjectIds: nftObjectIds
+      } 
+    });
 
   } catch (error: any) {
     logError('Mint API error', error);
@@ -138,8 +145,9 @@ app.post('/api/mint', async (c) => {
  * @param ev イベントデータ
  * @param address ユーザーアドレス
  * @param env 環境変数
+ * @returns NFTオブジェクトIDの配列
  */
-async function logMintDetails(txDigest: string, ev: any, address: string, env: any): Promise<void> {
+async function logMintDetails(txDigest: string, ev: any, address: string, env: any): Promise<string[]> {
   try {
     // Sui JSON-RPC 呼び出しで objectChanges を取得
     const suiNet = env.SUI_NETWORK || 'mainnet';
@@ -207,8 +215,12 @@ async function logMintDetails(txDigest: string, ev: any, address: string, env: a
       expirationTtl: 60 * 60 * 24 * 365 
     });
 
+    // NFTオブジェクトIDを返す
+    return nftObjects;
+
   } catch (e) {
     logError('Failed to log mint details', e);
+    return [];
   }
 }
 
