@@ -123,7 +123,12 @@ app.post('/api/mint', async (c) => {
 
   } catch (error: any) {
     logError('Mint API error', error);
-    return c.json({ success: false, error: 'Mint API error' }, 500);
+    console.error('Mint API detailed error:', {
+      message: error?.message,
+      stack: error?.stack,
+      name: error?.name
+    });
+    return c.json({ success: false, error: `Mint API error: ${error?.message || 'Unknown error'}` }, 500);
   }
 });
 
