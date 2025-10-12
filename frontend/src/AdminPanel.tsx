@@ -11,7 +11,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verificat
 type AdminMode = 'admin' | 'roles' | 'mint' | undefined;
 
 function AdminPanel({ mode }: { mode?: AdminMode }) {
-  const { account, connected, signPersonalMessage } = useWalletWithErrorHandling() as any;
+  const { account, connected } = useWalletWithErrorHandling() as any;
   
   // スピンアニメーション用のCSS
   React.useEffect(() => {
@@ -92,14 +92,6 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
       setCreateColMessage('コレクション作成中...');
       setCreateColResult(null);
 
-      // 認証メッセージ（管理操作）と署名
-      const timestamp = new Date().toISOString();
-      const authMessage = `SXT Admin Collection Create\naddress=${account.address}\ntimestamp=${timestamp}`;
-      const msgBytes = new TextEncoder().encode(authMessage);
-      const sig = typeof signPersonalMessage === 'function' ? await signPersonalMessage({ message: msgBytes }) : null;
-      const signature = sig?.signature;
-      const bytes = sig?.bytes;
-      const publicKey = (sig as any)?.publicKey ?? (account as any)?.publicKey;
       try { localStorage.setItem('currentWalletAddress', account.address); } catch {}
 
       // Package IDをデフォルト値から取得
@@ -1224,35 +1216,6 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
         <div style={{ marginBottom: '2rem', display: 'grid', gap: '0.75rem', maxWidth: '400px' }}>
           <a href="/admin/roles" style={{ padding: '0.75rem 1rem', background: '#f8f9fa', borderRadius: 8, textDecoration: 'none', fontWeight: 600, color: '#1f2937', textAlign: 'center', border: '1px solid #d1d5db' }}>ロール管理へ</a>
           <a href="/admin/mint" style={{ padding: '0.75rem 1rem', background: '#f8f9fa', borderRadius: 8, textDecoration: 'none', fontWeight: 600, color: '#1f2937', textAlign: 'center', border: '1px solid #d1d5db' }}>ミント管理へ</a>
-        </div>
-      )}
-
-      {mode === 'admin' && (
-        <div style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #d1d5db', borderRadius: 8 }}>
-          <h3 style={{ margin: '0 0 0.75rem 0' }}>パッケージ公開（本番）</h3>
-          <div style={{ display: 'grid', gap: '0.5rem', maxWidth: 720 }}>
-            <div>
-              <input type="file" accept="application/json" onChange={(e) => handleArtifactChange(e.target.files?.[0] || null)} />
-              <div style={{ fontSize: '0.85rem', color: '#6b7280' }}>sxt_nft/build.artifacts.json を選択してください</div>
-            </div>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button onClick={handlePublishPackage} disabled={publishing || !artifactModules || !artifactDeps} style={{ padding: '0.5rem 1rem', background: '#ef4444', color: 'white', border: 'none', borderRadius: 6, cursor: publishing || !artifactModules || !artifactDeps ? 'not-allowed' : 'pointer', opacity: publishing || !artifactModules || !artifactDeps ? 0.6 : 1 }}>
-                {publishing ? '公開中...' : 'パッケージ公開（本番）'}
-              </button>
-              {publishMessage && <div style={{ alignSelf: 'center', color: '#111827' }}>{publishMessage}</div>}
-            </div>
-            {publishResult && (
-              <div style={{ background: '#f9fafb', padding: '0.75rem', borderRadius: 6, border: '1px solid #e5e7eb' }}>
-                <div style={{ marginBottom: '0.5rem' }}>
-                  <strong>Tx Digest:</strong> <span style={{ fontFamily: 'monospace' }}>{publishResult?.data?.tx?.txDigest || publishResult?.txDigest || '-'}</span>
-                </div>
-                <details>
-                  <summary>詳細</summary>
-                  <pre style={{ overflowX: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '0.8rem' }}>{JSON.stringify(publishResult, null, 2)}</pre>
-                </details>
-              </div>
-            )}
-          </div>
         </div>
       )}
 

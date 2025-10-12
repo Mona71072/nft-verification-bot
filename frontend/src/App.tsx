@@ -82,57 +82,104 @@ function App() {
           }}>
             SyndicateXTokyo
           </a>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            {/* ウォレット接続ボタンまたはウォレット情報表示 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             {connected && account?.address ? (
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '6px 12px',
-                background: '#f3f4f6',
-                borderRadius: '6px',
-                border: '1px solid #e5e7eb',
-                fontSize: '12px'
-              }}>
-                <span 
+              <>
+                <div 
                   onClick={() => {
                     navigator.clipboard.writeText(account.address);
                     setCopied(true);
                     setTimeout(() => setCopied(false), 2000);
                   }}
-                  title={account.address}
-                  style={{ 
-                    cursor: 'pointer', 
-                    fontFamily: 'monospace',
-                    fontWeight: 500
-                  }}
-                >
-                  📍 {account.address.slice(0, 6)}...{account.address.slice(-4)}
-                </span>
-                {copied && <span style={{ color: '#10b981', fontSize: '11px' }}>✓</span>}
-                {isAdmin && <span style={{ color: '#2563eb', fontWeight: 600 }}>🔑</span>}
-              </div>
-            ) : (
-              <div style={{ 
-                fontSize: '0.875rem',
-                display: 'flex',
-                alignItems: 'center'
-              }}>
-                <ConnectButton 
+                  title={`${account.address}\nClick to copy`}
                   style={{
-                    padding: '0.5rem 1rem',
-                    borderRadius: '8px',
-                    fontSize: '0.875rem',
-                    fontWeight: 600
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '6px 10px',
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    borderRadius: '20px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    boxShadow: '0 2px 4px rgba(102, 126, 234, 0.2)'
+                  }}
+                  onMouseOver={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-1px)';
+                    e.currentTarget.style.boxShadow = '0 4px 8px rgba(102, 126, 234, 0.3)';
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 2px 4px rgba(102, 126, 234, 0.2)';
                   }}
                 >
-                  ウォレット接続
-                </ConnectButton>
-              </div>
-            )}
-            {isAdmin && (
-              <a href="/admin" style={{ padding: '0.5rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '8px', color: '#374151', textDecoration: 'none', fontSize: '0.75rem', fontWeight: 600 }}>管理者ページ</a>
+                  <span style={{ 
+                    fontFamily: 'monospace', 
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    color: 'white',
+                    letterSpacing: '0.5px'
+                  }}>
+                    {account.address.slice(0, 4)}...{account.address.slice(-4)}
+                  </span>
+                  {copied ? (
+                    <span style={{ fontSize: '10px' }}>✓</span>
+                  ) : (
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                  )}
+                </div>
+                {isAdmin && (
+                  <a 
+                    href="/admin" 
+                    style={{ 
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '6px 10px',
+                      background: '#2563eb',
+                      borderRadius: '20px',
+                      color: 'white',
+                      textDecoration: 'none',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      transition: 'all 0.2s',
+                      boxShadow: '0 2px 4px rgba(37, 99, 235, 0.2)'
+                    }}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.background = '#1d4ed8';
+                      e.currentTarget.style.transform = 'translateY(-1px)';
+                      e.currentTarget.style.boxShadow = '0 4px 8px rgba(37, 99, 235, 0.3)';
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.background = '#2563eb';
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = '0 2px 4px rgba(37, 99, 235, 0.2)';
+                    }}
+                  >
+                    <span style={{ fontSize: '12px' }}>🔑</span>
+                    <span>Admin</span>
+                  </a>
+                )}
+              </>
+            ) : (
+              <ConnectButton 
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '20px',
+                  fontSize: '0.875rem',
+                  fontWeight: 600,
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  border: 'none',
+                  color: 'white',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  boxShadow: '0 2px 4px rgba(102, 126, 234, 0.2)'
+                }}
+              >
+                Connect
+              </ConnectButton>
             )}
           </div>
         </div>

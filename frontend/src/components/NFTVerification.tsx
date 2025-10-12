@@ -12,8 +12,6 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verificat
 
 export const NFTVerification: React.FC = () => {
   useWalletWithErrorHandling();
-  const [showFullAddress, setShowFullAddress] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [discordId, setDiscordId] = useState('');
   
   // コレクション選択機能を追加
@@ -67,12 +65,7 @@ export const NFTVerification: React.FC = () => {
         </div>
 
         {/* Wallet Connection */}
-        <WalletConnection
-          showFullAddress={showFullAddress}
-          setShowFullAddress={setShowFullAddress}
-          copied={copied}
-          setCopied={setCopied}
-        />
+        <WalletConnection />
 
         {/* Collection Selection */}
         <CollectionSelector
