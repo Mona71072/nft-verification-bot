@@ -1,0 +1,5 @@
+[warning] Client/Server api version mismatch, client api version : 1.51.3, server api version : 1.57.3
+[warning] CLI's protocol version is 87, but the active network's protocol version is 97. 
+ Consider installing the latest version of the CLI - https://docs.sui.io/guides/developer/getting-started/sui-install 
+
+ If publishing/upgrading returns a dependency verification error, then install the latest CLI version.

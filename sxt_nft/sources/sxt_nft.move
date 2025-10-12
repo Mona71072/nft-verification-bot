@@ -37,7 +37,7 @@ module sxt_nft::event_nft {
         
         let mut display = display::new<EventNFT>(&publisher, ctx);
         display.add(string::utf8(b"name"), string::utf8(b"{name}"));
-        display.add(string::utf8(b"image_url"), string::utf8(b"https://aggregator.walrus.space/v1/{image_cid}"));
+        display.add(string::utf8(b"image_url"), string::utf8(b"https://wal-aggregator-testnet.staketab.org/v1/{image_cid}"));
         display.add(string::utf8(b"description"), string::utf8(b"SXT Event NFT"));
         display.update_version();
         
