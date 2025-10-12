@@ -1089,7 +1089,7 @@ app.delete('/api/mint-collections/:id', async (c) => {
 // Nonce生成API
 app.post('/api/nonce', async (c) => {
   try {
-    const { discordId, address } = await c.req.json();
+    const { discordId, address, scope } = await c.req.json();
     
     if (!discordId || !address) {
       return c.json({ success: false, error: 'discordId and address are required' }, 400);
@@ -1100,8 +1100,8 @@ app.post('/api/nonce', async (c) => {
       return c.json({ success: false, error: 'Invalid address format' }, 400);
     }
 
-    // Discord ID検証
-    if (!discordId.match(/^\d{17,19}$/)) {
+    // Discord ID検証（ミントスコープの場合はスキップ）
+    if (scope !== 'mint' && !discordId.match(/^\d{17,19}$/)) {
       return c.json({ success: false, error: 'Invalid Discord ID format' }, 400);
     }
 
