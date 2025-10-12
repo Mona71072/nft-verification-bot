@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import '@mysten/dapp-kit/dist/index.css';
-import { ConnectButton } from '@mysten/dapp-kit';
+import { ConnectButton, ConnectModal } from '@mysten/dapp-kit';
 import { useWalletWithErrorHandling } from './hooks/useWallet';
 import { NFTVerification } from './components/NFTVerification';
 import AdminPanel from './AdminPanel';
@@ -364,6 +364,9 @@ function App() {
           </div>
         </div>
       </nav>
+
+      {/* 公式のマルチウォレット選択モーダル */}
+      <ConnectModal />
 
       {/* Content */}
       <div style={{ 
