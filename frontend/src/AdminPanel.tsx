@@ -33,7 +33,6 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [editingCollection, setEditingCollection] = useState<NFTCollection | null>(null);
-  const [copied, setCopied] = useState(false);
   
   // バッチ処理関連の状態
   const [batchConfig, setBatchConfig] = useState<BatchConfig | null>(null);
@@ -224,7 +223,6 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
   const [dmSettings, setDmSettings] = useState<DmSettings | null>(null);
   const [dmEditing, setDmEditing] = useState(false);
   const [editingDm, setEditingDm] = useState<DmSettings | null>(null);
-  const [isCurrentAdmin, setIsCurrentAdmin] = useState<boolean>(false);
 
   const [newCollection, setNewCollection] = useState({
     name: '',
@@ -244,28 +242,6 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
       return () => clearTimeout(timer);
     }
   }, [message]);
-
-  // 管理者チェック（KVストアベース）
-  useEffect(() => {
-    const checkAdmin = async () => {
-      try {
-        const addr = account?.address || localStorage.getItem('currentWalletAddress') || '';
-        if (!addr) {
-          setIsCurrentAdmin(false);
-          return;
-        }
-        
-        const response = await fetch(`${API_BASE_URL}/api/admin/check/${addr}`);
-        const data = await response.json();
-        setIsCurrentAdmin(Boolean(data?.success && data?.isAdmin));
-      } catch (error) {
-        console.error('Failed to check admin status:', error);
-        setIsCurrentAdmin(false);
-      }
-    };
-    
-    checkAdmin();
-  }, [account?.address, connected]);
 
   // 管理者認証ヘッダーを生成
   const getAuthHeaders = () => {
@@ -1158,59 +1134,6 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
       <h1 style={{ marginBottom: '1rem' }}>
         {mode === 'admin' ? '管理者ページ' : mode === 'mint' ? 'ミント管理' : mode === 'roles' ? 'ロール管理' : 'NFT Verification 管理パネル'}
       </h1>
-
-      {/* ウォレット情報表示 */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '12px',
-        padding: '12px 16px',
-        background: '#f3f4f6',
-        borderRadius: '8px',
-        border: '1px solid #e5e7eb',
-        fontSize: '14px',
-        marginBottom: '2rem',
-        flexWrap: 'wrap'
-      }}>
-        {connected && account?.address ? (
-          <>
-            <span style={{ color: '#10b981', fontWeight: 600 }}>✅ 接続済み</span>
-            <span 
-              onClick={() => {
-                navigator.clipboard.writeText(account.address);
-                setCopied(true);
-                setTimeout(() => setCopied(false), 2000);
-              }}
-              title={account.address}
-              style={{ 
-                cursor: 'pointer', 
-                fontFamily: 'monospace',
-                padding: '4px 8px',
-                background: 'white',
-                borderRadius: '4px',
-                border: '1px solid #d1d5db',
-                transition: 'all 0.2s'
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.background = '#e5e7eb';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.background = 'white';
-              }}
-            >
-              📍 {account.address.slice(0, 6)}...{account.address.slice(-4)}
-            </span>
-            {copied && <span style={{ color: '#10b981', fontSize: '12px' }}>コピーしました！</span>}
-            {isCurrentAdmin ? (
-              <span style={{ color: '#2563eb', fontWeight: 600 }}>🔑 管理者</span>
-            ) : (
-              <span style={{ color: '#6b7280' }}>👤 一般ユーザー</span>
-            )}
-          </>
-        ) : (
-          <span style={{ color: '#ef4444' }}>❌ ウォレット未接続</span>
-        )}
-      </div>
 
       {mode === 'admin' && (
         <div style={{ marginBottom: '2rem', display: 'grid', gap: '0.75rem', maxWidth: '400px' }}>
