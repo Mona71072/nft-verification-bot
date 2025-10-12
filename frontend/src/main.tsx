@@ -1,7 +1,11 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { WalletProvider } from '@suiet/wallet-kit'
-import '@suiet/wallet-kit/style.css'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { SuiClientProvider } from '@mysten/dapp-kit'
+import { WalletProvider } from '@mysten/dapp-kit'
+import { getFullnodeUrl } from '@mysten/sui/client'
+import { registerSlushWallet } from '@mysten/slush-wallet'
+import '@mysten/dapp-kit/dist/index.css'
 import './index.css'
 import App from './App.tsx'
 
@@ -31,13 +35,30 @@ if (!rootElement) {
   document.body.appendChild(fallbackRoot);
 }
 
+// Slush Wallet を最初期に登録
+try {
+  registerSlushWallet('SyndicateXTokyo', { network: 'mainnet' as const });
+} catch (e) {
+  console.warn('registerSlushWallet skipped:', e);
+}
+
+const queryClient = new QueryClient();
+const networks = {
+  mainnet: { url: getFullnodeUrl('mainnet') },
+  testnet: { url: getFullnodeUrl('testnet') },
+};
+
 // WalletProviderの初期化エラーをキャッチ
 const AppWithErrorBoundary = () => {
   try {
     return (
-      <WalletProvider>
-        <App />
-      </WalletProvider>
+      <QueryClientProvider client={queryClient}>
+        <SuiClientProvider networks={networks} defaultNetwork={(import.meta as any).env?.VITE_SUI_NETWORK || 'mainnet'}>
+          <WalletProvider>
+            <App />
+          </WalletProvider>
+        </SuiClientProvider>
+      </QueryClientProvider>
     );
   } catch (error) {
     console.error('WalletProvider initialization error:', error);

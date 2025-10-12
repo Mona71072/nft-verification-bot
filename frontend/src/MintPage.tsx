@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ConnectButton } from '@suiet/wallet-kit';
-import '@suiet/wallet-kit/style.css';
+import { ConnectButton } from '@mysten/dapp-kit';
+import '@mysten/dapp-kit/dist/index.css';
 import { useWalletWithErrorHandling } from './hooks/useWallet';
 import { getImageDisplayUrl } from './utils/walrus';
 

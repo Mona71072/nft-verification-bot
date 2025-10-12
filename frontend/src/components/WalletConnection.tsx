@@ -1,4 +1,4 @@
-import { ConnectButton } from '@suiet/wallet-kit';
+import { ConnectButton } from '@mysten/dapp-kit';
 
 export const WalletConnection: React.FC = () => {
 
