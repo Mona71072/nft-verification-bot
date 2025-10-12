@@ -6,6 +6,21 @@
 import { Hono } from 'hono';
 import { DmSettings, DmTemplate, DmMode, DEFAULT_DM_SETTINGS, BatchConfig, BatchStats, DEFAULT_BATCH_CONFIG } from './types';
 
+// Cloudflare Workers型定義のインポート
+declare global {
+  interface ScheduledController {
+    readonly scheduledTime: number;
+    readonly cron: string;
+    noRetry(): void;
+  }
+  
+  interface ExecutionContext {
+    waitUntil(promise: Promise<any>): void;
+    passThroughOnException(): void;
+    props: any;
+  }
+}
+
 // 新しいモジュール化されたルート
 import walrusRoutes from './routes/walrus';
 import mintRoutes from './routes/mint';
@@ -37,7 +52,7 @@ app.use('*', async (c, next) => {
   // すべてのレスポンスにCORSヘッダーを設定
   c.header('Access-Control-Allow-Origin', '*');
   c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
-  c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Admin-Address, X-API-Key');
+  c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Admin-Address, X-Wallet-Connected, X-API-Key');
   c.header('Access-Control-Max-Age', '86400');
   c.header('Vary', 'Origin');
   
@@ -48,7 +63,7 @@ app.use('*', async (c, next) => {
       headers: {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS, PUT, DELETE',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Admin-Address, X-API-Key',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Admin-Address, X-Wallet-Connected, X-API-Key',
         'Access-Control-Max-Age': '86400',
         'Vary': 'Origin'
       }
@@ -580,6 +595,183 @@ app.get('/api/admin/events', async (c) => {
   }
 });
 
+// 管理者用イベント削除API
+app.delete('/api/admin/events/:id', async (c) => {
+  try {
+    const admin = c.req.header('X-Admin-Address');
+    const walletConnected = c.req.header('X-Wallet-Connected');
+    
+    // ウォレット接続状態をチェック
+    if (walletConnected === 'false') {
+      return c.json({ success: false, error: 'Wallet must be connected to perform admin actions' }, 403);
+    }
+    
+    if (!admin || !(await isAdmin(c, admin))) return c.json({ success: false, error: 'forbidden' }, 403);
+
+    const eventId = c.req.param('id');
+    if (!eventId) {
+      return c.json({ success: false, error: 'Event ID is required' }, 400);
+    }
+
+    const store = c.env.EVENT_STORE as KVNamespace | undefined;
+    if (!store) {
+      return c.json({ success: false, error: 'EVENT_STORE is not available' }, 503);
+    }
+
+    // イベントリストを取得
+    const listStr = await store.get('events');
+    const list = listStr ? JSON.parse(listStr) : [];
+    
+    // 指定されたIDのイベントを検索
+    const eventIndex = list.findIndex((event: any) => event.id === eventId);
+    if (eventIndex === -1) {
+      return c.json({ success: false, error: 'Event not found' }, 404);
+    }
+
+    // イベントを削除
+    list.splice(eventIndex, 1);
+    
+    // 更新されたリストを保存
+    await store.put('events', JSON.stringify(list));
+    
+    return c.json({ success: true, message: 'Event deleted successfully' });
+  } catch (error) {
+    return c.json({ success: false, error: 'Failed to delete event' }, 500);
+  }
+});
+
+// 管理者用イベント作成API
+app.post('/api/admin/events', async (c) => {
+  try {
+    const admin = c.req.header('X-Admin-Address');
+    const walletConnected = c.req.header('X-Wallet-Connected');
+    
+    // ウォレット接続状態をチェック
+    if (walletConnected === 'false') {
+      return c.json({ success: false, error: 'Wallet must be connected to perform admin actions' }, 403);
+    }
+    
+    if (!admin) {
+      return c.json({ success: false, error: 'X-Admin-Address header is required' }, 403);
+    }
+    
+    const isAdminResult = await isAdmin(c, admin);
+    
+    if (!isAdminResult) {
+      return c.json({ success: false, error: 'forbidden' }, 403);
+    }
+
+    const store = c.env.EVENT_STORE as KVNamespace | undefined;
+    if (!store) {
+      return c.json({ success: false, error: 'EVENT_STORE is not available' }, 503);
+    }
+
+    const body = await c.req.json();
+    const { name, description, startAt, endAt, active = false, imageUrl, maxMints, mintPrice, collectionId, roleId, roleName } = body;
+
+    // 必須フィールドの検証
+    if (!name || !description || !startAt || !endAt) {
+      return c.json({ success: false, error: 'Missing required fields: name, description, startAt, endAt' }, 400);
+    }
+
+    // イベントリストを取得
+    const listStr = await store.get('events');
+    const list = listStr ? JSON.parse(listStr) : [];
+
+    // 新しいイベントを作成
+    const newEvent = {
+      id: Date.now().toString(),
+      name,
+      description,
+      startAt,
+      endAt,
+      active: Boolean(active),
+      imageUrl: imageUrl || '',
+      maxMints: maxMints || null,
+      mintPrice: mintPrice || null,
+      collectionId: collectionId || '',
+      roleId: roleId || '',
+      roleName: roleName || '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    // イベントをリストに追加
+    list.push(newEvent);
+
+    // 更新されたリストを保存
+    await store.put('events', JSON.stringify(list));
+
+    return c.json({ success: true, data: newEvent });
+  } catch (error) {
+    return c.json({ success: false, error: 'Failed to create event' }, 500);
+  }
+});
+
+// 管理者用イベント更新API
+app.put('/api/admin/events/:id', async (c) => {
+  try {
+    const admin = c.req.header('X-Admin-Address');
+    const walletConnected = c.req.header('X-Wallet-Connected');
+    
+    // ウォレット接続状態をチェック
+    if (walletConnected === 'false') {
+      return c.json({ success: false, error: 'Wallet must be connected to perform admin actions' }, 403);
+    }
+    
+    if (!admin || !(await isAdmin(c, admin))) return c.json({ success: false, error: 'forbidden' }, 403);
+
+    const eventId = c.req.param('id');
+    if (!eventId) {
+      return c.json({ success: false, error: 'Event ID is required' }, 400);
+    }
+
+    const store = c.env.EVENT_STORE as KVNamespace | undefined;
+    if (!store) {
+      return c.json({ success: false, error: 'EVENT_STORE is not available' }, 503);
+    }
+
+    const body = await c.req.json();
+    const { name, description, startAt, endAt, active, imageUrl, maxMints, mintPrice, collectionId, roleId, roleName } = body;
+
+    // イベントリストを取得
+    const listStr = await store.get('events');
+    const list = listStr ? JSON.parse(listStr) : [];
+
+    // 指定されたIDのイベントを検索
+    const eventIndex = list.findIndex((event: any) => event.id === eventId);
+    if (eventIndex === -1) {
+      return c.json({ success: false, error: 'Event not found' }, 404);
+    }
+
+    // イベントを更新
+    const updatedEvent = {
+      ...list[eventIndex],
+      ...(name !== undefined && { name }),
+      ...(description !== undefined && { description }),
+      ...(startAt !== undefined && { startAt }),
+      ...(endAt !== undefined && { endAt }),
+      ...(active !== undefined && { active: Boolean(active) }),
+      ...(imageUrl !== undefined && { imageUrl }),
+      ...(maxMints !== undefined && { maxMints }),
+      ...(mintPrice !== undefined && { mintPrice }),
+      ...(collectionId !== undefined && { collectionId }),
+      ...(roleId !== undefined && { roleId }),
+      ...(roleName !== undefined && { roleName }),
+      updatedAt: new Date().toISOString()
+    };
+
+    list[eventIndex] = updatedEvent;
+
+    // 更新されたリストを保存
+    await store.put('events', JSON.stringify(list));
+
+    return c.json({ success: true, data: updatedEvent });
+  } catch (error) {
+    return c.json({ success: false, error: 'Failed to update event' }, 500);
+  }
+});
+
 // 管理者用DM設定API
 app.get('/api/admin/dm-settings', async (c) => {
   try {
@@ -627,8 +819,8 @@ app.get('/api/admin/batch-config', async (c) => {
     // nextRunを正しく計算
     if (data.enabled && data.interval) {
       const lastRunDate = new Date(data.lastRun);
-      // intervalは分単位で設定されているので、ミリ秒に変換
-      const intervalMs = data.interval * 60 * 1000;
+      // intervalは秒単位で設定されているので、ミリ秒に変換
+      const intervalMs = data.interval * 1000;
       const nextRunDate = new Date(lastRunDate.getTime() + intervalMs);
       
       // 次回実行が過去の場合は現在時刻から再計算
@@ -1237,5 +1429,133 @@ app.post('/api/admin/set-test-user', async (c) => {
     return c.json({ success: false, error: 'Failed to add test user' }, 500);
   }
 });
+
+// Cloudflare Workers用のスケジュール関数
+export async function scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+  console.log('Scheduled event triggered:', controller.cron, controller.scheduledTime);
+  
+  try {
+    // バッチ処理設定をチェック
+    const store = env.COLLECTION_STORE as KVNamespace | undefined;
+    if (!store) {
+      console.log('Collection store not available');
+      return;
+    }
+
+    const configStr = await store.get('batch_config');
+    if (!configStr) {
+      console.log('No batch config found');
+      return;
+    }
+
+    let config;
+    try {
+      config = JSON.parse(configStr);
+    } catch (parseError) {
+      console.error('Failed to parse batch config:', parseError);
+      return;
+    }
+    
+    // バッチ処理が有効でない場合はスキップ
+    if (!config.enabled) {
+      console.log('Batch processing is disabled');
+      return;
+    }
+
+    // 次回実行時刻をチェック
+    const now = new Date();
+    let nextRun: Date | null = null;
+    
+    if (config.nextRun) {
+      try {
+        nextRun = new Date(config.nextRun);
+        if (isNaN(nextRun.getTime())) {
+          console.error('Invalid nextRun date:', config.nextRun);
+          nextRun = null;
+        }
+      } catch (dateError) {
+        console.error('Failed to parse nextRun date:', dateError);
+        nextRun = null;
+      }
+    }
+    
+    if (nextRun && now < nextRun) {
+      console.log('Not time to run batch processing yet');
+      return;
+    }
+
+    console.log('Starting batch processing...');
+    
+    // バッチ処理を実行（Discord Bot APIに委譲）
+    const botApiUrl = env.DISCORD_BOT_API_URL || 'https://nft-verification-bot.onrender.com';
+    
+    try {
+      // タイムアウト付きでバッチ処理を実行
+      const abortController = new AbortController();
+      const timeoutId = setTimeout(() => {
+        console.log('Batch processing timeout reached, aborting...');
+        abortController.abort();
+      }, 30000); // 30秒タイムアウト
+      
+      let response: Response;
+      try {
+        response = await fetch(`${botApiUrl}/api/batch-process`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'Cloudflare-Worker-Scheduled'
+          },
+          body: JSON.stringify({
+            collectionId: config.collectionId || '',
+            action: 'check_and_update_roles',
+            adminAddress: env.ADMIN_ADDRESSES?.split(',')[0] || '',
+            scheduled: true
+          }),
+          signal: abortController.signal
+        });
+      } finally {
+        // 必ずタイムアウトをクリア（メモリリーク防止）
+        clearTimeout(timeoutId);
+      }
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('Batch processing completed:', result);
+        
+        // 実行時刻を更新
+        config.lastRun = new Date().toISOString();
+        if (config.interval && config.interval > 0) {
+          // intervalは秒単位なので、ミリ秒に変換
+          const nextRunDate = new Date(now.getTime() + (config.interval * 1000));
+          config.nextRun = nextRunDate.toISOString();
+        }
+        
+        // 設定更新を非同期で実行（waitUntilで適切に管理）
+        const updatePromise = store.put('batch_config', JSON.stringify(config))
+          .catch((storeError: any) => {
+            console.error('Failed to update batch config:', storeError);
+          });
+        
+        ctx.waitUntil(updatePromise);
+      } else {
+        console.error('Batch processing failed:', response.status, response.statusText);
+      }
+    } catch (error) {
+      console.error('Batch processing error:', error);
+      
+      // エラー時は再試行を無効化（noRetry）
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('Batch processing timed out, disabling retry');
+        controller.noRetry();
+      } else if (error instanceof Error && error.name === 'TypeError' && error.message.includes('fetch')) {
+        console.log('Network error occurred, disabling retry');
+        controller.noRetry();
+      }
+    }
+    
+  } catch (error) {
+    console.error('Scheduled function error:', error);
+  }
+}
 
 export default app;

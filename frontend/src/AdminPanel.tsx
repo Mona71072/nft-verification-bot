@@ -64,7 +64,6 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
     moveCall: { target: '', typeArguments: [], argumentsTemplate: ['{recipient}', '{imageCid}', '{imageMimeType}'], gasBudget: 20000000 },
     totalCap: undefined
   });
-  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   // コレクション作成UI用ステート
   const [createColName, setCreateColName] = useState<string>('');
@@ -201,26 +200,9 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
   };
 
   // Walrus アップロードUI用
-  const [uploading, setUploading] = useState<boolean>(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
 
 
-  const resolveCidFromResponse = (obj: any): string | null => {
-    if (!obj || typeof obj !== 'object') return null;
-    const candidates = ['cid', 'hash', 'digest', 'id'];
-    for (const key of candidates) {
-      if (typeof obj[key] === 'string' && obj[key]) return obj[key];
-    }
-    for (const k of Object.keys(obj)) {
-      const v = (obj as any)[k];
-      if (v && typeof v === 'object') {
-        for (const key of candidates) {
-          if (typeof v[key] === 'string' && v[key]) return v[key];
-        }
-      }
-    }
-    return null;
-  };
 
   // 画像自動圧縮（512KB以下に、より積極的）
   const compressImage = async (file: File): Promise<File> => {
@@ -273,69 +255,6 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
     });
   };
 
-  const handleWalrusUpload = async () => {
-    try {
-      if (!uploadFile) { setMessage('アップロードする画像ファイルを選択してください'); return; }
-      
-      setUploading(true);
-      setMessage('画像を処理中...');
-      console.log(`Original file: ${uploadFile.name}, size: ${Math.round(uploadFile.size/1024)}KB`);
-      
-      // 自動圧縮（512KB以下に）
-      const compressedFile = await compressImage(uploadFile);
-      if (compressedFile.size !== uploadFile.size) {
-        setMessage(`画像を圧縮しました: ${Math.round(uploadFile.size/1024)}KB → ${Math.round(compressedFile.size/1024)}KB`);
-      }
-      console.log(`Using file: ${compressedFile.name}, size: ${Math.round(compressedFile.size/1024)}KB, type: ${compressedFile.type}`);
-      
-      setMessage('アップロード中...');
-      
-      // Workersのプロキシ経由でアップロード
-      const endpoint = `${API_BASE_URL}/api/walrus/upload`;
-
-      // プロキシ経由（Workersがtip処理）
-      const form = new FormData();
-      form.append('file', compressedFile);
-      const res = await fetch(endpoint, { method: 'POST', body: form });
-      if (!res.ok) {
-        const t = await res.text().catch(() => '');
-        throw new Error(`Upload failed (${res.status}): ${t}`);
-      }
-      const data = await res.json().catch(() => ({}));
-      const cid = resolveCidFromResponse(data);
-      const returnedUrl = (data && (data.url || data.gatewayUrl)) as string | undefined;
-      let finalUrl = '';
-      if (returnedUrl && /^https?:\/\//.test(returnedUrl)) {
-        finalUrl = returnedUrl;
-      } else if (cid) {
-        // Walrus.pdf準拠のAggregator API URL生成
-        const base = 'https://aggregator.mainnet.walrus.space/v1/blobs/';
-        finalUrl = `${base}${cid}`;
-      }
-
-      if (!finalUrl && cid) {
-        // 最低限CIDは保持
-        finalUrl = cid;
-      }
-
-      if (!finalUrl) {
-        setMessage('アップロードは成功しましたがURLを特定できませんでした。手動で設定してください。');
-      } else {
-        // CIDとURLの両方を設定（CID優先の運用）
-        const updates = {
-          imageUrl: finalUrl,
-          imageCid: cid || '',
-          imageMimeType: compressedFile.type || 'application/octet-stream'
-        };
-        setNewEvent({ ...newEvent, ...updates });
-        setMessage(`画像アップロード完了: ${cid ? `CID=${cid}` : 'URL設定済み'}`);
-      }
-    } catch (e: any) {
-      setMessage(e?.message || 'アップロードに失敗しました');
-    } finally {
-      setUploading(false);
-    }
-  };
 
 
   // カウントダウン用（1秒ごとに更新）
@@ -396,13 +315,26 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
   const getAuthHeaders = () => {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     try {
-      const addr = localStorage.getItem('currentWalletAddress');
-      console.log('🔑 Current wallet address from localStorage:', addr);
+      // ウォレット接続状態をヘッダーに含める
+      headers['X-Wallet-Connected'] = connected ? 'true' : 'false';
+      
+      // 複数の方法でアドレスを取得
+      let addr = localStorage.getItem('currentWalletAddress');
+      
+      // フォールバック: 直接ウォレットから取得
+      if (!addr) {
+        // 正しいウォレットAPIを使用
+        if (connected && account?.address) {
+          addr = account.address;
+          // localStorageにも保存
+          localStorage.setItem('currentWalletAddress', account.address);
+        }
+      }
+      
       if (addr) {
         headers['X-Admin-Address'] = addr;
-        console.log('✅ Admin address set in headers');
       } else {
-        console.warn('⚠️ No wallet address found in localStorage');
+        console.warn('⚠️ No wallet address found');
       }
     } catch (error) {
       console.error('❌ Error getting wallet address:', error);
@@ -1161,10 +1093,16 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
       
       const method = eventData.id ? 'PUT' : 'POST';
       
+      // status を active に変換して送信
+      const payload = { 
+        ...eventData, 
+        active: eventData.status === 'published' 
+      };
+      
       const response = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(eventData)
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload)
       });
       
       const result = await response.json();

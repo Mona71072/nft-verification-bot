@@ -12,15 +12,13 @@ MINT_SPONSOR_API_URL = "https://nft-verification-bot.onrender.com"
 DEFAULT_MOVE_TARGET = "0x7a9695b16975f9a8614a81fc3eb67464699255f42294f4cb7df55e9d8169f506::event_nft::mint_to"
 DEFAULT_COLLECTION_CREATE_TARGET = "0x7a9695b16975f9a8614a81fc3eb67464699255f42294f4cb7df55e9d8169f506::event_nft::create_collection"
 # Walrus.pdf 準拠の設定（Mainnet）
-# 読み出し（公開Aggregator - PDF準拠）
-WALRUS_AGGREGATOR_BASE = "https://aggregator.walrus-mainnet.walrus.space"
+# 読み出し（Testnet用Aggregator）
+WALRUS_AGGREGATOR_BASE = "https://wal-aggregator-testnet.staketab.org"
 WALRUS_AGGREGATOR_FALLBACKS = "https://aggregator.suicore.com,https://sui-walrus-mainnet-aggregator.bwarelabs.com,https://walrus-agg.mainnet.obelisk.sh"
-# 書き込み（自前Publisher - JWT認証必須）
-# ローカル開発: http://localhost:31415
-# 本番: https://walrus-publisher.yourdomain.com
-WALRUS_PUBLISHER_BASE = "http://localhost:31415"
-# 都度JWT署名方式（推奨）: wrangler secret put WALRUS_PUBLISHER_JWT_SECRET でシークレットを設定
-# または固定トークン方式（非推奨）: WALRUS_PUBLISHER_AUTH = "Bearer eyJhbGc..."
+# 書き込み（Testnet用Publisher - 認証なしで利用可能）
+# Testnet: 公式Publisherが利用可能
+WALRUS_PUBLISHER_BASE = "https://wal-publisher-testnet.staketab.org"
+# Testnetでは認証不要
 WALRUS_PUBLISHER_AUTH = ""
 # 保存ポリシー（PDF準拠: 寿命を必ず明示）
 WALRUS_DEFAULT_EPOCHS = "12"
@@ -61,10 +59,11 @@ MINT_SPONSOR_API_URL = "https://nft-verification-bot.onrender.com"
 DEFAULT_MOVE_TARGET = "0x7a9695b16975f9a8614a81fc3eb67464699255f42294f4cb7df55e9d8169f506::event_nft::mint_to"
 DEFAULT_COLLECTION_CREATE_TARGET = "0x7a9695b16975f9a8614a81fc3eb67464699255f42294f4cb7df55e9d8169f506::event_nft::create_collection"
 # Walrus.pdf 準拠の設定（Mainnet）
-WALRUS_AGGREGATOR_BASE = "https://aggregator.walrus-mainnet.walrus.space"
+WALRUS_AGGREGATOR_BASE = "https://wal-aggregator-testnet.staketab.org"
 WALRUS_AGGREGATOR_FALLBACKS = "https://aggregator.suicore.com,https://sui-walrus-mainnet-aggregator.bwarelabs.com,https://walrus-agg.mainnet.obelisk.sh"
-WALRUS_PUBLISHER_BASE = "https://publisher.yourdomain.example"
-# 都度JWT署名（推奨）: wrangler secret put WALRUS_PUBLISHER_JWT_SECRET
+# Testnet用Publisher（認証なしで利用可能）
+WALRUS_PUBLISHER_BASE = "https://wal-publisher-testnet.staketab.org"
+# Testnetでは認証不要
 WALRUS_PUBLISHER_AUTH = ""
 WALRUS_DEFAULT_EPOCHS = "12"
 WALRUS_DEFAULT_PERMANENT = "false"

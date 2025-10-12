@@ -32,20 +32,59 @@ app.post('/api/walrus/store', async (c) => {
   try {
     const config = getWalrusConfig(c.env);
     
-    // FormDataから画像ファイルを取得
-    const formData = await c.req.formData();
-    const file = formData.get('file') as File;
-    
-    if (!file) {
-      return c.json({ success: false, error: 'No file provided' }, 400);
+    // Publisher未設定チェック（Mainnet対応）
+    if (!config.publisherBase) {
+      return c.json({ 
+        success: false, 
+        error: 'Walrus Publisher is not configured. Upload is disabled on Mainnet until a Publisher is set up.',
+        code: 'PUBLISHER_NOT_CONFIGURED'
+      }, 503);
     }
-
-    // ファイルサイズチェック
-    validateFileSize(file);
-
-    // MIMEタイプ検証
-    if (!validateImageMimeType(file.type)) {
-      return c.json({ success: false, error: 'Invalid file type. Only images are allowed.' }, 400);
+    
+    // Content-Typeに応じてバイト列とMIMEタイプを取得
+    const ct = c.req.header('content-type') || '';
+    let bytes: ArrayBuffer;
+    let mimeType = 'application/octet-stream';
+    let fileSize = 0;
+    
+    if (ct.startsWith('multipart/form-data')) {
+      // multipart/form-data: フロントからのForm送信
+      const formData = await c.req.formData();
+      const file = formData.get('file') as File;
+      
+      if (!file) {
+        return c.json({ success: false, error: 'No file provided' }, 400);
+      }
+      
+      bytes = await file.arrayBuffer();
+      mimeType = file.type || mimeType;
+      fileSize = file.size;
+      
+      // ファイルサイズチェック
+      if (fileSize > 1024 * 1024) {
+        return c.json({ 
+          success: false, 
+          error: `File size too large: ${Math.round(fileSize / 1024)}KB > 1MB. Please compress the image.` 
+        }, 400);
+      }
+      
+      // MIMEタイプ検証
+      if (!validateImageMimeType(mimeType)) {
+        return c.json({ success: false, error: 'Invalid file type. Only images are allowed.' }, 400);
+      }
+    } else {
+      // application/octet-stream: 直接バイナリ送信
+      bytes = await c.req.arrayBuffer();
+      mimeType = ct || mimeType;
+      fileSize = bytes.byteLength;
+      
+      // ファイルサイズチェック
+      if (fileSize > 1024 * 1024) {
+        return c.json({ 
+          success: false, 
+          error: `File size too large: ${Math.round(fileSize / 1024)}KB > 1MB` 
+        }, 400);
+      }
     }
 
     // 保存オプションの取得（PDF準拠: 必ず寿命指定を明示）
@@ -66,15 +105,15 @@ app.post('/api/walrus/store', async (c) => {
       options.epochs = config.defaultEpochs;
     }
 
-    // Walrusに保存
-    const result = await storeBlob(file, options, config);
+    // Walrus Publisherに保存（PDF準拠: PUT + application/octet-stream）
+    const result = await storeBlob(new Uint8Array(bytes), options, config);
 
     return c.json({
       success: true,
       data: {
         blobId: result.blobId,
-        contentType: file.type,
-        size: file.size,
+        contentType: mimeType,
+        size: fileSize,
         newlyCreated: result.newlyCreated
       }
     });
@@ -153,14 +192,18 @@ app.get('/api/walrus/config', async (c) => {
   try {
     const config = getWalrusConfig(c.env);
     
+    // Publisher設定チェック（Mainnet対応）
+    const uploadEnabled = !!config.publisherBase;
+    
     return c.json({
       success: true,
       data: {
-        publisherBase: config.publisherBase,
+        publisherBase: config.publisherBase || '(not configured)',
         aggregatorBase: config.aggregatorBase,
         defaultEpochs: config.defaultEpochs,
         defaultPermanent: config.defaultPermanent,
-        uploadEnabled: true
+        uploadEnabled: uploadEnabled,
+        notice: uploadEnabled ? null : 'Upload is disabled. Publisher must be configured for Mainnet.'
       }
     });
 
@@ -184,12 +227,30 @@ app.get('/api/walrus/diagnose', async (c) => {
     const config = getWalrusConfig(c.env);
     const result: Record<string, any> = {
       config: {
-        publisherBase: config.publisherBase,
+        publisherBase: config.publisherBase || '(not configured)',
         aggregatorBase: config.aggregatorBase,
         defaultEpochs: config.defaultEpochs
       },
       timestamp: new Date().toISOString()
     };
+
+    // Publisher未設定チェック
+    if (!config.publisherBase) {
+      result.health = {
+        aggregator: 'unknown',
+        publisher: 'not_configured',
+        overall: 'degraded',
+        canRead: true,
+        canWrite: false,
+        notice: 'Publisher is not configured. Upload is disabled on Mainnet.'
+      };
+      
+      return c.json({
+        success: true,
+        data: result,
+        message: 'Walrus診断完了（Publisher未設定）'
+      });
+    }
 
     // DoH (DNS over HTTPS) でDNSレコード確認
     const dohQuery = async (host: string) => {

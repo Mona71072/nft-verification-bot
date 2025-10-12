@@ -16,7 +16,16 @@ import {
 } from '../services/mint';
 import { logError } from '../utils/logger';
 
-const app = new Hono();
+// Cloudflare Workers環境の型定義
+interface Env {
+  EVENT_STORE?: KVNamespace;
+  MINTED_STORE?: KVNamespace;
+  MINT_SPONSOR_API_URL?: string;
+  DISCORD_BOT_API_URL?: string;
+  [key: string]: any;
+}
+
+const app = new Hono<{ Bindings: Env }>();
 
 /**
  * NFT ミント実行

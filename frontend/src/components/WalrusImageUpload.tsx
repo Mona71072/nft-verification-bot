@@ -12,11 +12,35 @@ export default function WalrusImageUpload({ imageCid, imageMimeType, onUpload, a
   const showToast = onMessage || ((msg, type) => console.log(`[${type}] ${msg}`));
   const [uploading, setUploading] = React.useState(false);
   const [dragActive, setDragActive] = React.useState(false);
+  const [uploadEnabled, setUploadEnabled] = React.useState(true);
+  const [configNotice, setConfigNotice] = React.useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const API_BASE = apiBase || (import.meta as any).env?.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
 
+  // Walrus設定チェック
+  React.useEffect(() => {
+    const checkConfig = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/walrus/config`);
+        const data = await res.json();
+        if (data.success) {
+          setUploadEnabled(data.data.uploadEnabled ?? true);
+          setConfigNotice(data.data.notice || null);
+        }
+      } catch (e) {
+        console.error('Failed to check Walrus config:', e);
+      }
+    };
+    checkConfig();
+  }, [API_BASE]);
+
   const handleFile = async (file: File) => {
+    if (!uploadEnabled) {
+      showToast('アップロード機能は現在無効です。Publisher設定が必要です。', 'error');
+      return;
+    }
+
     if (!file.type.startsWith('image/')) {
       showToast('画像ファイルを選択してください', 'error');
       return;
@@ -38,7 +62,14 @@ export default function WalrusImageUpload({ imageCid, imageMimeType, onUpload, a
       const result = await response.json();
 
       if (!response.ok || !result.success) {
-        throw new Error(result.error || `アップロードに失敗しました (${response.status})`);
+        // Publisher未設定エラーの特別処理
+        if (result.code === 'PUBLISHER_NOT_CONFIGURED') {
+          showToast('Publisher未設定: Mainnetでは自前Publisherが必要です', 'error');
+          setUploadEnabled(false);
+        } else {
+          throw new Error(result.error || `アップロードに失敗しました (${response.status})`);
+        }
+        return;
       }
 
       const { blobId } = result.data || result;
@@ -90,21 +121,36 @@ export default function WalrusImageUpload({ imageCid, imageMimeType, onUpload, a
     <div>
       <label style={{ display: 'block', marginBottom: 8, fontWeight: 600 }}>画像 (Walrus)</label>
       
+      {!uploadEnabled && configNotice && (
+        <div style={{ 
+          marginBottom: 12, 
+          padding: 12, 
+          background: '#fef2f2', 
+          border: '1px solid #fecaca', 
+          borderRadius: 8, 
+          fontSize: 13,
+          color: '#991b1b'
+        }}>
+          ⚠️ {configNotice}
+        </div>
+      )}
+
       <div
         onDragEnter={handleDrag}
         onDragLeave={handleDrag}
         onDragOver={handleDrag}
         onDrop={handleDrop}
-        onClick={() => !uploading && fileInputRef.current?.click()}
+        onClick={() => !uploading && uploadEnabled && fileInputRef.current?.click()}
         style={{
           border: dragActive ? '2px dashed #2563eb' : '2px dashed #e5e7eb',
           borderRadius: 12,
           padding: 32,
           textAlign: 'center',
-          cursor: uploading ? 'not-allowed' : 'pointer',
+          cursor: !uploadEnabled ? 'not-allowed' : (uploading ? 'not-allowed' : 'pointer'),
           transition: 'all 0.2s',
-          background: dragActive ? '#eff6ff' : imageCid ? '#f0fdf4' : '#fafafa',
-          position: 'relative'
+          background: !uploadEnabled ? '#f3f4f6' : (dragActive ? '#eff6ff' : imageCid ? '#f0fdf4' : '#fafafa'),
+          position: 'relative',
+          opacity: !uploadEnabled ? 0.6 : 1
         }}
       >
         <input
@@ -112,7 +158,7 @@ export default function WalrusImageUpload({ imageCid, imageMimeType, onUpload, a
           type="file"
           accept="image/*"
           onChange={handleChange}
-          disabled={uploading}
+          disabled={uploading || !uploadEnabled}
           style={{ display: 'none' }}
         />
 
@@ -138,6 +184,16 @@ export default function WalrusImageUpload({ imageCid, imageMimeType, onUpload, a
             </div>
             <div style={{ fontSize: 12, color: '#64748b' }}>
               クリックまたはドラッグ&ドロップで再アップロード
+            </div>
+          </div>
+        ) : !uploadEnabled ? (
+          <div>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>🔒</div>
+            <div style={{ fontWeight: 600, marginBottom: 8, color: '#6b7280' }}>
+              アップロード機能は現在無効です
+            </div>
+            <div style={{ fontSize: 12, color: '#9ca3af' }}>
+              Publisher設定が必要です（Mainnet）
             </div>
           </div>
         ) : (

@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react';
-import { ConnectButton } from '@suiet/wallet-kit';
+import React, { useState, useEffect } from 'react';
 import '@suiet/wallet-kit/style.css';
 import { useWalletWithErrorHandling } from './hooks/useWallet';
 import { NFTVerification } from './components/NFTVerification';
@@ -9,68 +8,6 @@ import MintPage from './MintPage';
 // APIベースURLの設定（本番環境用）
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
 
-// AdminPageコンポーネント（AdminPanelを使用）
-function AdminPage() {
-  const { account, connected } = useWalletWithErrorHandling();
-  const [isAdmin, setIsAdmin] = useState<boolean>(false);
-
-  // 管理者チェック
-  useEffect(() => {
-    const checkAdminStatus = async () => {
-      if (connected && account?.address) {
-        try {
-          const response = await fetch(`${API_BASE_URL}/api/admin/check/${account.address}`);
-          const data = await response.json();
-          if (data.success) {
-            setIsAdmin(data.isAdmin);
-          }
-        } catch (error) {
-          console.error('Failed to check admin status:', error);
-        }
-      }
-    };
-    
-    checkAdminStatus();
-  }, [connected, account?.address]);
-
-  if (!connected) {
-    return (
-      <div style={{ 
-        display: 'flex', 
-        flexDirection: 'column', 
-        alignItems: 'center', 
-        justifyContent: 'center',
-        minHeight: '60vh',
-        textAlign: 'center'
-      }}>
-        <h2 style={{ color: 'white', marginBottom: '1rem' }}>管理者パネル</h2>
-        <p style={{ color: 'white', marginBottom: '2rem' }}>ウォレットを接続してください</p>
-        <ConnectButton />
-      </div>
-    );
-  }
-
-  if (!isAdmin) {
-    return (
-      <div style={{ 
-        display: 'flex', 
-        flexDirection: 'column', 
-        alignItems: 'center', 
-        justifyContent: 'center',
-        minHeight: '60vh',
-        textAlign: 'center'
-      }}>
-        <h2 style={{ color: 'white', marginBottom: '1rem' }}>アクセス拒否</h2>
-        <p style={{ color: 'white', marginBottom: '2rem' }}>
-          このアドレスには管理者権限がありません。
-        </p>
-      </div>
-    );
-  }
-
-  // 管理者権限がある場合はAdminPanelを表示
-  return <AdminPanel />;
-}
 
 function App() {
   const { account, connected } = useWalletWithErrorHandling();
@@ -180,12 +117,20 @@ function App() {
                 }
                 if (path === '/admin') return <AdminPanel mode="admin" />;
                 if (path.startsWith('/admin/mints')) {
-                  const Page = (require('./pages/AdminMintPage').default);
-                  return <Page />;
+                  const AdminMintPage = React.lazy(() => import('./pages/AdminMintPage'));
+                  return (
+                    <React.Suspense fallback={<div>Loading...</div>}>
+                      <AdminMintPage />
+                    </React.Suspense>
+                  );
                 }
                 if (path === '/mint-flow') {
-                  const Page = (require('./pages/MintFlowPage').default);
-                  return <Page />;
+                  const MintFlowPage = React.lazy(() => import('./pages/MintFlowPage'));
+                  return (
+                    <React.Suspense fallback={<div>Loading...</div>}>
+                      <MintFlowPage />
+                    </React.Suspense>
+                  );
                 }
                 if (path.startsWith('/admin/roles')) return <AdminPanel mode="roles" />;
                 if (path.startsWith('/admin/mint')) return <AdminPanel mode="mint" />;

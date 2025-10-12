@@ -70,7 +70,9 @@ export async function storeBlob(
   if (input instanceof ArrayBuffer) {
     body = input;
   } else if (input instanceof Uint8Array) {
-    body = input.buffer;
+    // Uint8Arrayから新しいArrayBufferを作成
+    body = new ArrayBuffer(input.length);
+    new Uint8Array(body).set(input);
   } else {
     // Blobの場合はArrayBufferに変換
     body = await input.arrayBuffer();
@@ -119,7 +121,8 @@ export async function storeBlob(
     }
     
     // blobId の抽出（レスポンス形式の違いに対応）
-    const blobId = result?.blobStoreResult?.newlyCreated?.blobObject?.blobId ?? 
+    const blobId = result?.newlyCreated?.blobObject?.blobId ?? 
+                   result?.blobStoreResult?.newlyCreated?.blobObject?.blobId ??
                    result?.blobId ??
                    (typeof result === 'string' ? result : null);
     
@@ -201,19 +204,20 @@ export function getBlobUrl(blobId: string, config: WalrusConfig): string {
  * @returns Walrus設定
  */
 export function getWalrusConfig(env: any): WalrusConfig {
-  const publisherBase = env.WALRUS_PUBLISHER_BASE;
+  const publisherBase = env.WALRUS_PUBLISHER_BASE || ''; // 空文字許可（Mainnet対応）
   const aggregatorBase = env.WALRUS_AGGREGATOR_BASE;
   const defaultEpochs = parseInt(env.WALRUS_DEFAULT_EPOCHS || '12', 10);
   const defaultPermanent = env.WALRUS_DEFAULT_PERMANENT === 'true';
   const publisherAuth = env.WALRUS_PUBLISHER_AUTH; // JWT Bearer token（固定トークン用）
   const publisherJwtSecret = env.WALRUS_PUBLISHER_JWT_SECRET; // JWT署名秘密鍵（都度署名用、推奨）
 
-  if (!publisherBase || !aggregatorBase) {
-    throw new Error('WALRUS_PUBLISHER_BASE and WALRUS_AGGREGATOR_BASE must be configured');
+  // Aggregatorは必須（読み出しに使用）
+  if (!aggregatorBase) {
+    throw new Error('WALRUS_AGGREGATOR_BASE must be configured');
   }
 
   return {
-    publisherBase,
+    publisherBase, // 空文字の場合はアップロード無効
     aggregatorBase,
     defaultEpochs,
     defaultPermanent,

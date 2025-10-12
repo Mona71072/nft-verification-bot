@@ -77,6 +77,7 @@ export interface BatchConfig {
   maxUsersPerBatch: number;
   retryAttempts: number;
   enableDmNotifications: boolean;
+  collectionId?: string;
 }
 
 export interface BatchStats {
