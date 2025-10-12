@@ -2900,43 +2900,82 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  <th style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb', padding: '0.5rem' }}>日時</th>
-                  <th style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb', padding: '0.5rem' }}>イベント</th>
-                  <th style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb', padding: '0.5rem' }}>Recipient</th>
-                  <th style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb', padding: '0.5rem' }}>ObjectIDs</th>
-                  <th style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb', padding: '0.5rem' }}>TxDigest</th>
+                  <th style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb', padding: '0.75rem', fontWeight: '600', color: '#111827' }}>日時</th>
+                  <th style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb', padding: '0.75rem', fontWeight: '600', color: '#111827' }}>イベント名</th>
+                  <th style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb', padding: '0.75rem', fontWeight: '600', color: '#111827' }}>保有者アドレス</th>
+                  <th style={{ textAlign: 'center', borderBottom: '1px solid #e5e7eb', padding: '0.75rem', fontWeight: '600', color: '#111827' }}>アクション</th>
                 </tr>
               </thead>
               <tbody>
                 {historyItems.length === 0 ? (
                   <tr>
-                    <td colSpan={5} style={{ padding: '1rem', color: '#6b7280' }}>データがありません</td>
+                    <td colSpan={4} style={{ padding: '2rem', textAlign: 'center', color: '#6b7280' }}>
+                      <div>📋 ミント履歴がありません</div>
+                      <div style={{ fontSize: '0.875rem', marginTop: '0.5rem' }}>このコレクションでNFTをミントすると、ここに履歴が表示されます</div>
+                    </td>
                   </tr>
                 ) : (
                   historyItems.map((it, idx) => {
                     const evName = events.find(e => e.id === it.eventId)?.name || it.eventId || '-';
                     return (
-                      <tr key={idx}>
-                        <td style={{ padding: '0.5rem', borderBottom: '1px solid #f3f4f6', whiteSpace: 'nowrap' }}>{it.at ? new Date(it.at).toLocaleString() : '-'}</td>
-                        <td style={{ padding: '0.5rem', borderBottom: '1px solid #f3f4f6' }}>{evName}</td>
-                        <td style={{ padding: '0.5rem', borderBottom: '1px solid #f3f4f6', fontFamily: 'monospace' }}>{it.recipient || '-'}</td>
-                        <td style={{ padding: '0.5rem', borderBottom: '1px solid #f3f4f6' }}>
-                          {(it.objectIds || []).length ? (
-                            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                              {(it.objectIds || []).map((oid, i) => (
-                                <a key={i} href={`https://suiexplorer.com/object/${oid}?network=mainnet`} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>
-                                  {oid.slice(0, 6)}...{oid.slice(-4)}
-                                </a>
-                              ))}
-                            </div>
-                          ) : '-'}
+                      <tr key={idx} style={{ background: idx % 2 === 0 ? 'white' : '#f9fafb' }}>
+                        <td style={{ padding: '0.75rem', borderBottom: '1px solid #f3f4f6', whiteSpace: 'nowrap', color: '#374151' }}>
+                          {it.at ? new Date(it.at).toLocaleString('ja-JP') : '-'}
                         </td>
-                        <td style={{ padding: '0.5rem', borderBottom: '1px solid #f3f4f6' }}>
-                          {it.txDigest ? (
-                            <a href={`https://suiexplorer.com/txblock/${it.txDigest}?network=mainnet`} target="_blank" rel="noreferrer" style={{ color: '#2563eb', fontFamily: 'monospace' }}>
-                              {it.txDigest.slice(0, 6)}...{it.txDigest.slice(-4)}
+                        <td style={{ padding: '0.75rem', borderBottom: '1px solid #f3f4f6', color: '#111827', fontWeight: '500' }}>
+                          {evName}
+                        </td>
+                        <td style={{ padding: '0.75rem', borderBottom: '1px solid #f3f4f6' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <span style={{ fontFamily: 'monospace', fontSize: '0.875rem', color: '#374151' }}>
+                              {it.recipient ? `${it.recipient.slice(0, 6)}...${it.recipient.slice(-4)}` : '-'}
+                            </span>
+                            {it.recipient && (
+                              <button
+                                onClick={() => {
+                                  navigator.clipboard.writeText(it.recipient);
+                                  setMessage('アドレスをコピーしました');
+                                  setTimeout(() => setMessage(''), 2000);
+                                }}
+                                style={{
+                                  padding: '0.25rem 0.5rem',
+                                  background: '#e5e7eb',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer',
+                                  fontSize: '0.75rem',
+                                  color: '#374151'
+                                }}
+                                title="アドレスをコピー"
+                              >
+                                📋
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                        <td style={{ padding: '0.75rem', borderBottom: '1px solid #f3f4f6', textAlign: 'center' }}>
+                          {it.txDigest && (
+                            <a 
+                              href={`https://suivision.xyz/txblock/${it.txDigest}`} 
+                              target="_blank" 
+                              rel="noreferrer"
+                              style={{
+                                display: 'inline-block',
+                                padding: '0.375rem 0.75rem',
+                                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                color: 'white',
+                                borderRadius: '6px',
+                                textDecoration: 'none',
+                                fontSize: '0.875rem',
+                                fontWeight: '500',
+                                transition: 'opacity 0.2s'
+                              }}
+                              onMouseOver={(e) => e.currentTarget.style.opacity = '0.9'}
+                              onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
+                            >
+                              🔍 詳細を見る
                             </a>
-                          ) : '-'}
+                          )}
                         </td>
                       </tr>
                     );
