@@ -9,16 +9,15 @@ SUI_NETWORK = "mainnet"
 # Claynosaurz Popkinsコレクション
 NFT_COLLECTION_ID = "0xb908f3c6fea6865d32e2048c520cdfe3b5c5bbcebb658117c41bad70f52b7ccc::popkins_nft::Popkins"
 MINT_SPONSOR_API_URL = "https://nft-verification-bot.onrender.com"
-DEFAULT_MOVE_TARGET = "0xc33e9880a30122089f028a6137c810f34e85b46cad47b780b8f137e1e7d0a91e::event_nft::mint_to"
-DEFAULT_COLLECTION_CREATE_TARGET = "0xc33e9880a30122089f028a6137c810f34e85b46cad47b780b8f137e1e7d0a91e::event_nft::create_collection"
+DEFAULT_MOVE_TARGET = "0x5547e16927687494164569a33543bad37817abfb0ff2ba33a15596c1974923e7::event_nft::mint_to"
+DEFAULT_COLLECTION_CREATE_TARGET = "0x5547e16927687494164569a33543bad37817abfb0ff2ba33a15596c1974923e7::event_nft::create_collection"
 # Walrus.pdf 準拠の設定（Mainnet）
-# 読み出し（Testnet用Aggregator）
-WALRUS_AGGREGATOR_BASE = "https://wal-aggregator-testnet.staketab.org"
+# 読み出し（Mainnet用Aggregator）
+WALRUS_AGGREGATOR_BASE = "https://wal-aggregator-mainnet.staketab.org"
 WALRUS_AGGREGATOR_FALLBACKS = "https://aggregator.suicore.com,https://sui-walrus-mainnet-aggregator.bwarelabs.com,https://walrus-agg.mainnet.obelisk.sh"
-# 書き込み（Testnet用Publisher - 認証なしで利用可能）
-# Testnet: 公式Publisherが利用可能
-WALRUS_PUBLISHER_BASE = "https://wal-publisher-testnet.staketab.org"
-# Testnetでは認証不要
+# 書き込み（Mainnet用Publisher - Staketab公式・無料）
+WALRUS_PUBLISHER_BASE = "https://walrus-mainnet-publisher-1.staketab.org"
+# Mainnet Publisherは認証不要（Staketab提供）
 WALRUS_PUBLISHER_AUTH = ""
 # 保存ポリシー（PDF準拠: 寿命を必ず明示）
 WALRUS_DEFAULT_EPOCHS = "12"
@@ -56,14 +55,14 @@ SUI_NETWORK = "mainnet"
 # Claynosaurz Popkinsコレクション
 NFT_COLLECTION_ID = "0xb908f3c6fea6865d32e2048c520cdfe3b5c5bbcebb658117c41bad70f52b7ccc::popkins_nft::Popkins"
 MINT_SPONSOR_API_URL = "https://nft-verification-bot.onrender.com"
-DEFAULT_MOVE_TARGET = "0xc33e9880a30122089f028a6137c810f34e85b46cad47b780b8f137e1e7d0a91e::event_nft::mint_to"
-DEFAULT_COLLECTION_CREATE_TARGET = "0xc33e9880a30122089f028a6137c810f34e85b46cad47b780b8f137e1e7d0a91e::event_nft::create_collection"
+DEFAULT_MOVE_TARGET = "0x5547e16927687494164569a33543bad37817abfb0ff2ba33a15596c1974923e7::event_nft::mint_to"
+DEFAULT_COLLECTION_CREATE_TARGET = "0x5547e16927687494164569a33543bad37817abfb0ff2ba33a15596c1974923e7::event_nft::create_collection"
 # Walrus.pdf 準拠の設定（Mainnet）
-WALRUS_AGGREGATOR_BASE = "https://wal-aggregator-testnet.staketab.org"
+WALRUS_AGGREGATOR_BASE = "https://wal-aggregator-mainnet.staketab.org"
 WALRUS_AGGREGATOR_FALLBACKS = "https://aggregator.suicore.com,https://sui-walrus-mainnet-aggregator.bwarelabs.com,https://walrus-agg.mainnet.obelisk.sh"
-# Testnet用Publisher（認証なしで利用可能）
-WALRUS_PUBLISHER_BASE = "https://wal-publisher-testnet.staketab.org"
-# Testnetでは認証不要
+# Mainnet用Publisher（Staketab公式・無料）
+WALRUS_PUBLISHER_BASE = "https://walrus-mainnet-publisher-1.staketab.org"
+# Mainnet Publisherは認証不要（Staketab提供）
 WALRUS_PUBLISHER_AUTH = ""
 WALRUS_DEFAULT_EPOCHS = "12"
 WALRUS_DEFAULT_PERMANENT = "false"
