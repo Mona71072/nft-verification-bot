@@ -52,6 +52,27 @@ function App() {
     }
   }, [currentPage, isAdmin]);
 
+  // URLとcurrentPageの同期（ブラウザの戻る/進むボタン対応）
+  useEffect(() => {
+    const syncPageFromUrl = () => {
+      if (typeof window !== 'undefined') {
+        const path = window.location.pathname;
+        if (path.startsWith('/admin')) {
+          setCurrentPage('admin');
+        } else {
+          setCurrentPage('verification');
+        }
+      }
+    };
+
+    // 初期ロード時
+    syncPageFromUrl();
+
+    // ブラウザの戻る/進むボタン
+    window.addEventListener('popstate', syncPageFromUrl);
+    return () => window.removeEventListener('popstate', syncPageFromUrl);
+  }, []);
+
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
       {/* コンパクトヘッダー（モバイル最適化） */}
@@ -71,24 +92,36 @@ function App() {
           justifyContent: 'space-between',
           alignItems: 'center'
         }}>
-          <a href="/" style={{
-            fontSize: '1.125rem',
-            fontWeight: 700,
-            color: '#1a1a1a',
-            margin: 0,
-            textDecoration: 'none',
-            cursor: 'pointer'
-          }}>
+          <div 
+            onClick={() => {
+              if (typeof window !== 'undefined') {
+                window.history.pushState({}, '', '/');
+                setCurrentPage('verification');
+              }
+            }}
+            style={{
+              fontSize: '1.125rem',
+              fontWeight: 700,
+              color: '#1a1a1a',
+              margin: 0,
+              cursor: 'pointer'
+            }}
+          >
             SyndicateXTokyo
-          </a>
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             {/* 公式ConnectButton（Copy/Switch/Disconnect機能を内蔵） */}
             <ConnectButton />
             
             {/* 管理者バッジ */}
             {isAdmin && connected && (
-              <a 
-                href="/admin" 
+              <button 
+                onClick={() => {
+                  if (typeof window !== 'undefined') {
+                    window.history.pushState({}, '', '/admin');
+                    setCurrentPage('admin');
+                  }
+                }}
                 style={{ 
                   display: 'flex',
                   alignItems: 'center',
@@ -97,9 +130,10 @@ function App() {
                   background: '#2563eb',
                   borderRadius: '20px',
                   color: 'white',
-                  textDecoration: 'none',
+                  border: 'none',
                   fontSize: '11px',
                   fontWeight: 600,
+                  cursor: 'pointer',
                   transition: 'all 0.2s',
                   boxShadow: '0 2px 4px rgba(37, 99, 235, 0.2)'
                 }}
@@ -116,7 +150,7 @@ function App() {
               >
                 <span style={{ fontSize: '12px' }}>🔑</span>
                 <span>Admin</span>
-              </a>
+              </button>
             )}
           </div>
         </div>

@@ -1214,8 +1214,8 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
 
       {mode === 'admin' && (
         <div style={{ marginBottom: '2rem', display: 'grid', gap: '0.75rem', maxWidth: '400px' }}>
-          <a href="/admin/roles" style={{ padding: '0.75rem 1rem', background: '#f8f9fa', borderRadius: 8, textDecoration: 'none', fontWeight: 600, color: '#1f2937', textAlign: 'center', border: '1px solid #d1d5db' }}>ロール管理へ</a>
-          <a href="/admin/mint" style={{ padding: '0.75rem 1rem', background: '#f8f9fa', borderRadius: 8, textDecoration: 'none', fontWeight: 600, color: '#1f2937', textAlign: 'center', border: '1px solid #d1d5db' }}>ミント管理へ</a>
+          <button onClick={() => window.location.href = '/admin/roles'} style={{ padding: '0.75rem 1rem', background: '#f8f9fa', borderRadius: 8, fontWeight: 600, color: '#1f2937', textAlign: 'center', border: '1px solid #d1d5db', cursor: 'pointer', width: '100%' }}>ロール管理へ</button>
+          <button onClick={() => window.location.href = '/admin/mint'} style={{ padding: '0.75rem 1rem', background: '#f8f9fa', borderRadius: 8, fontWeight: 600, color: '#1f2937', textAlign: 'center', border: '1px solid #d1d5db', cursor: 'pointer', width: '100%' }}>ミント管理へ</button>
         </div>
       )}
 

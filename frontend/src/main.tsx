@@ -55,7 +55,11 @@ const AppWithErrorBoundary = () => {
     return (
       <QueryClientProvider client={queryClient}>
         <SuiClientProvider networks={networkConfig} defaultNetwork="mainnet">
-          <WalletProvider autoConnect slushWallet={{ name: 'SyndicateXTokyo' }}>
+          <WalletProvider 
+            autoConnect={true}
+            storageKey="sui:wallet"
+            slushWallet={{ name: 'SyndicateXTokyo' }}
+          >
             <App />
           </WalletProvider>
         </SuiClientProvider>
