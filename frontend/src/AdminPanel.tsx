@@ -32,6 +32,7 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [editingCollection, setEditingCollection] = useState<NFTCollection | null>(null);
+  const [copied, setCopied] = useState(false);
   
   // バッチ処理関連の状態
   const [batchConfig, setBatchConfig] = useState<BatchConfig | null>(null);
@@ -1154,9 +1155,71 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
 
   return (
     <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
-      <h1 style={{ marginBottom: '2rem' }}>
+      <h1 style={{ marginBottom: '1rem' }}>
         {mode === 'admin' ? '管理者ページ' : mode === 'mint' ? 'ミント管理' : mode === 'roles' ? 'ロール管理' : 'NFT Verification 管理パネル'}
       </h1>
+
+      {/* ウォレット情報表示 */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+        padding: '12px 16px',
+        background: '#f3f4f6',
+        borderRadius: '8px',
+        border: '1px solid #e5e7eb',
+        fontSize: '14px',
+        marginBottom: '2rem',
+        flexWrap: 'wrap'
+      }}>
+        {connected && account?.address ? (
+          <>
+            <span style={{ color: '#10b981', fontWeight: 600 }}>✅ 接続済み</span>
+            <span 
+              onClick={() => {
+                navigator.clipboard.writeText(account.address);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}
+              title={account.address}
+              style={{ 
+                cursor: 'pointer', 
+                fontFamily: 'monospace',
+                padding: '4px 8px',
+                background: 'white',
+                borderRadius: '4px',
+                border: '1px solid #d1d5db',
+                transition: 'all 0.2s'
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.background = '#e5e7eb';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.background = 'white';
+              }}
+            >
+              📍 {account.address.slice(0, 6)}...{account.address.slice(-4)}
+            </span>
+            {copied && <span style={{ color: '#10b981', fontSize: '12px' }}>コピーしました！</span>}
+            {(() => {
+              try {
+                const addr = account?.address || localStorage.getItem('currentWalletAddress') || '';
+                const adminAddresses = (import.meta.env.VITE_ADMIN_ADDRESSES || '').split(',').map((a: string) => a.trim().toLowerCase());
+                const isCurrentAdmin = addr && adminAddresses.includes(addr.toLowerCase());
+                return isCurrentAdmin ? (
+                  <span style={{ color: '#2563eb', fontWeight: 600 }}>🔑 管理者</span>
+                ) : (
+                  <span style={{ color: '#6b7280' }}>👤 一般ユーザー</span>
+                );
+              } catch {
+                return null;
+              }
+            })()}
+          </>
+        ) : (
+          <span style={{ color: '#ef4444' }}>❌ ウォレット未接続</span>
+        )}
+      </div>
 
       {mode === 'admin' && (
         <div style={{ marginBottom: '2rem', display: 'grid', gap: '0.75rem', maxWidth: '400px' }}>

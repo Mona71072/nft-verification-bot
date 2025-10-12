@@ -13,6 +13,7 @@ function App() {
   const { account, connected } = useWalletWithErrorHandling();
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [currentPage, setCurrentPage] = useState<'verification' | 'admin'>('verification');
+  const [copied, setCopied] = useState<boolean>(false);
 
   // 管理者チェック（ヘッダー表示制御用）
   useEffect(() => {
@@ -79,9 +80,42 @@ function App() {
           }}>
             SyndicateXTokyo
           </a>
-          {isAdmin && (
-            <a href="/admin" style={{ padding: '0.5rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '8px', color: '#374151', textDecoration: 'none', fontSize: '0.75rem', fontWeight: 600 }}>管理者ページ</a>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            {/* ウォレット情報表示 */}
+            {connected && account?.address && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '6px 12px',
+                background: '#f3f4f6',
+                borderRadius: '6px',
+                border: '1px solid #e5e7eb',
+                fontSize: '12px'
+              }}>
+                <span 
+                  onClick={() => {
+                    navigator.clipboard.writeText(account.address);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }}
+                  title={account.address}
+                  style={{ 
+                    cursor: 'pointer', 
+                    fontFamily: 'monospace',
+                    fontWeight: 500
+                  }}
+                >
+                  📍 {account.address.slice(0, 6)}...{account.address.slice(-4)}
+                </span>
+                {copied && <span style={{ color: '#10b981', fontSize: '11px' }}>✓</span>}
+                {isAdmin && <span style={{ color: '#2563eb', fontWeight: 600 }}>🔑</span>}
+              </div>
+            )}
+            {isAdmin && (
+              <a href="/admin" style={{ padding: '0.5rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '8px', color: '#374151', textDecoration: 'none', fontSize: '0.75rem', fontWeight: 600 }}>管理者ページ</a>
+            )}
+          </div>
         </div>
       </nav>
 
