@@ -75,73 +75,6 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
   const [createColMessage, setCreateColMessage] = useState<string>('');
   const [createColResult, setCreateColResult] = useState<any>(null);
 
-  // パッケージ公開（本番）用ステート
-  const [artifactModules, setArtifactModules] = useState<string[] | null>(null);
-  const [artifactDeps, setArtifactDeps] = useState<string[] | null>(null);
-  const [publishing, setPublishing] = useState<boolean>(false);
-  const [publishMessage, setPublishMessage] = useState<string>('');
-  const [publishResult, setPublishResult] = useState<any>(null);
-
-  const handleArtifactChange = async (file: File | null) => {
-    try {
-      setArtifactModules(null);
-      setArtifactDeps(null);
-      setPublishMessage('');
-      setPublishResult(null);
-      if (!file) return;
-      const text = await file.text();
-      const json = JSON.parse(text);
-      const modules = Array.isArray(json.modules) ? json.modules : null;
-      const deps = Array.isArray(json.dependencies) ? json.dependencies : null;
-      if (!modules || !deps) {
-        setPublishMessage('不正なアーティファクトです（modules/dependenciesが見つかりません）');
-        return;
-      }
-      setArtifactModules(modules);
-      setArtifactDeps(deps);
-      setPublishMessage(`読み込み完了: modules=${modules.length}, dependencies=${deps.length}`);
-    } catch (e: any) {
-      setPublishMessage(e?.message || 'アーティファクトの読み込みに失敗しました');
-    }
-  };
-
-  const handlePublishPackage = async () => {
-    try {
-      if (publishing) return;
-      if (!connected || !account?.address) { setPublishMessage('ウォレットを接続してください'); return; }
-      if (!artifactModules || !artifactDeps) { setPublishMessage('アーティファクト（build.artifacts.json）を選択してください'); return; }
-      setPublishing(true);
-      setPublishMessage('パッケージ公開中...');
-      setPublishResult(null);
-
-      const timestamp = new Date().toISOString();
-      const authMessage = `SXT Admin Publish\naddress=${account.address}\ntimestamp=${timestamp}`;
-      const msgBytes = new TextEncoder().encode(authMessage);
-      const sig = typeof signPersonalMessage === 'function' ? await signPersonalMessage({ message: msgBytes }) : null;
-      const signature = sig?.signature;
-      const bytes = sig?.bytes;
-      const publicKey = (sig as any)?.publicKey ?? (account as any)?.publicKey;
-      try { localStorage.setItem('currentWalletAddress', account.address); } catch {}
-
-      const resp = await fetch(`${API_BASE_URL}/api/admin/publish`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ modules: artifactModules, dependencies: artifactDeps, gasBudget: 100_000_000, signature, bytes, publicKey, authMessage })
-      });
-      const data = await resp.json();
-      if (!data?.success) {
-        setPublishMessage(data?.error || '公開に失敗しました');
-      } else {
-        setPublishMessage('公開に成功しました');
-        setPublishResult(data);
-      }
-    } catch (e: any) {
-      setPublishMessage(e?.message || 'エラーが発生しました');
-    } finally {
-      setPublishing(false);
-    }
-  };
-
   const proposeSymbol = (name: string | undefined) => {
     if (!name) return '';
     const ascii = name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
@@ -299,6 +232,7 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
   const [dmSettings, setDmSettings] = useState<DmSettings | null>(null);
   const [dmEditing, setDmEditing] = useState(false);
   const [editingDm, setEditingDm] = useState<DmSettings | null>(null);
+  const [isCurrentAdmin, setIsCurrentAdmin] = useState<boolean>(false);
 
   const [newCollection, setNewCollection] = useState({
     name: '',
@@ -318,6 +252,28 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
       return () => clearTimeout(timer);
     }
   }, [message]);
+
+  // 管理者チェック（KVストアベース）
+  useEffect(() => {
+    const checkAdmin = async () => {
+      try {
+        const addr = account?.address || localStorage.getItem('currentWalletAddress') || '';
+        if (!addr) {
+          setIsCurrentAdmin(false);
+          return;
+        }
+        
+        const response = await fetch(`${API_BASE_URL}/api/admin/check/${addr}`);
+        const data = await response.json();
+        setIsCurrentAdmin(Boolean(data?.success && data?.isAdmin));
+      } catch (error) {
+        console.error('Failed to check admin status:', error);
+        setIsCurrentAdmin(false);
+      }
+    };
+    
+    checkAdmin();
+  }, [account?.address, connected]);
 
   // 管理者認証ヘッダーを生成
   const getAuthHeaders = () => {
@@ -1253,20 +1209,11 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
               📍 {account.address.slice(0, 6)}...{account.address.slice(-4)}
             </span>
             {copied && <span style={{ color: '#10b981', fontSize: '12px' }}>コピーしました！</span>}
-            {(() => {
-              try {
-                const addr = account?.address || localStorage.getItem('currentWalletAddress') || '';
-                const adminAddresses = (import.meta.env.VITE_ADMIN_ADDRESSES || '').split(',').map((a: string) => a.trim().toLowerCase());
-                const isCurrentAdmin = addr && adminAddresses.includes(addr.toLowerCase());
-                return isCurrentAdmin ? (
-                  <span style={{ color: '#2563eb', fontWeight: 600 }}>🔑 管理者</span>
-                ) : (
-                  <span style={{ color: '#6b7280' }}>👤 一般ユーザー</span>
-                );
-              } catch {
-                return null;
-              }
-            })()}
+            {isCurrentAdmin ? (
+              <span style={{ color: '#2563eb', fontWeight: 600 }}>🔑 管理者</span>
+            ) : (
+              <span style={{ color: '#6b7280' }}>👤 一般ユーザー</span>
+            )}
           </>
         ) : (
           <span style={{ color: '#ef4444' }}>❌ ウォレット未接続</span>
