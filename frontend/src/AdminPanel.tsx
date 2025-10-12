@@ -1099,13 +1099,18 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
         active: eventData.status === 'published' 
       };
       
+      console.log('🔍 Debug - Saving event:', { url, method, payload, headers: getAuthHeaders() });
+      
       const response = await fetch(url, {
         method,
         headers: getAuthHeaders(),
         body: JSON.stringify(payload)
       });
       
+      console.log('🔍 Debug - Response status:', response.status);
+      
       const result = await response.json();
+      console.log('🔍 Debug - Response data:', result);
       
       if (result.success) {
         const isDraft = eventData.status === 'draft';

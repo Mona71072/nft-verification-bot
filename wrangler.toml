@@ -67,6 +67,8 @@ WALRUS_PUBLISHER_BASE = "https://wal-publisher-testnet.staketab.org"
 WALRUS_PUBLISHER_AUTH = ""
 WALRUS_DEFAULT_EPOCHS = "12"
 WALRUS_DEFAULT_PERMANENT = "false"
+# 管理者アドレス
+ADMIN_ADDRESSES = "0x645a45e619b62f8179e217bed972bc65281fddee193fc0505566490c7743aa9d"
 
 # KVバインディング
 [[env.production.kv_namespaces]]
