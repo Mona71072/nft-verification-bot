@@ -169,19 +169,18 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
       const publicKey = (sig as any)?.publicKey ?? (account as any)?.publicKey;
       try { localStorage.setItem('currentWalletAddress', account.address); } catch {}
 
+      // Package IDをデフォルト値から取得
+      const defaultMoveTarget = import.meta.env.VITE_DEFAULT_MOVE_TARGET || '0xf9184e632f45705372e057be7b48d0b1d5c239e2932f041f2e49b7801677fcc3::sxt_nft::mint_to';
+      const packageId = defaultMoveTarget.split('::')[0];
+      
       const body: any = {
         name: createColName || (newEvent.name || 'Event Collection'),
-        symbol: createColSymbol || proposeSymbol(newEvent.name),
-        imageCid: (newEvent as any).imageCid || '',
-        imageMimeType: (newEvent as any).imageMimeType || '',
+        packageId: packageId,
         typePath: createColTypePath || undefined,
-        signature,
-        bytes,
-        publicKey,
-        authMessage
+        description: `Symbol: ${createColSymbol || proposeSymbol(newEvent.name)}, Image: ${(newEvent as any).imageCid || 'none'}`
       };
 
-      const res = await fetch(`${API_BASE_URL}/api/admin/collections/create`, {
+      const res = await fetch(`${API_BASE_URL}/api/mint-collections`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(body)
@@ -191,8 +190,15 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
         setCreateColMessage(data?.error || 'コレクション作成に失敗しました');
       } else {
         setCreateColMessage('コレクションを作成しました');
-        setCreateColResult(data);
-        try { await fetchCollections(); } catch {}
+        // mint-collectionsのレスポンスフォーマットに合わせる
+        setCreateColResult({ 
+          success: true, 
+          data: { 
+            collection: data.data,
+            moveResult: { txDigest: 'N/A (KV Store only)' }
+          } 
+        });
+        try { await fetchMintCollections(); } catch {}
       }
     } catch (e: any) {
       setCreateColMessage(e?.message || 'エラーが発生しました');
@@ -1951,32 +1957,24 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
                 </div>
                 <div style={{ marginTop: '0.75rem' }}>
                   <div style={{ marginBottom: '0.5rem' }}>
-                    <strong>登録コレクション:</strong>
-                    <div style={{ fontFamily: 'monospace', fontSize: '0.9rem' }}>{createColResult?.data?.collection?.packageId || '-'}</div>
+                    <strong>コレクション名:</strong>
+                    <div style={{ fontSize: '0.9rem' }}>{createColResult?.data?.collection?.name || '-'}</div>
                   </div>
                   <div style={{ marginBottom: '0.5rem' }}>
-                    <strong>Tx Digest:</strong>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span style={{ fontFamily: 'monospace', fontSize: '0.9rem' }}>{createColResult?.data?.moveResult?.txDigest || '-'}</span>
-                      {createColResult?.data?.moveResult?.txDigest && (
-                        <button
-                          onClick={async () => { try { await navigator.clipboard.writeText(createColResult?.data?.moveResult?.txDigest); setCreateColMessage('Tx Digestをコピーしました'); } catch {} }}
-                          style={{ padding: '0.25rem 0.5rem', background: '#6b7280', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: '0.8rem' }}
-                        >
-                          コピー
-                        </button>
-                      )}
-                    </div>
+                    <strong>Package ID:</strong>
+                    <div style={{ fontFamily: 'monospace', fontSize: '0.9rem', wordBreak: 'break-all' }}>{createColResult?.data?.collection?.packageId || '-'}</div>
                   </div>
-                  {(createColResult?.data?.moveResult?.events || createColResult?.data?.moveResult?.objectChanges) && (
-                    <details style={{ background: '#f9fafb', padding: '0.5rem', borderRadius: 6 }}>
-                      <summary>詳細</summary>
-                      <pre style={{ overflowX: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '0.8rem' }}>{JSON.stringify({
-                        events: createColResult?.data?.moveResult?.events || [],
-                        objectChanges: createColResult?.data?.moveResult?.objectChanges || []
-                      }, null, 2)}</pre>
-                    </details>
-                  )}
+                  <div style={{ marginBottom: '0.5rem' }}>
+                    <strong>Type Path:</strong>
+                    <div style={{ fontFamily: 'monospace', fontSize: '0.9rem', wordBreak: 'break-all' }}>{createColResult?.data?.collection?.typePath || '-'}</div>
+                  </div>
+                  <div style={{ marginBottom: '0.5rem' }}>
+                    <strong>作成日時:</strong>
+                    <div style={{ fontSize: '0.9rem' }}>{createColResult?.data?.collection?.createdAt ? new Date(createColResult.data.collection.createdAt).toLocaleString('ja-JP') : '-'}</div>
+                  </div>
+                  <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#f3f4f6', borderRadius: '6px', fontSize: '0.875rem', color: '#6b7280' }}>
+                    ✅ コレクションがKVストアに登録されました
+                  </div>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.75rem' }}>
                   <button onClick={() => setCreateColResult(null)} style={{ padding: '0.5rem 1rem', background: '#10b981', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer' }}>閉じる</button>
