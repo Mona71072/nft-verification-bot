@@ -1,8 +1,6 @@
 import { ConnectButton } from '@suiet/wallet-kit';
-import { useWalletWithErrorHandling } from '../hooks/useWallet';
 
 export const WalletConnection: React.FC = () => {
-  const { account, connected } = useWalletWithErrorHandling();
 
   return (
     <div style={{ marginBottom: '1.5rem' }}>
