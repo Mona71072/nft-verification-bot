@@ -68,7 +68,7 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
   });
 
   // コレクション作成UI用ステート
-  const [createColName, setCreateColName] = useState<string>('');
+  const [createColName, setCreateColName] = useState<string>('SXT EVENT');
   const [createColSymbol, setCreateColSymbol] = useState<string>('');
   const [createColTypePath, setCreateColTypePath] = useState<string>('');
   const [creatingCollection, setCreatingCollection] = useState<boolean>(false);
