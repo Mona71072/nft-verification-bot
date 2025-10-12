@@ -1099,8 +1099,8 @@ app.post('/api/mint-collections', async (c) => {
     const { name, packageId, typePath, description = '' } = body || {};
     if (!name || !packageId) return c.json({ success: false, error: 'Missing name/packageId' }, 400);
     
-    // typePathがない場合、packageIdから生成（デフォルトで::event_nft::EventNFT）
-    const finalTypePath = typePath || `${packageId}::event_nft::EventNFT`;
+    // typePathがない場合、packageIdから生成（デフォルトで::sxt_nft::SxtNFT）
+    const finalTypePath = typePath || `${packageId}::sxt_nft::SxtNFT`;
     
     const s = await c.env.COLLECTION_STORE.get('mint_collections');
     const list = s ? JSON.parse(s) : [];

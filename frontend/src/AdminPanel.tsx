@@ -68,7 +68,7 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
   });
 
   // コレクション作成UI用ステート
-  const [createColName, setCreateColName] = useState<string>('SXT EVENT');
+  const [createColName, setCreateColName] = useState<string>('');
   const [createColSymbol, setCreateColSymbol] = useState<string>('');
   const [createColTypePath, setCreateColTypePath] = useState<string>('');
   const [creatingCollection, setCreatingCollection] = useState<boolean>(false);
@@ -1921,7 +1921,7 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
               />
               <input
                 type="text"
-                placeholder="型パス（任意・例: 0x...::module::Struct）未指定時は既定から推測"
+                placeholder="型パス（任意・例: 0x...::sxt_nft::SxtNFT）未指定時は自動生成"
                 value={createColTypePath}
                 onChange={(e) => setCreateColTypePath(e.target.value)}
                 style={{ padding: '0.5rem', borderRadius: 6, border: '1px solid #d1d5db' }}

@@ -306,7 +306,7 @@ function EventEditorInner({ event, onSave, onCancel }: EventEditorProps) {
               >
                 <option value="">コレクションを選択してください</option>
                 {mintCollections.map((collection) => {
-                  const typePath = (collection as any).typePath || `${collection.packageId}::event_nft::EventNFT`;
+                  const typePath = (collection as any).typePath || `${collection.packageId}::sxt_nft::SxtNFT`;
                   return (
                     <option key={collection.id} value={typePath}>
                       {collection.name} ({collection.packageId})
