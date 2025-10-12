@@ -1068,13 +1068,21 @@ app.get('/api/mint-collections/:typePath/mints', async (c) => {
     if (!mintedStore) return c.json({ success: false, error: 'MINTED_STORE is not available' }, 503);
 
     const idxKeyAll = `mint_index:${typePath}`;
+    console.log(`[Mint History] Looking for key: ${idxKeyAll}`);
+    
     const idxAllStr = await mintedStore.get(idxKeyAll);
+    console.log(`[Mint History] Found data:`, idxAllStr ? `${idxAllStr.length} bytes` : 'null');
+    
     const txs: string[] = idxAllStr ? JSON.parse(idxAllStr) : [];
+    console.log(`[Mint History] Transaction count: ${txs.length}`);
+    
     const slice = txs.slice(0, limit);
     const items = await Promise.all(slice.map(async (tx) => {
       const rec = await mintedStore.get(`mint_tx:${tx}`);
       return rec ? JSON.parse(rec) : { txDigest: tx };
     }));
+    
+    console.log(`[Mint History] Returning ${items.length} items`);
     return c.json({ success: true, data: items });
   } catch (error) {
     console.error('Get collection mints failed', error);
@@ -1088,14 +1096,19 @@ app.post('/api/mint-collections', async (c) => {
     const admin = c.req.header('X-Admin-Address');
     if (!admin || !(await isAdmin(c, admin))) return c.json({ success: false, error: 'forbidden' }, 403);
     const body = await c.req.json();
-    const { name, packageId, description = '' } = body || {};
+    const { name, packageId, typePath, description = '' } = body || {};
     if (!name || !packageId) return c.json({ success: false, error: 'Missing name/packageId' }, 400);
+    
+    // typePathがない場合、packageIdから生成（デフォルトで::event_nft::EventNFT）
+    const finalTypePath = typePath || `${packageId}::event_nft::EventNFT`;
+    
     const s = await c.env.COLLECTION_STORE.get('mint_collections');
     const list = s ? JSON.parse(s) : [];
     const item = {
       id: Date.now().toString(),
       name,
       packageId,
+      typePath: finalTypePath,  // 完全なtype pathを保存
       description,
       isActive: true,
       createdAt: new Date().toISOString(),

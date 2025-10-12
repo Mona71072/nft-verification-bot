@@ -305,11 +305,14 @@ function EventEditorInner({ event, onSave, onCancel }: EventEditorProps) {
                 disabled={loadingCollections}
               >
                 <option value="">コレクションを選択してください</option>
-                {mintCollections.map((collection) => (
-                  <option key={collection.id} value={collection.id}>
-                    {collection.name} ({collection.packageId})
-                  </option>
-                ))}
+                {mintCollections.map((collection) => {
+                  const typePath = (collection as any).typePath || `${collection.packageId}::event_nft::EventNFT`;
+                  return (
+                    <option key={collection.id} value={typePath}>
+                      {collection.name} ({collection.packageId})
+                    </option>
+                  );
+                })}
               </select>
               {mintCollections.length === 0 && !loadingCollections && (
                 <div style={{ marginTop: 8, fontSize: 12, color: '#ef4444' }}>

@@ -1081,11 +1081,19 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
   const fetchCollectionHistory = async (typePath: string, limit: number = 50) => {
     if (!typePath) return;
     setHistoryLoading(true);
+    console.log('[Frontend] Fetching history for typePath:', typePath);
     try {
       const encoded = encodeURIComponent(typePath);
-      const res = await fetch(`${API_BASE_URL}/api/mint-collections/${encoded}/mints?limit=${limit}`);
+      const url = `${API_BASE_URL}/api/mint-collections/${encoded}/mints?limit=${limit}`;
+      console.log('[Frontend] Request URL:', url);
+      
+      const res = await fetch(url);
       const data = await res.json();
+      
+      console.log('[Frontend] Response:', data);
+      
       if (data.success) {
+        console.log('[Frontend] History items count:', data.data?.length || 0);
         setHistoryItems(Array.isArray(data.data) ? data.data : []);
       } else {
         setMessage(`履歴の取得に失敗しました: ${data.error || 'unknown error'}`);
@@ -2778,8 +2786,13 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
                         {col.name}
                       </div>
                       <div style={{ fontSize: '0.875rem', color: '#6b7280', fontFamily: 'monospace' }}>
-                        {col.packageId || 'N/A'}
+                        Package ID: {col.packageId || 'N/A'}
                       </div>
+                      {(col as any).typePath && (
+                        <div style={{ fontSize: '0.75rem', color: '#9ca3af', fontFamily: 'monospace', marginTop: '0.25rem' }}>
+                          Type Path: {(col as any).typePath}
+                        </div>
+                      )}
                       <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.25rem' }}>
                         作成日時: {new Date(Number(col.id)).toLocaleString('ja-JP')}
                       </div>
@@ -2860,7 +2873,7 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
               >
                 <option value="">選択してください</option>
                 {mintCollections.map(col => (
-                  <option key={col.id} value={col.packageId}>
+                  <option key={col.id} value={(col as any).typePath || col.packageId}>
                     {col.name} ({(col.packageId || '').slice(0, 10)}...)
                   </option>
                 ))}
