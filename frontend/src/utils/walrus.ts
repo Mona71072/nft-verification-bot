@@ -12,8 +12,8 @@
 export const walrusUrlFromCid = (blobId?: string): string | undefined => {
   if (!blobId) return undefined;
   
-  // Mainnet公開Aggregator（PDF準拠）
-  const aggregatorBase = import.meta.env.VITE_WALRUS_AGGREGATOR_BASE || 'https://aggregator.walrus-mainnet.walrus.space';
+  // Mainnet公開Aggregator（Staketab提供）
+  const aggregatorBase = import.meta.env.VITE_WALRUS_AGGREGATOR_BASE || 'https://wal-aggregator-mainnet.staketab.org';
   return `${aggregatorBase}/v1/blobs/${encodeURIComponent(blobId)}`;
 };
 
@@ -157,7 +157,7 @@ export const getFallbackImageUrl = (blobId?: string, fallbackUrl?: string): stri
 export const getImageDisplayUrl = (
   blobId?: string,
   fallbackUrl?: string,
-  useProxy: boolean = true
+  useProxy: boolean = false
 ): string | undefined => {
   if (!blobId) return fallbackUrl;
   
