@@ -175,11 +175,22 @@ async function logMintDetails(txDigest: string, ev: any, address: string, env: a
 
     const rpcJson: any = await rpcResp.json().catch(() => null);
     const changes: any[] = rpcJson?.result?.objectChanges || [];
+    
+    console.log(`[Mint Log] Total object changes: ${changes.length}`);
+    console.log(`[Mint Log] Expected collectionId: ${ev.collectionId}`);
+    
     const created = changes.filter((ch) => ch?.type === 'created');
+    console.log(`[Mint Log] Created objects: ${created.length}`);
+    created.forEach((ch, idx) => {
+      console.log(`[Mint Log] Created[${idx}]: type=${ch?.type}, objectType=${ch?.objectType}, objectId=${ch?.objectId}`);
+    });
+    
     const nftObjects = created
       .filter((ch) => typeof ch?.objectType === 'string' && ch.objectType === ev.collectionId)
       .map((ch) => ch.objectId)
       .filter(Boolean);
+    
+    console.log(`[Mint Log] Filtered NFT objects: ${nftObjects.length}`, nftObjects);
 
     const log = {
       txDigest,
