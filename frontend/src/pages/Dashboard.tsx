@@ -15,7 +15,6 @@ import { ActivityTimeline } from '@/features/activity/ActivityTimeline';
 import { 
   LayoutGrid, 
   TrendingUp, 
-  Flame, 
   Gem, 
   Calendar as CalendarIcon,
   Activity as ActivityIcon,
@@ -152,10 +151,6 @@ const Dashboard: React.FC = () => {
     return Array.from(onchainCounts.values()).reduce((sum, count) => sum + count, 0);
   }, [onchainCounts]);
 
-  const activeEvents = useMemo(() => {
-    return events.filter(e => e.active).length;
-  }, [events]);
-
   // Owned NFTs: Non-EventNFT type NFTs (Collection NFTs only)
   const nonEventNFTs = useMemo(() => {
     return allOwnedNFTs.filter(nft => 
@@ -289,14 +284,13 @@ const Dashboard: React.FC = () => {
               : isTablet
                 ? 'repeat(2, 1fr)'
                 : connected 
-                  ? 'repeat(4, 1fr)' 
-                  : 'repeat(3, 1fr)',
+                  ? 'repeat(3, 1fr)' 
+                  : 'repeat(2, 1fr)',
             gap: isMobile ? '1rem' : '1.5rem',
             marginBottom: isMobile ? '1.5rem' : '2rem'
           }}>
           {loading ? (
             <>
-              <StatCardSkeleton />
               <StatCardSkeleton />
               <StatCardSkeleton />
               {connected && <StatCardSkeleton />}
@@ -323,21 +317,11 @@ const Dashboard: React.FC = () => {
                   />
                 </FloatOnHover>
               </StaggerItem>
-              <StaggerItem>
-                <FloatOnHover>
-                  <StatCard
-                    label="Active Events"
-                    value={activeEvents}
-                    icon={<Flame className="w-5 h-5" />}
-                    onClick={() => setActiveTab('all')}
-                  />
-                </FloatOnHover>
-              </StaggerItem>
               {connected && (
                 <StaggerItem>
                   <FloatOnHover>
                     <StatCard
-                      label={activeTab === 'calendar' ? 'Event NFTs' : 'Collection NFTs'}
+                      label={activeTab === 'calendar' ? 'Event NFTs' : 'Owned NFTs'}
                       value={nftLoading ? '...' : (activeTab === 'calendar' ? eventNFTs.length : nonEventNFTs.length)}
                       icon={<Gem className="w-5 h-5" />}
                       loading={nftLoading}
