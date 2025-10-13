@@ -400,9 +400,11 @@ export async function sendVerificationFailureMessage(discordId: string, verifica
     const cm = verificationData?.custom_message || {};
     
     if (cm.title && cm.description) {
+      const description = cm.description.replace(/\\n/g, '\n'); // エスケープされた改行を実際の改行に変換
+      
       const failureEmbed = new EmbedBuilder()
         .setTitle(cm.title)
-        .setDescription(cm.description)
+        .setDescription(description)
         .setColor(cm.color ?? 0xED4245)
         .setTimestamp();
 
@@ -445,9 +447,11 @@ export async function revokeRoleFromUser(discordId: string, customMessage?: { ti
     // ユーザーにDM送信
     try {
       if (customMessage?.title && customMessage?.description) {
+        const description = customMessage.description.replace(/\\n/g, '\n'); // エスケープされた改行を実際の改行に変換
+        
         const revokeEmbed = new EmbedBuilder()
           .setTitle(customMessage.title)
-          .setDescription(customMessage.description)
+          .setDescription(description)
           .setColor(customMessage.color ?? 0xED4245)
           .setTimestamp();
 
