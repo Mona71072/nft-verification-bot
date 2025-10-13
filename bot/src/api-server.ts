@@ -224,10 +224,9 @@ app.get('/api/discord/roles', async (req, res) => {
 // バッチ処理用のDM通知関数
 async function sendBatchNotification(discordId: string, action: string, data: { collectionName: string; roleName: string }) {
   try {
-    // DM設定を取得
-    const dmSettingsResponse = await fetch(`${config.CLOUDFLARE_WORKERS_API_URL}/api/admin/dm-settings`, {
+    // DM設定を取得（公開API使用）
+    const dmSettingsResponse = await fetch(`${config.CLOUDFLARE_WORKERS_API_URL}/api/dm-settings`, {
       headers: {
-        'X-Admin-Address': '0x1234567890abcdef1234567890abcdef12345678',
         'User-Agent': 'Discord-Bot'
       }
     });
@@ -343,10 +342,9 @@ app.post('/api/notify-discord', async (req, res) => {
     // 認証成功時のDM送信
     if (action === 'grant_roles' && verificationData) {
       try {
-        // DM設定テンプレートを取得
-        const dmSettingsResponse = await fetch(`${config.CLOUDFLARE_WORKERS_API_URL}/api/admin/dm-settings`, {
+        // DM設定テンプレートを取得（公開API使用）
+        const dmSettingsResponse = await fetch(`${config.CLOUDFLARE_WORKERS_API_URL}/api/dm-settings`, {
           headers: {
-            'X-Admin-Address': '0x1234567890abcdef1234567890abcdef12345678',
             'User-Agent': 'Discord-Bot'
           }
         });

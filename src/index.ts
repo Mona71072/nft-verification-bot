@@ -1296,6 +1296,22 @@ app.put('/api/admin/events/:id', async (c) => {
   }
 });
 
+// 公開DM設定API（Discord Bot用）
+app.get('/api/dm-settings', async (c) => {
+  try {
+    const store = c.env.DM_TEMPLATE_STORE as KVNamespace | undefined;
+    if (!store) {
+      return c.json({ success: true, data: DEFAULT_DM_SETTINGS });
+    }
+
+    const settings = await store.get('dm_settings');
+    const data = settings ? JSON.parse(settings) : DEFAULT_DM_SETTINGS;
+    return c.json({ success: true, data });
+  } catch (error) {
+    return c.json({ success: false, error: 'Failed to get DM settings' }, 500);
+  }
+});
+
 // 管理者用DM設定API
 app.get('/api/admin/dm-settings', async (c) => {
   try {
