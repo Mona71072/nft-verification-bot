@@ -4,6 +4,7 @@ import {
   DrawerContent,
   DrawerHeader,
   DrawerTitle,
+  DrawerDescription,
   DrawerClose,
 } from '@/components/ui/drawer';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -51,7 +52,13 @@ const copyToClipboard = async (text: string) => {
 export function NFTDetailDrawer({ nft, open, onClose }: NFTDetailDrawerProps) {
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
-  if (!nft) return null;
+  if (!nft) {
+    return (
+      <Drawer open={false} onOpenChange={onClose}>
+        <DrawerContent side="right" />
+      </Drawer>
+    );
+  }
 
   const handleCopy = async (text: string, field: string) => {
     const success = await copyToClipboard(text);
@@ -79,6 +86,9 @@ export function NFTDetailDrawer({ nft, open, onClose }: NFTDetailDrawerProps) {
               <DrawerTitle className="text-2xl font-bold mb-1">
                 {nft.display?.name || 'Unnamed NFT'}
               </DrawerTitle>
+              <DrawerDescription className="sr-only">
+                NFT details and information
+              </DrawerDescription>
               <button
                 onClick={() => handleCopy(nft.objectId, 'objectId')}
                 className="text-sm text-muted-foreground hover:text-foreground transition-colors font-mono flex items-center gap-2 group"

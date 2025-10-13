@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Palette, ArrowUpRight, CheckCircle, FileText, TrendingUp } from 'lucide-react';
+import { Palette, ArrowUpRight, CheckCircle, FileText, TrendingUp, Clock } from 'lucide-react';
 
 interface Activity {
   id: string;
@@ -213,20 +213,25 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
   }
   
   return (
-    <div style={{ padding: isMobile ? '1rem' : '2rem' }}>
+    <div style={{ padding: isMobile ? '1.25rem' : '2rem' }}>
       {/* Header */}
-      <div style={{ marginBottom: isMobile ? '1.5rem' : '2rem' }}>
+      <div style={{ 
+        marginBottom: isMobile ? '1.5rem' : '2rem',
+        paddingBottom: '1rem',
+        borderBottom: '1px solid #f1f5f9'
+      }}>
         <h2 style={{
-          fontSize: isMobile ? '1.25rem' : '1.5rem',
+          fontSize: isMobile ? '1.125rem' : '1.25rem',
           fontWeight: '700',
-          color: '#111827',
-          marginBottom: '0.5rem'
+          color: '#1e293b',
+          marginBottom: '0.375rem',
+          letterSpacing: '-0.01em'
         }}>
-          Activity
+          Activity Timeline
         </h2>
         <p style={{
-          fontSize: isMobile ? '0.875rem' : '0.9375rem',
-          color: '#6b7280'
+          fontSize: isMobile ? '0.8125rem' : '0.875rem',
+          color: '#64748b'
         }}>
           {filteredActivities.length} {filteredActivities.length === 1 ? 'activity' : 'activities'}
         </p>
@@ -235,10 +240,10 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
       {/* Filter */}
       <div style={{
         display: 'flex',
-        gap: isMobile ? '0.5rem' : '0.75rem',
+        gap: isMobile ? '0.375rem' : '0.5rem',
         overflowX: 'auto',
-        paddingBottom: '0.5rem',
-        marginBottom: isMobile ? '1.5rem' : '2rem',
+        paddingBottom: '0.25rem',
+        marginBottom: isMobile ? '1.25rem' : '1.5rem',
         WebkitOverflowScrolling: 'touch'
       }}>
         {[
@@ -252,31 +257,32 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
               display: 'inline-flex',
               alignItems: 'center',
               gap: '0.5rem',
-              padding: isMobile ? '0.625rem 1rem' : '0.75rem 1.25rem',
-              borderRadius: '0.75rem',
-              fontSize: isMobile ? '0.875rem' : '0.9375rem',
+              padding: isMobile ? '0.625rem 1rem' : '0.625rem 1.125rem',
+              borderRadius: '10px',
+              fontSize: isMobile ? '0.8125rem' : '0.875rem',
               fontWeight: '600',
-              border: 'none',
               cursor: 'pointer',
               whiteSpace: 'nowrap',
-              transition: 'all 0.2s ease',
+              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
               background: filter === value 
-                ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
-                : '#f3f4f6',
-              color: filter === value ? 'white' : '#6b7280',
+                ? 'linear-gradient(135deg, #1e293b 0%, #334155 100%)'
+                : '#f8fafc',
+              color: filter === value ? 'white' : '#64748b',
               boxShadow: filter === value 
-                ? '0 4px 12px rgba(102, 126, 234, 0.4)'
+                ? '0 2px 8px rgba(30, 41, 59, 0.25)'
                 : 'none',
-              transform: filter === value ? 'translateY(-1px)' : 'translateY(0)'
+              border: filter === value ? 'none' : '1px solid #e2e8f0'
             }}
             onMouseEnter={(e) => {
               if (filter !== value && !isMobile) {
-                e.currentTarget.style.background = '#e5e7eb';
+                e.currentTarget.style.background = '#f1f5f9';
+                e.currentTarget.style.borderColor = '#cbd5e1';
               }
             }}
             onMouseLeave={(e) => {
               if (filter !== value && !isMobile) {
-                e.currentTarget.style.background = '#f3f4f6';
+                e.currentTarget.style.background = '#f8fafc';
+                e.currentTarget.style.borderColor = '#e2e8f0';
               }
             }}
           >
@@ -298,9 +304,9 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
               marginBottom: isMobile ? '1rem' : '1.25rem'
             }}>
               <h3 style={{
-                fontSize: isMobile ? '0.8125rem' : '0.875rem',
+                fontSize: isMobile ? '0.75rem' : '0.8125rem',
                 fontWeight: '700',
-                color: '#667eea',
+                color: '#94a3b8',
                 textTransform: 'uppercase',
                 letterSpacing: '0.05em'
               }}>
@@ -308,8 +314,8 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
               </h3>
               <div style={{
                 flex: 1,
-                height: '2px',
-                background: 'linear-gradient(90deg, #667eea 0%, transparent 100%)'
+                height: '1px',
+                background: 'linear-gradient(90deg, #e2e8f0 0%, transparent 100%)'
               }} />
             </div>
             
@@ -327,7 +333,7 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
                 top: 0,
                 bottom: 0,
                 width: '2px',
-                background: 'linear-gradient(180deg, #e5e7eb 0%, transparent 100%)'
+                background: 'linear-gradient(180deg, #e2e8f0 0%, transparent 100%)'
               }} />
               
               {dateActivities.map((activity) => (
@@ -338,41 +344,43 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
                     position: 'relative',
                     width: '100%',
                     textAlign: 'left',
-                    padding: isMobile ? '1rem' : '1.25rem',
-                    paddingLeft: isMobile ? '3.5rem' : '4rem',
-                    borderRadius: '1rem',
+                    padding: isMobile ? '0.875rem' : '1rem',
+                    paddingLeft: isMobile ? '3.25rem' : '3.75rem',
+                    borderRadius: '12px',
                     background: 'white',
                     border: '1px solid #e5e7eb',
                     cursor: 'pointer',
-                    transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)'
+                    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)'
                   }}
                   onMouseEnter={(e) => {
                     if (!isMobile) {
-                      e.currentTarget.style.transform = 'translateY(-2px) translateX(4px)';
-                      e.currentTarget.style.boxShadow = '0 8px 24px rgba(102, 126, 234, 0.15)';
-                      e.currentTarget.style.borderColor = '#667eea';
+                      e.currentTarget.style.transform = 'translateX(4px)';
+                      e.currentTarget.style.boxShadow = '0 4px 16px rgba(0, 0, 0, 0.08)';
+                      e.currentTarget.style.borderColor = '#cbd5e1';
+                      e.currentTarget.style.background = '#f8fafc';
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (!isMobile) {
-                      e.currentTarget.style.transform = 'translateY(0) translateX(0)';
-                      e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.05)';
+                      e.currentTarget.style.transform = 'translateX(0)';
+                      e.currentTarget.style.boxShadow = '0 1px 2px rgba(0, 0, 0, 0.04)';
                       e.currentTarget.style.borderColor = '#e5e7eb';
+                      e.currentTarget.style.background = 'white';
                     }
                   }}
                 >
                   {/* Timeline Dot */}
                   <div style={{
                     position: 'absolute',
-                    left: isMobile ? '0.75rem' : '1rem',
-                    top: isMobile ? '1.25rem' : '1.5rem',
-                    width: isMobile ? '0.875rem' : '1rem',
-                    height: isMobile ? '0.875rem' : '1rem',
+                    left: isMobile ? '0.875rem' : '1.125rem',
+                    top: isMobile ? '1rem' : '1.125rem',
+                    width: isMobile ? '0.625rem' : '0.75rem',
+                    height: isMobile ? '0.625rem' : '0.75rem',
                     borderRadius: '50%',
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    border: '3px solid white',
-                    boxShadow: '0 0 0 1px #e5e7eb',
+                    background: '#1e293b',
+                    border: '2px solid white',
+                    boxShadow: '0 0 0 1px #e2e8f0',
                     zIndex: 1
                   }} />
                   
@@ -408,9 +416,9 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
                           {getActivityIcon(activity.type)}
                         </div>
                         <h4 style={{
-                          fontSize: isMobile ? '0.9375rem' : '1rem',
-                          fontWeight: '700',
-                          color: '#111827',
+                          fontSize: isMobile ? '0.875rem' : '0.9375rem',
+                          fontWeight: '600',
+                          color: '#1e293b',
                           margin: 0
                         }}>
                           {getActivityTitle(activity)}
@@ -419,14 +427,39 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
                       
                       {/* Timestamp */}
                       <div style={{
-                        fontSize: isMobile ? '0.75rem' : '0.8125rem',
-                        color: '#9ca3af',
-                        marginBottom: '0.5rem'
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        flexWrap: 'wrap',
+                        marginBottom: '0.375rem'
                       }}>
-                        {new Date(activity.timestamp).toLocaleTimeString('en-US', {
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })} · {getRelativeTime(activity.timestamp)}
+                        <div style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.375rem',
+                          padding: '0.25rem 0.625rem',
+                          background: '#f1f5f9',
+                          borderRadius: '6px',
+                          fontSize: isMobile ? '0.6875rem' : '0.75rem',
+                          color: '#475569',
+                          fontWeight: '600'
+                        }}>
+                          <Clock className="w-3 h-3" />
+                          <span>
+                            {new Date(activity.timestamp).toLocaleString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </span>
+                        </div>
+                        <span style={{
+                          fontSize: isMobile ? '0.6875rem' : '0.75rem',
+                          color: '#94a3b8'
+                        }}>
+                          {getRelativeTime(activity.timestamp)}
+                        </span>
                       </div>
                       
                       {/* Event Name (for mints) */}
