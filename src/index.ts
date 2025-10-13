@@ -1819,13 +1819,6 @@ app.post('/api/verify', async (c) => {
       const firstCollection = validCollections[0];
       const collectionName = firstCollection?.name || 'NFT Collection';
       
-      console.log('Sending notification with:', {
-        collectionName,
-        roleName: firstCollection?.roleName,
-        collectionId: collectionIds[0],
-        validCollectionsLength: validCollections.length
-      });
-      
       await fetch(`${botApiUrl}/api/notify-discord`, {
         method: 'POST',
         headers: {
