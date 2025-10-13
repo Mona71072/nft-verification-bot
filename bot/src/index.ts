@@ -501,7 +501,10 @@ export async function revokeRoleFromUser(discordId: string, customMessage?: { ti
       }
 
       if (template) {
-        const description = template.description.replace(/\\n/g, '\n');
+        const roleName = role.name || 'NFT Holder';
+        const description = template.description
+          .replace(/{roles}/g, roleName)
+          .replace(/\\n/g, '\n');
         
         const revokeEmbed = new EmbedBuilder()
           .setTitle(template.title)
