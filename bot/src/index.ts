@@ -400,7 +400,13 @@ export async function sendVerificationFailureMessage(discordId: string, verifica
     const cm = verificationData?.custom_message || {};
     
     if (cm.title && cm.description) {
+      console.log('Original description:', cm.description);
+      console.log('Description type:', typeof cm.description);
+      console.log('Description includes \\n:', cm.description.includes('\\n'));
+      console.log('Description includes actual newline:', cm.description.includes('\n'));
+      
       const description = cm.description.replace(/\\n/g, '\n'); // エスケープされた改行を実際の改行に変換
+      console.log('After replace:', description);
       
       const failureEmbed = new EmbedBuilder()
         .setTitle(cm.title)
@@ -447,7 +453,11 @@ export async function revokeRoleFromUser(discordId: string, customMessage?: { ti
     // ユーザーにDM送信
     try {
       if (customMessage?.title && customMessage?.description) {
+        console.log('Original description (revoke):', customMessage.description);
+        console.log('Description type:', typeof customMessage.description);
+        
         const description = customMessage.description.replace(/\\n/g, '\n'); // エスケープされた改行を実際の改行に変換
+        console.log('After replace (revoke):', description);
         
         const revokeEmbed = new EmbedBuilder()
           .setTitle(customMessage.title)
