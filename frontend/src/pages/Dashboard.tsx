@@ -1116,10 +1116,17 @@ const Dashboard: React.FC = () => {
 
                 {/* Event List */}
                 <div>
-                  <h4 style={{ fontSize: isMobile ? '0.875rem' : '1rem', fontWeight: '700', marginBottom: isMobile ? '0.75rem' : '1rem', color: '#1f2937' }}>
-                    Participated Events
+                  <h4 style={{ 
+                    fontSize: isMobile ? '0.8125rem' : '0.875rem', 
+                    fontWeight: '600', 
+                    marginBottom: isMobile ? '0.75rem' : '1rem', 
+                    color: '#64748b',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em'
+                  }}>
+                    Recent Events
                   </h4>
-                  <div style={{ display: 'grid', gap: isMobile ? '0.5rem' : '0.75rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? '0.375rem' : '0.5rem' }}>
                     {Array.from(nftsByDate.entries())
                       .sort(([a], [b]) => b.localeCompare(a))
                       .slice(0, 10)
@@ -1128,42 +1135,30 @@ const Dashboard: React.FC = () => {
                         
                       return (
                         <div key={date} style={{ 
-                          background: '#f9fafb',
-                          borderRadius: isMobile ? '6px' : '8px',
+                          background: 'white',
+                          borderRadius: isMobile ? '10px' : '12px',
                           border: '1px solid #e5e7eb',
                           overflow: 'hidden',
                           transition: 'all 0.2s ease'
                         }}
                         onMouseEnter={(e) => {
                           if (!isMobile) {
-                            e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.08)';
+                            e.currentTarget.style.borderColor = '#cbd5e1';
+                            e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.06)';
                           }
                         }}
                         onMouseLeave={(e) => {
                           if (!isMobile) {
+                            e.currentTarget.style.borderColor = '#e5e7eb';
                             e.currentTarget.style.boxShadow = 'none';
                           }
                         }}
                         >
-                            <div style={{ padding: isMobile ? '0.75rem 0.5rem' : '1rem' }}>
-                              <div style={{ 
-                                fontWeight: '700', 
-                                marginBottom: '0.5rem', 
-                                color: '#1f2937',
-                                fontSize: isMobile ? '0.875rem' : '1rem'
-                              }}>
-                                {new Date(date).toLocaleDateString('en-US', {
-                                  year: 'numeric',
-                                  month: 'long',
-                                  day: 'numeric',
-                                  weekday: isMobile ? undefined : 'short'
-                                })}
-                              </div>
-                              {nfts.map(nft => {
+                              {nfts.map((nft, idx) => {
                                 const matchingEvent = events.find(e => e.name === nft.display?.name);
                                 
                                 return (
-                                  <div key={nft.objectId} style={{ marginTop: '0.5rem' }}>
+                                  <div key={nft.objectId}>
                                     <div
                                       onClick={() => {
                                         const newExpanded = new Set(expandedEventDates);
@@ -1175,91 +1170,84 @@ const Dashboard: React.FC = () => {
                                         setExpandedEventDates(newExpanded);
                                       }}
                                       style={{ 
-                                        fontSize: isMobile ? '0.8rem' : '0.875rem', 
-                                        color: '#667eea',
-                                        cursor: 'pointer',
                                         display: 'flex',
                                         alignItems: 'center',
-                                        gap: '0.5rem',
-                                        padding: isMobile ? '0.5rem 0' : '0.25rem 0',
-                                        minHeight: '44px',
-                                        transition: 'all 0.2s ease'
+                                        justifyContent: 'space-between',
+                                        padding: isMobile ? '0.75rem 1rem' : '0.875rem 1.25rem',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s ease',
+                                        background: idx > 0 ? 'transparent' : 'transparent',
+                                        borderTop: idx > 0 ? '1px solid #f1f5f9' : 'none'
                                       }}
-                                      onTouchStart={(e) => {
-                                        if (isMobile) {
-                                          e.currentTarget.style.background = '#f3f4f6';
-                                          e.currentTarget.style.borderRadius = '6px';
-                                          e.currentTarget.style.marginLeft = '-0.5rem';
-                                          e.currentTarget.style.paddingLeft = '0.5rem';
+                                      onMouseEnter={(e) => {
+                                        if (!isMobile) {
+                                          e.currentTarget.style.background = '#f8fafc';
                                         }
                                       }}
-                                      onTouchEnd={(e) => {
-                                        if (isMobile) {
-                                          setTimeout(() => {
-                                            e.currentTarget.style.background = 'transparent';
-                                            e.currentTarget.style.marginLeft = '0';
-                                            e.currentTarget.style.paddingLeft = '0';
-                                          }, 150);
+                                      onMouseLeave={(e) => {
+                                        if (!isMobile) {
+                                          e.currentTarget.style.background = 'transparent';
                                         }
                                       }}
                                     >
-                                      <ChevronDown 
-                                        className="w-4 h-4"
-                                        style={{
-                                          transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
-                                          transition: 'transform 0.2s ease'
-                                        }}
-                                      />
-                                      <span style={{ textDecoration: 'underline' }}>{nft.display?.name}</span>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1 }}>
+                                        <ChevronDown 
+                                          className="w-4 h-4"
+                                          style={{
+                                            transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
+                                            transition: 'transform 0.2s ease',
+                                            color: '#94a3b8',
+                                            flexShrink: 0
+                                          }}
+                                        />
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                          <div style={{ 
+                                            fontSize: isMobile ? '0.875rem' : '0.9375rem', 
+                                            fontWeight: '600',
+                                            color: '#1e293b',
+                                            marginBottom: '0.125rem'
+                                          }}>
+                                            {nft.display?.name}
+                                          </div>
+                                          <div style={{ 
+                                            fontSize: isMobile ? '0.75rem' : '0.8125rem', 
+                                            color: '#64748b'
+                                          }}>
+                                            {new Date(date).toLocaleDateString('en-US', {
+                                              month: 'short',
+                                              day: 'numeric',
+                                              year: 'numeric'
+                                            })}
+                                          </div>
+                                        </div>
+                                      </div>
                                     </div>
                                     
                                     {isExpanded && (
                                       <div style={{
-                                        marginTop: isMobile ? '0.5rem' : '0.75rem',
-                                        marginLeft: isMobile ? '0' : '1.5rem',
-                                        background: 'white',
-                                        borderRadius: isMobile ? '6px' : '8px',
-                                        overflow: 'hidden',
-                                        border: '1px solid #e5e7eb',
-                                        animation: 'fadeIn 0.3s ease',
-                                        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)'
+                                        padding: isMobile ? '0.75rem 1rem 1rem 3rem' : '0.875rem 1.25rem 1rem 3.25rem',
+                                        background: '#f8fafc',
+                                        borderTop: '1px solid #f1f5f9'
                                       }}>
-                                        <style>{`
-                                          @keyframes fadeIn {
-                                            0% { 
-                                              opacity: 0;
-                                              transform: scale(0.95);
-                                            }
-                                            100% { 
-                                              opacity: 1;
-                                              transform: scale(1);
-                                            }
-                                          }
-                                        `}</style>
                                         <div style={{ 
                                           display: 'flex', 
-                                          flexDirection: isMobile ? 'column' : 'row',
-                                          gap: isMobile ? '0' : '1rem',
-                                          padding: isMobile ? '0' : '0.75rem'
+                                          gap: isMobile ? '0.75rem' : '1rem',
+                                          alignItems: 'flex-start'
                                         }}>
                                           {nft.display?.image_url && (
                                             <div style={{
-                                              width: isMobile ? '100%' : '140px',
-                                              height: isMobile ? 'auto' : '140px',
-                                              paddingBottom: isMobile ? '56.25%' : '0',
-                                              position: 'relative',
+                                              width: isMobile ? '64px' : '80px',
+                                              height: isMobile ? '64px' : '80px',
                                               background: '#f3f4f6',
-                                              borderRadius: isMobile ? '0' : '6px',
+                                              borderRadius: '8px',
                                               overflow: 'hidden',
-                                              flexShrink: 0
+                                              flexShrink: 0,
+                                              border: '1px solid #e5e7eb'
                                             }}>
                                               <img
                                                 src={convertIpfsUrl(nft.display?.image_url)}
                                                 alt={nft.display?.name || 'NFT'}
                                                 style={{
-                                                  position: isMobile ? 'absolute' : 'static',
-                                                  top: 0,
-                                                  left: 0,
                                                   width: '100%',
                                                   height: '100%',
                                                   objectFit: 'cover'
@@ -1271,41 +1259,29 @@ const Dashboard: React.FC = () => {
                                             </div>
                                           )}
                                           <div style={{ 
-                                            padding: isMobile ? '0.75rem 0.5rem' : '0',
                                             flex: 1,
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            justifyContent: 'center'
+                                            minWidth: 0
                                           }}>
-                                            <h4 style={{ 
-                                              fontSize: isMobile ? '0.875rem' : '0.9rem', 
-                                              fontWeight: 'bold',
-                                              marginBottom: '0.5rem',
-                                              color: '#1a1a1a'
-                                            }}>
-                                              {nft.display?.name}
-                                            </h4>
                                             {matchingEvent?.description && (
                                               <p style={{
-                                                fontSize: isMobile ? '0.8rem' : '0.85rem',
-                                                color: '#666',
+                                                fontSize: isMobile ? '0.8125rem' : '0.875rem',
+                                                color: '#64748b',
                                                 lineHeight: '1.5',
-                                                whiteSpace: 'pre-wrap',
                                                 marginBottom: '0.5rem',
                                                 overflow: 'hidden',
                                                 display: '-webkit-box',
-                                                WebkitLineClamp: 3,
+                                                WebkitLineClamp: 2,
                                                 WebkitBoxOrient: 'vertical'
                                               }}>
                                                 {matchingEvent.description}
                                               </p>
                                             )}
                                             <div style={{
-                                              fontSize: isMobile ? '0.7rem' : '0.72rem',
-                                              color: '#999',
+                                              fontSize: '0.75rem',
+                                              color: '#94a3b8',
                                               fontFamily: 'monospace'
                                             }}>
-                                              ID: {nft.objectId.slice(0, 8)}...{nft.objectId.slice(-6)}
+                                              {nft.objectId.slice(0, 8)}...{nft.objectId.slice(-6)}
                                             </div>
                                           </div>
                                         </div>
@@ -1314,7 +1290,6 @@ const Dashboard: React.FC = () => {
                                   </div>
                                 );
                               })}
-                            </div>
                           </div>
                         );
                       })}
