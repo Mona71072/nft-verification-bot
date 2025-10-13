@@ -20,6 +20,7 @@ interface Event {
   collectionId?: string;
   startAt?: string;
   endAt?: string;
+  eventDate?: string;
   status?: 'draft' | 'published';
 }
 
@@ -43,6 +44,7 @@ function EventEditorInner({ event, onSave, onCancel }: EventEditorProps) {
     collectionId: '',
     startAt: '',
     endAt: '',
+    eventDate: '',
     status: 'draft'
   });
 
@@ -55,6 +57,7 @@ function EventEditorInner({ event, onSave, onCancel }: EventEditorProps) {
     collectionId: '',
     startAt: '',
     endAt: '',
+    eventDate: '',
     status: 'draft'
   });
 
@@ -263,29 +266,55 @@ function EventEditorInner({ event, onSave, onCancel }: EventEditorProps) {
               onMessage={showToast}
             />
 
-            {/* 期間設定 */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              <div>
-                <label style={{ display: 'block', marginBottom: 8, fontWeight: 600 }}>開始日時</label>
-                <input
-                  type="datetime-local"
-                  value={formData.startAt || ''}
-                  onChange={(e) => setFormData(prev => ({ ...prev, startAt: e.target.value }))}
-                  style={{
-                    width: '100%', padding: '12px 16px', borderRadius: 8, border: '1px solid #e5e7eb'
-                  }}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', marginBottom: 8, fontWeight: 600 }}>終了日時</label>
-                <input
-                  type="datetime-local"
-                  value={formData.endAt || ''}
-                  onChange={(e) => setFormData(prev => ({ ...prev, endAt: e.target.value }))}
-                  style={{
-                    width: '100%', padding: '12px 16px', borderRadius: 8, border: '1px solid #e5e7eb'
-                  }}
-                />
+            {/* イベント開催日時 */}
+            <div>
+              <label style={{ display: 'block', marginBottom: 8, fontWeight: 600 }}>
+                📅 イベント開催日時 *
+                <span style={{ fontSize: '0.75rem', color: '#666', marginLeft: '0.5rem' }}>
+                  （NFTに記録される実際のイベント日時）
+                </span>
+              </label>
+              <input
+                type="datetime-local"
+                value={formData.eventDate || ''}
+                onChange={(e) => setFormData(prev => ({ ...prev, eventDate: e.target.value }))}
+                style={{
+                  width: '100%', padding: '12px 16px', borderRadius: 8, border: '1px solid #e5e7eb'
+                }}
+              />
+            </div>
+
+            {/* ミント期間設定 */}
+            <div>
+              <label style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: '#666' }}>
+                🎨 ミント受付期間
+                <span style={{ fontSize: '0.75rem', marginLeft: '0.5rem' }}>
+                  （NFTをミントできる期間）
+                </span>
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: 8, fontSize: '0.875rem' }}>開始日時</label>
+                  <input
+                    type="datetime-local"
+                    value={formData.startAt || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, startAt: e.target.value }))}
+                    style={{
+                      width: '100%', padding: '12px 16px', borderRadius: 8, border: '1px solid #e5e7eb'
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: 8, fontSize: '0.875rem' }}>終了日時</label>
+                  <input
+                    type="datetime-local"
+                    value={formData.endAt || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, endAt: e.target.value }))}
+                    style={{
+                      width: '100%', padding: '12px 16px', borderRadius: 8, border: '1px solid #e5e7eb'
+                    }}
+                  />
+                </div>
               </div>
             </div>
 
@@ -306,10 +335,14 @@ function EventEditorInner({ event, onSave, onCancel }: EventEditorProps) {
               >
                 <option value="">コレクションを選択してください</option>
                 {mintCollections.map((collection) => {
-                  const typePath = (collection as any).typePath || `${collection.packageId}::sxt_nft::SxtNFT`;
+                  // 型パスが保存されていればそれを使用、なければデフォルト値から生成
+                  const defaultMoveTarget = import.meta.env.VITE_DEFAULT_MOVE_TARGET || '0x3d7e20efbd6e4e2ee6369bcf1e9ec8029637c47890d975e74956b4b405cb5f3f::sxt_nft::mint_to';
+                  const autoTypePath = defaultMoveTarget.replace('::mint_to', '::EventNFT');
+                  const typePath = (collection as any).typePath || autoTypePath;
+                  
                   return (
                     <option key={collection.id} value={typePath}>
-                      {collection.name} ({collection.packageId})
+                      {collection.name} ({typePath.split('::').pop()})
                     </option>
                   );
                 })}
@@ -344,12 +377,19 @@ function EventEditorInner({ event, onSave, onCancel }: EventEditorProps) {
             <h4 style={{ fontSize: 20, fontWeight: 600, marginBottom: 12 }}>{formData.name || 'イベント名'}</h4>
             
             <div style={{ marginBottom: 16, color: '#64748b' }}>
-              {formData.startAt && formData.endAt ? (
-                <div>
-                  {new Date(formData.startAt).toLocaleString()} ～ {new Date(formData.endAt).toLocaleString()}
+              {formData.eventDate ? (
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <strong>📅 開催:</strong> {new Date(formData.eventDate).toLocaleString()}
                 </div>
               ) : (
-                <div>期間未設定</div>
+                <div style={{ marginBottom: '0.5rem', color: '#ef4444' }}>開催日時未設定</div>
+              )}
+              {formData.startAt && formData.endAt ? (
+                <div style={{ fontSize: '0.875rem' }}>
+                  <strong>🎨 ミント:</strong> {new Date(formData.startAt).toLocaleString()} ～ {new Date(formData.endAt).toLocaleString()}
+                </div>
+              ) : (
+                <div style={{ fontSize: '0.875rem' }}>ミント期間未設定</div>
               )}
             </div>
 

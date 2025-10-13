@@ -1,3 +1,17 @@
+@import './styles/tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  *, ::before, ::after {
+    /* Tailwindの@apply border-border がビルドで無効になるため直接指定 */
+    border-color: hsl(var(--border));
+  }
+  body {
+    /* Tailwindの@applyが未解決ユーティリティになるため直接指定 */
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+  }
+}

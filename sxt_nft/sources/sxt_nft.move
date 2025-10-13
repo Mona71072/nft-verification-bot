@@ -1,8 +1,8 @@
 /*
- Event NFT module with Display standard for proper NFT recognition.
+ SXT NFT module with Display standard for proper NFT recognition.
  Supports name, Walrus CID, MIME type, and Display metadata.
 */
-module sxt_nft::event_nft {
+module sxt_nft::sxt_nft {
     use std::string::{Self, String};
     use sui::display;
     use sui::object::UID;
@@ -11,7 +11,7 @@ module sxt_nft::event_nft {
     use sui::transfer;
 
     /// One Time Witness for Publisher
-    public struct EVENT_NFT has drop {}
+    public struct SXT_NFT has drop {}
 
     /// Event NFT with Display support
     public struct EventNFT has key, store {
@@ -19,6 +19,7 @@ module sxt_nft::event_nft {
         name: String,
         image_cid: String,
         image_mime: String,
+        event_date: String,
     }
 
     /// On-chain collection metadata
@@ -32,13 +33,14 @@ module sxt_nft::event_nft {
 
     /// Initialize Display for EventNFT
     #[allow(lint(share_owned))]
-    fun init(otw: EVENT_NFT, ctx: &mut TxContext) {
+    fun init(otw: SXT_NFT, ctx: &mut TxContext) {
         let publisher = package::claim(otw, ctx);
         
         let mut display = display::new<EventNFT>(&publisher, ctx);
         display.add(string::utf8(b"name"), string::utf8(b"{name}"));
         display.add(string::utf8(b"image_url"), string::utf8(b"https://wal-aggregator-mainnet.staketab.org/v1/blobs/{image_cid}"));
         display.add(string::utf8(b"description"), string::utf8(b"SXT Event NFT"));
+        display.add(string::utf8(b"event_date"), string::utf8(b"{event_date}"));
         display.update_version();
         
         transfer::public_transfer(publisher, ctx.sender());
@@ -51,6 +53,7 @@ module sxt_nft::event_nft {
         name: String,
         image_cid: String,
         image_mime: String,
+        event_date: String,
         ctx: &mut TxContext
     ) {
         let nft = EventNFT {
@@ -58,6 +61,7 @@ module sxt_nft::event_nft {
             name,
             image_cid,
             image_mime,
+            event_date,
         };
         transfer::public_transfer(nft, recipient);
     }

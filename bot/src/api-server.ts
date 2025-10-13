@@ -440,7 +440,7 @@ app.post('/api/batch-process', async (req, res) => {
 // スポンサー実行: Suiでのミント処理を代理送信（Walrus.pdf準拠）
 app.post('/api/mint', async (req, res) => {
   try {
-    const { eventId, recipient, moveCall, imageCid, imageMimeType, eventName } = req.body || {};
+    const { eventId, recipient, moveCall, imageCid, imageMimeType, eventName, eventDate } = req.body || {};
     if (!eventId || !recipient || !moveCall?.target) {
       return res.status(400).json({ success: false, error: 'Missing eventId/recipient/moveCall.target' });
     }
@@ -459,10 +459,11 @@ app.post('/api/mint', async (req, res) => {
           }
           return tx.pure.address(recipient);
         }
-        // name, imageCid, imageMimeType に対応（Display標準対応）
+        // name, imageCid, imageMimeType, eventDate に対応（Display標準対応）
         if (a === '{name}') return tx.pure.string(eventName || 'Event NFT');
         if (a === '{imageCid}') return tx.pure.string(imageCid || '');
         if (a === '{imageMimeType}') return tx.pure.string(imageMimeType || '');
+        if (a === '{eventDate}') return tx.pure.string(eventDate || new Date().toISOString());
         return tx.pure.string(String(a));
       } catch (argError) {
         console.error(`Error building argument ${a}:`, argError);

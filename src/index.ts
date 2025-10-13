@@ -138,6 +138,458 @@ app.get('/api/events/:id/public', async (c) => {
   }
 });
 
+// オーナーを最終的なアドレスに解決する（Kiosk対応・content.ownerチェック）
+async function resolveFinalOwner(owner: any, fullnode: string, depth = 0): Promise<string | null> {
+  // 無限ループ防止
+  if (depth > 5) {
+    console.warn('Max depth reached for owner resolution');
+    return null;
+  }
+
+  if (!owner) return null;
+
+  // AddressOwner → 最終的なアドレス
+  if (owner.AddressOwner) {
+    return owner.AddressOwner;
+  }
+
+  // ObjectOwner（Kioskなど） → contentフィールドのownerを確認
+  if (owner.ObjectOwner) {
+    const kioskId = owner.ObjectOwner;
+    console.log(`Resolving Kiosk/ObjectOwner: ${kioskId} (depth: ${depth})`);
+    
+    try {
+      const response = await fetch(fullnode, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'sui_getObject',
+          params: [
+            kioskId,
+            {
+              showType: true,
+              showOwner: true,
+              showContent: true  // contentも取得
+            }
+          ]
+        })
+      });
+
+      const result = await response.json() as any;
+      
+      if (result.result && result.result.data) {
+        // Kioskのcontent.fields.ownerをチェック（実質的な所有者）
+        if (result.result.data.content?.fields?.owner) {
+          const kioskOwner = result.result.data.content.fields.owner;
+          console.log(`Kiosk content owner found: ${kioskOwner}`);
+          return kioskOwner;
+        }
+        
+        // 従来の方法（ownerフィールドを再帰的に解決）
+        if (result.result.data.owner) {
+          return await resolveFinalOwner(result.result.data.owner, fullnode, depth + 1);
+        }
+      }
+    } catch (error) {
+      console.error(`Failed to resolve Kiosk owner for ${kioskId}:`, error);
+    }
+    
+    return null;
+  }
+
+  // Shared/Immutableは人のアドレスではない
+  if (owner.Shared || owner.Immutable) {
+    return null;
+  }
+
+  return null;
+}
+
+// コレクションごとのオンチェーンNFT数を取得（完全オンチェーン準拠・GraphQL使用）
+app.get('/api/collection-onchain-count/:collectionId', async (c) => {
+  try {
+    const collectionId = c.req.param('collectionId');
+    
+    // Sui GraphQL APIエンドポイント
+    const suiNet = c.env.SUI_NETWORK || 'mainnet';
+    const graphqlEndpoint = suiNet === 'testnet'
+      ? 'https://sui-testnet.mystenlabs.com/graphql'
+      : suiNet === 'devnet'
+        ? 'https://sui-devnet.mystenlabs.com/graphql'
+        : 'https://sui-mainnet.mystenlabs.com/graphql';
+    
+    const fullnode = suiNet === 'testnet'
+      ? 'https://fullnode.testnet.sui.io:443'
+      : suiNet === 'devnet'
+        ? 'https://fullnode.devnet.sui.io:443'
+        : 'https://fullnode.mainnet.sui.io:443';
+
+    console.log(`Searching for NFTs of type: ${collectionId}`);
+
+    // GraphQL query to find all objects of this type
+    const query = `
+      query GetObjects($type: String!) {
+        objects(filter: { type: $type }, first: 50) {
+          nodes {
+            address
+            owner {
+              ... on AddressOwner {
+                owner {
+                  address
+                }
+              }
+              ... on Parent {
+                parent {
+                  address
+                }
+              }
+              ... on Shared {
+                initialSharedVersion
+              }
+              ... on Immutable {
+                __typename
+              }
+            }
+          }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+        }
+      }
+    `;
+
+    try {
+      const graphqlResponse = await fetch(graphqlEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query,
+          variables: {
+            type: collectionId
+          }
+        })
+      });
+
+      const graphqlResult = await graphqlResponse.json() as any;
+      
+      if (graphqlResult.errors) {
+        console.error('GraphQL errors:', graphqlResult.errors);
+        return c.json({
+          success: false,
+          error: 'GraphQL query failed',
+          details: graphqlResult.errors
+        }, 500);
+      }
+
+      const objects = graphqlResult.data?.objects?.nodes || [];
+      let activeCount = 0;
+      let kioskCount = 0;
+      const uniqueOwners = new Set<string>();
+
+      console.log(`Found ${objects.length} objects of type ${collectionId}`);
+
+      for (const obj of objects) {
+        if (obj.owner) {
+          activeCount++;
+          
+          // AddressOwner
+          if (obj.owner.owner?.address) {
+            uniqueOwners.add(obj.owner.owner.address);
+          }
+          // Parent (Kiosk)
+          else if (obj.owner.parent?.address) {
+            kioskCount++;
+            // Kioskの最終オーナーを解決
+            const kioskId = obj.owner.parent.address;
+            const finalOwner = await resolveFinalOwnerByObjectId(kioskId, fullnode);
+            if (finalOwner) {
+              uniqueOwners.add(finalOwner);
+            }
+          }
+          // Shared/Immutableは所有者なし
+        }
+      }
+
+      console.log(`Collection ${collectionId}: ${activeCount} active (${kioskCount} in Kiosk), ${uniqueOwners.size} unique owners`);
+
+      return c.json({
+        success: true,
+        count: activeCount,
+        active: activeCount,
+        burned: 0, // GraphQLでは削除されたオブジェクトは返されない
+        inKiosk: kioskCount,
+        uniqueHolders: uniqueOwners.size,
+        totalMinted: activeCount // GraphQLで取得できたアクティブな数
+      });
+
+    } catch (graphqlError) {
+      console.error('GraphQL request failed:', graphqlError);
+      
+      // フォールバック: 既知のアドレスがあれば suix_getOwnedObjects を使用
+      console.log('Falling back to RPC method...');
+      return c.json({
+        success: true,
+        count: 0,
+        active: 0,
+        burned: 0,
+        inKiosk: 0,
+        uniqueHolders: 0,
+        totalMinted: 0,
+        note: 'GraphQL unavailable, no data available'
+      });
+    }
+    
+  } catch (error) {
+    console.error('Failed to get onchain collection count', error);
+    return c.json({ success: false, error: 'Failed to get onchain count' }, 500);
+  }
+});
+
+// objectIdからオーナーを解決する補助関数
+async function resolveFinalOwnerByObjectId(objectId: string, fullnode: string): Promise<string | null> {
+  try {
+    const response = await fetch(fullnode, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'sui_getObject',
+        params: [
+          objectId,
+          {
+            showType: false,
+            showOwner: true,
+            showContent: false
+          }
+        ]
+      })
+    });
+
+    const result = await response.json() as any;
+    
+    if (result.result && result.result.data && result.result.data.owner) {
+      return await resolveFinalOwner(result.result.data.owner, fullnode);
+    }
+  } catch (error) {
+    console.error(`Failed to resolve owner for ${objectId}:`, error);
+  }
+  
+  return null;
+}
+
+// ユーザーが保有しているNFTを取得（Kiosk対応・event_date補完）
+app.get('/api/owned-nfts/:address', async (c) => {
+  try {
+    const userAddress = c.req.param('address');
+    const collectionIds = c.req.query('collectionIds')?.split(',') || [];
+    
+    if (!userAddress || collectionIds.length === 0) {
+      return c.json({ success: false, error: 'Missing address or collectionIds' }, 400);
+    }
+
+    const suiNet = c.env.SUI_NETWORK || 'mainnet';
+    const graphqlEndpoint = suiNet === 'testnet'
+      ? 'https://sui-testnet.mystenlabs.com/graphql'
+      : suiNet === 'devnet'
+        ? 'https://sui-devnet.mystenlabs.com/graphql'
+        : 'https://sui-mainnet.mystenlabs.com/graphql';
+    
+    const fullnode = suiNet === 'testnet'
+      ? 'https://fullnode.testnet.sui.io:443'
+      : suiNet === 'devnet'
+        ? 'https://fullnode.devnet.sui.io:443'
+        : 'https://fullnode.mainnet.sui.io:443';
+
+    const ownedNFTs: any[] = [];
+
+    // イベント一覧を取得（event_date補完用）
+    const eventStore = c.env.EVENT_STORE as KVNamespace | undefined;
+    let events: any[] = [];
+    if (eventStore) {
+      try {
+        const listStr = await eventStore.get('events');
+        events = listStr ? JSON.parse(listStr) : [];
+      } catch (e) {
+        console.error('Failed to load events for fallback:', e);
+      }
+    }
+
+    // まずユーザーが直接所有しているNFTを取得（RPC使用）
+    try {
+      const rpcResponse = await fetch(fullnode, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'suix_getOwnedObjects',
+          params: [
+            userAddress,
+            {
+              filter: collectionIds.length === 1 
+                ? { StructType: collectionIds[0] }
+                : { MatchAny: collectionIds.map(id => ({ StructType: id })) },
+              options: {
+                showType: true,
+                showDisplay: true,
+                showContent: true
+              }
+            },
+            null,
+            50
+          ]
+        })
+      });
+
+      const rpcResult = await rpcResponse.json() as any;
+      
+      if (rpcResult.result?.data) {
+        for (const obj of rpcResult.result.data) {
+          if (obj.data?.display?.data) {
+            const displayData = obj.data.display.data;
+            
+            // event_date補完: display.event_dateがなければまたは{eventDate}テンプレートの場合、イベント名から検索
+            if ((!displayData.event_date || displayData.event_date === '{eventDate}') && displayData.name) {
+              const matchingEvent = events.find((e: any) => e.name === displayData.name);
+              if (matchingEvent) {
+                displayData.event_date = matchingEvent.eventDate || matchingEvent.startAt;
+              }
+            }
+            
+            ownedNFTs.push({
+              objectId: obj.data.objectId,
+              type: obj.data.type,
+              display: displayData,
+              owner: obj.data.owner
+            });
+          }
+        }
+      }
+    } catch (rpcError) {
+      console.error('RPC owned objects failed:', rpcError);
+    }
+
+    // 次にGraphQLで全NFTを検索してKiosk内も確認
+    for (const collectionId of collectionIds) {
+      try {
+        const query = `
+          query GetObjects($type: String!) {
+            objects(filter: { type: $type }, first: 50) {
+              nodes {
+                address
+                display {
+                  key
+                  value
+                }
+                owner {
+                  __typename
+                  ... on AddressOwner {
+                    owner {
+                      address
+                    }
+                  }
+                  ... on Parent {
+                    parent {
+                      address
+                    }
+                  }
+                }
+              }
+            }
+          }
+        `;
+
+        const response = await fetch(graphqlEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query,
+            variables: { type: collectionId }
+          })
+        });
+
+        const result = await response.json() as any;
+        
+        if (result.data?.objects?.nodes) {
+          for (const node of result.data.objects.nodes) {
+            let isOwned = false;
+            
+            // 直接所有
+            if (node.owner?.owner?.address?.toLowerCase() === userAddress.toLowerCase()) {
+              isOwned = true;
+            }
+            // Kiosk経由の所有
+            else if (node.owner?.parent?.address) {
+              const kioskId = node.owner.parent.address;
+              console.log(`Resolving owner for NFT ${node.address} (Kiosk: ${kioskId})`);
+              
+              // GraphQLのParent形式をRPCのObjectOwner形式に変換
+              const rpcOwnerFormat = { ObjectOwner: kioskId };
+              const finalOwner = await resolveFinalOwner(rpcOwnerFormat, fullnode);
+              console.log(`Final owner resolved: ${finalOwner}`);
+              
+              if (finalOwner?.toLowerCase() === userAddress.toLowerCase()) {
+                isOwned = true;
+                console.log(`✅ NFT ${node.address} is owned by user (via Kiosk)`);
+              } else {
+                console.log(`❌ NFT ${node.address} final owner ${finalOwner} != user ${userAddress}`);
+              }
+            }
+            
+            if (isOwned) {
+              // displayデータを整形
+              const displayData: any = {};
+              if (node.display) {
+                node.display.forEach((item: any) => {
+                  displayData[item.key] = item.value;
+                });
+              }
+
+              // event_date補完: display.event_dateがなければまたは{eventDate}テンプレートの場合、イベント名から検索
+              if ((!displayData.event_date || displayData.event_date === '{eventDate}') && displayData.name) {
+                const matchingEvent = events.find((e: any) => e.name === displayData.name);
+                if (matchingEvent) {
+                  displayData.event_date = matchingEvent.eventDate || matchingEvent.startAt;
+                }
+              }
+
+              ownedNFTs.push({
+                objectId: node.address,
+                type: collectionId,
+                display: displayData,
+                owner: node.owner
+              });
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`Failed to fetch NFTs for collection ${collectionId}:`, error);
+      }
+    }
+
+    // 重複を削除（objectIdでユニーク化）
+    const uniqueNFTs = Array.from(
+      new Map(ownedNFTs.map(nft => [nft.objectId, nft])).values()
+    );
+
+    return c.json({
+      success: true,
+      data: uniqueNFTs,
+      count: uniqueNFTs.length
+    });
+
+  } catch (error) {
+    console.error('Failed to get owned NFTs', error);
+    return c.json({ success: false, error: 'Failed to get owned NFTs' }, 500);
+  }
+});
+
 // 管理者認証チェック（KVストアから取得）
 async function isAdmin(c: any, address: string): Promise<boolean> {
   try {
@@ -667,7 +1119,7 @@ app.post('/api/admin/events', async (c) => {
     }
 
     const body = await c.req.json();
-    const { name, description, startAt, endAt, active = false, imageUrl, imageCid, imageMimeType, maxMints, mintPrice, collectionId, roleId, roleName, moveCall, totalCap } = body;
+    const { name, description, startAt, endAt, eventDate, active = false, imageUrl, imageCid, imageMimeType, maxMints, mintPrice, collectionId, roleId, roleName, moveCall, totalCap } = body;
 
     // 必須フィールドの検証
     if (!name || !description || !startAt || !endAt) {
@@ -736,7 +1188,7 @@ app.put('/api/admin/events/:id', async (c) => {
     }
 
     const body = await c.req.json();
-    const { name, description, startAt, endAt, active, imageUrl, imageCid, imageMimeType, maxMints, mintPrice, collectionId, roleId, roleName, moveCall, totalCap } = body;
+    const { name, description, startAt, endAt, eventDate, active, imageUrl, imageCid, imageMimeType, maxMints, mintPrice, collectionId, roleId, roleName, moveCall, totalCap } = body;
 
     // イベントリストを取得
     const listStr = await store.get('events');
@@ -755,6 +1207,7 @@ app.put('/api/admin/events/:id', async (c) => {
       ...(description !== undefined && { description }),
       ...(startAt !== undefined && { startAt }),
       ...(endAt !== undefined && { endAt }),
+      ...(eventDate !== undefined && { eventDate }),
       ...(active !== undefined && { active: Boolean(active) }),
       ...(imageUrl !== undefined && { imageUrl }),
       ...(imageCid !== undefined && { imageCid }),

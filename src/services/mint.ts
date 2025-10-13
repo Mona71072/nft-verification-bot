@@ -24,9 +24,11 @@ export interface MintResult {
 
 export interface EventData {
   id: string;
+  name?: string;
   active: boolean;
   startAt: string;
   endAt: string;
+  eventDate?: string;
   totalCap?: number;
   moveCall: any;
   imageCid?: string;
@@ -190,7 +192,8 @@ export async function delegateToSponsor(
     imageCid: event.imageCid,
     imageMimeType: event.imageMimeType,
     collectionId: event.collectionId,
-    eventName: event.name || 'Event NFT'
+    eventName: event.name || 'Event NFT',
+    eventDate: event.eventDate || event.startAt || new Date().toISOString()
   };
 
   const response = await fetch(`${sponsorUrl}/api/mint`, {

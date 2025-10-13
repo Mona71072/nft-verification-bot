@@ -62,7 +62,7 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
     active: true,
     startAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
     endAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-    moveCall: { target: '', typeArguments: [], argumentsTemplate: ['{recipient}', '{name}', '{imageCid}', '{imageMimeType}'], gasBudget: 20000000 },
+    moveCall: { target: '', typeArguments: [], argumentsTemplate: ['{recipient}', '{name}', '{imageCid}', '{imageMimeType}', '{eventDate}'], gasBudget: 20000000 },
     totalCap: undefined
   });
 
@@ -80,6 +80,13 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
     return ascii.slice(0, 6) || 'EVENT';
   };
 
+  // 型パスを自動生成（DEFAULT_MOVE_TARGETから）
+  const getDefaultTypePath = () => {
+    const defaultMoveTarget = import.meta.env.VITE_DEFAULT_MOVE_TARGET || '0x3d7e20efbd6e4e2ee6369bcf1e9ec8029637c47890d975e74956b4b405cb5f3f::sxt_nft::mint_to';
+    // mint_to を EventNFT に置き換え
+    return defaultMoveTarget.replace('::mint_to', '::EventNFT');
+  };
+
   const handleCreateCollectionViaMove = async () => {
     try {
       if (creatingCollection) return;
@@ -93,14 +100,15 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
 
       try { localStorage.setItem('currentWalletAddress', account.address); } catch {}
 
-      // Package IDをデフォルト値から取得
-      const defaultMoveTarget = import.meta.env.VITE_DEFAULT_MOVE_TARGET || '0xf9184e632f45705372e057be7b48d0b1d5c239e2932f041f2e49b7801677fcc3::sxt_nft::mint_to';
+      // Package IDと型パスをデフォルト値から取得
+      const defaultMoveTarget = import.meta.env.VITE_DEFAULT_MOVE_TARGET || '0x3d7e20efbd6e4e2ee6369bcf1e9ec8029637c47890d975e74956b4b405cb5f3f::sxt_nft::mint_to';
       const packageId = defaultMoveTarget.split('::')[0];
+      const autoTypePath = getDefaultTypePath();
       
       const body: any = {
         name: createColName || (newEvent.name || 'Event Collection'),
         packageId: packageId,
-        typePath: createColTypePath || undefined,
+        typePath: autoTypePath,  // 自動生成された型パスを常に使用
         description: `Symbol: ${createColSymbol || proposeSymbol(newEvent.name)}, Image: ${(newEvent as any).imageCid || 'none'}`
       };
 
@@ -445,7 +453,7 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
             (newEvent as any).moveCall = {
               target,
               typeArguments: [],
-              argumentsTemplate: ['{recipient}', '{name}', '{imageCid}', '{imageMimeType}'],
+              argumentsTemplate: ['{recipient}', '{name}', '{imageCid}', '{imageMimeType}', '{eventDate}'],
               gasBudget: 50_000_000
             };
             setMessage('✅ Move設定完了');
@@ -1054,7 +1062,7 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
             eventData.moveCall = {
               target,
               typeArguments: [],
-              argumentsTemplate: ['{recipient}', '{name}', '{imageCid}', '{imageMimeType}'],
+              argumentsTemplate: ['{recipient}', '{name}', '{imageCid}', '{imageMimeType}', '{eventDate}'],
               gasBudget: 50_000_000
             };
             setMessage('✅ Move設定完了');
@@ -1693,7 +1701,26 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
             border: '1px solid #ccc',
             borderRadius: '8px'
           }}>
-            <h4>バッチ処理統計</h4>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h4 style={{ margin: 0 }}>バッチ処理統計</h4>
+              <button
+                onClick={() => {
+                  fetchBatchStats();
+                  setMessage('統計を更新しました');
+                }}
+                style={{
+                  padding: '0.25rem 0.75rem',
+                  background: '#007bff',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem'
+                }}
+              >
+                🔄 更新
+              </button>
+            </div>
             {batchStats && (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
                 <div 
@@ -1731,6 +1758,9 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
                 <div style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '4px' }}>
                   <h5>最終実行</h5>
                   <p style={{ fontSize: '1rem', margin: 0 }}>{batchStats.lastRun ? new Date(batchStats.lastRun).toLocaleString('ja-JP') : '未実行'}</p>
+                  <small style={{ color: '#6c757d', fontSize: '0.75rem' }}>
+                    {batchStats.lastRun ? new Date(batchStats.lastRun).toISOString() : ''}
+                  </small>
                 </div>
               </div>
             )}
@@ -1776,11 +1806,15 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
               />
               <input
                 type="text"
-                placeholder="型パス（任意・例: 0x...::sxt_nft::SxtNFT）未指定時は自動生成"
-                value={createColTypePath}
+                placeholder={`型パス（固定）: ${getDefaultTypePath()}`}
+                value={createColTypePath || getDefaultTypePath()}
                 onChange={(e) => setCreateColTypePath(e.target.value)}
-                style={{ padding: '0.5rem', borderRadius: 6, border: '1px solid #d1d5db' }}
+                style={{ padding: '0.5rem', borderRadius: 6, border: '1px solid #d1d5db', background: '#f9fafb', fontFamily: 'monospace', fontSize: '0.9rem' }}
+                disabled
               />
+              <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '-0.25rem' }}>
+                ※ このプロジェクトでは1つの型パスのみ使用します
+              </div>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button
                   onClick={handleCreateCollectionViaMove}

@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import '@mysten/dapp-kit/dist/index.css';
 import { ConnectButton } from '@mysten/dapp-kit';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { useWalletWithErrorHandling } from './hooks/useWallet';
 import { NFTVerification } from './components/NFTVerification';
 import AdminPanel from './AdminPanel';
 import MintPage from './MintPage';
 import Dashboard from './pages/Dashboard';
+import { queryClient } from './lib/query-client';
 
 // APIベースURLの設定（本番環境用）
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
@@ -77,7 +80,8 @@ function App() {
   }, []);
 
   return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+    <QueryClientProvider client={queryClient}>
+      <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
       {/* コンパクトヘッダー（モバイル最適化） */}
       <nav style={{
         background: 'rgba(255, 255, 255, 0.95)',
@@ -250,7 +254,11 @@ function App() {
           }
         })()}
       </div>
-    </div>
+      </div>
+      
+      {/* React Query DevTools (開発環境のみ) */}
+      {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
+    </QueryClientProvider>
   );
 }
 

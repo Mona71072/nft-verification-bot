@@ -387,10 +387,7 @@ export default function MintPage() {
             margin: '0 0 8px 0',
             fontSize: '28px',
             fontWeight: '800',
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text'
+            color: '#1f2937'
           }}>
             {event?.name || 'Event Mint'}
           </h1>
