@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { Palette, ArrowUpRight, CheckCircle, FileText, TrendingUp } from 'lucide-react';
 
 interface Activity {
   id: string;
@@ -89,16 +90,17 @@ const groupByDate = (activities: Activity[]): Map<string, Activity[]> => {
 };
 
 // Activity icon
-const getActivityIcon = (type: Activity['type']): string => {
+const getActivityIcon = (type: Activity['type']): React.ReactElement => {
+  const iconClass = "w-5 h-5";
   switch (type) {
     case 'mint':
-      return '🎨';
+      return <Palette className={iconClass} />;
     case 'transfer':
-      return '🔄';
+      return <ArrowUpRight className={iconClass} />;
     case 'verification':
-      return '✅';
+      return <CheckCircle className={iconClass} />;
     default:
-      return '📝';
+      return <FileText className={iconClass} />;
   }
 };
 
@@ -186,11 +188,10 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
         textAlign: 'center'
       }}>
         <div style={{ 
-          fontSize: isMobile ? '3rem' : '4rem',
           marginBottom: isMobile ? '1rem' : '1.5rem',
-          opacity: 0.6
+          opacity: 0.4
         }}>
-          📊
+          <TrendingUp className="w-16 h-16" style={{ color: '#9ca3af' }} />
         </div>
         <h3 style={{
           fontSize: isMobile ? '1.25rem' : '1.5rem',
@@ -241,8 +242,8 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
         WebkitOverflowScrolling: 'touch'
       }}>
         {[
-          { value: 'all', label: 'All', icon: '📋' },
-          { value: 'mint', label: 'Mints', icon: '🎨' },
+          { value: 'all', label: 'All', icon: <FileText className="w-4 h-4" /> },
+          { value: 'mint', label: 'Mints', icon: <Palette className="w-4 h-4" /> },
         ].map(({ value, label, icon }) => (
           <button
             key={value}
@@ -279,7 +280,7 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
               }
             }}
           >
-            <span>{icon}</span>
+            {icon}
             <span>{label}</span>
           </button>
         ))}
@@ -403,9 +404,9 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
                         gap: '0.5rem',
                         marginBottom: '0.375rem'
                       }}>
-                        <span style={{ fontSize: isMobile ? '1.125rem' : '1.25rem' }}>
+                        <div style={{ color: '#6366f1' }}>
                           {getActivityIcon(activity.type)}
-                        </span>
+                        </div>
                         <h4 style={{
                           fontSize: isMobile ? '0.9375rem' : '1rem',
                           fontWeight: '700',

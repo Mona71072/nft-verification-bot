@@ -12,6 +12,17 @@ import { useEvents } from '@/hooks/queries/useEvents';
 import { useOwnedNFTs, useOnchainCounts } from '@/hooks/queries/useNFTs';
 import { NFTDetailDrawer } from '@/features/owned/NFTDetailDrawer';
 import { ActivityTimeline } from '@/features/activity/ActivityTimeline';
+import { 
+  LayoutGrid, 
+  TrendingUp, 
+  Flame, 
+  Gem, 
+  Calendar as CalendarIcon,
+  Activity as ActivityIcon,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown
+} from 'lucide-react';
 
 interface OwnedNFT {
   objectId: string;
@@ -211,53 +222,60 @@ const Dashboard: React.FC = () => {
       }}>
         {/* Header */}
       <div style={{
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        borderRadius: isMobile ? '16px' : '20px',
-          padding: isMobile ? '2rem 1.5rem' : isTablet ? '2.5rem' : '3rem',
-          marginBottom: isMobile ? '1.5rem' : '2rem',
-          boxShadow: '0 10px 40px rgba(102, 126, 234, 0.3)',
+        background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+        borderRadius: isMobile ? '20px' : '24px',
+          padding: isMobile ? '2.5rem 1.5rem' : isTablet ? '3rem 2rem' : '3.5rem 2.5rem',
+          marginBottom: isMobile ? '2rem' : '2.5rem',
+          boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
           position: 'relative',
-          overflow: 'hidden'
+          overflow: 'hidden',
+          border: '1px solid rgba(255, 255, 255, 0.1)'
         }}>
-          {/* Background decorative elements */}
+          {/* Glassmorphism overlay */}
           <div style={{
             position: 'absolute',
-            top: '-50px',
-            right: '-50px',
-            width: '200px',
-            height: '200px',
-            background: 'rgba(255, 255, 255, 0.1)',
-            borderRadius: '50%',
-            filter: 'blur(40px)'
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(168, 85, 247, 0.1) 100%)',
+            backdropFilter: 'blur(10px)'
           }} />
+          
+          {/* Subtle grid pattern */}
           <div style={{
             position: 'absolute',
-            bottom: '-30px',
-            left: '-30px',
-            width: '150px',
-            height: '150px',
-            background: 'rgba(255, 255, 255, 0.08)',
-            borderRadius: '50%',
-            filter: 'blur(30px)'
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px)',
+            backgroundSize: '50px 50px',
+            opacity: 0.5
           }} />
           
           <div style={{ position: 'relative', zIndex: 1 }}>
             <h1 style={{
-              fontSize: isMobile ? '1.75rem' : isTablet ? '2rem' : '2.5rem',
-              fontWeight: '800',
+              fontSize: isMobile ? '1.875rem' : isTablet ? '2.25rem' : '2.75rem',
+              fontWeight: '700',
               color: 'white',
               marginBottom: '0.75rem',
-              letterSpacing: '-0.02em'
+              letterSpacing: '-0.025em',
+              background: 'linear-gradient(135deg, #ffffff 0%, #a8a8a8 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text'
             }}>
-              SyndicateXTokyo Dashboard
+              SyndicateXTokyo
             </h1>
             <p style={{
-              color: 'rgba(255, 255, 255, 0.9)',
-              fontSize: isMobile ? '0.95rem' : '1.1rem',
-              fontWeight: '500',
-              lineHeight: '1.6'
+              color: 'rgba(255, 255, 255, 0.7)',
+              fontSize: isMobile ? '0.9375rem' : '1rem',
+              fontWeight: '400',
+              lineHeight: '1.6',
+              letterSpacing: '0.01em'
             }}>
-              View SXT-issued NFT collections and your owned NFTs
+              Manage your NFT collections and track ownership
             </p>
           </div>
         </div>
@@ -290,7 +308,7 @@ const Dashboard: React.FC = () => {
                   <StatCard
                     label="Total Collections"
                     value={collections.length}
-                    icon="📚"
+                    icon={<LayoutGrid className="w-5 h-5" />}
                     onClick={() => setActiveTab('all')}
                   />
                 </FloatOnHover>
@@ -300,7 +318,7 @@ const Dashboard: React.FC = () => {
                   <StatCard
                     label="Total Mints"
                     value={totalMints.toLocaleString()}
-                    icon="🎨"
+                    icon={<TrendingUp className="w-5 h-5" />}
                     onClick={() => setActiveTab('all')}
                   />
                 </FloatOnHover>
@@ -310,7 +328,7 @@ const Dashboard: React.FC = () => {
                   <StatCard
                     label="Active Events"
                     value={activeEvents}
-                    icon="🔥"
+                    icon={<Flame className="w-5 h-5" />}
                     onClick={() => setActiveTab('all')}
                   />
                 </FloatOnHover>
@@ -321,7 +339,7 @@ const Dashboard: React.FC = () => {
                     <StatCard
                       label={activeTab === 'calendar' ? 'Event NFTs' : 'Collection NFTs'}
                       value={nftLoading ? '...' : (activeTab === 'calendar' ? eventNFTs.length : nonEventNFTs.length)}
-                      icon="💎"
+                      icon={<Gem className="w-5 h-5" />}
                       loading={nftLoading}
                       onClick={() => setActiveTab(activeTab === 'calendar' ? 'calendar' : 'owned')}
                     />
@@ -335,14 +353,16 @@ const Dashboard: React.FC = () => {
 
         {/* Tab Navigation */}
         <div style={{
-          background: 'white',
-          borderRadius: isMobile ? '14px' : '16px',
-          marginBottom: isMobile ? '1rem' : '1.5rem',
-          boxShadow: '0 4px 16px rgba(0, 0, 0, 0.08)',
+          background: 'rgba(255, 255, 255, 0.95)',
+          backdropFilter: 'blur(10px)',
+          borderRadius: isMobile ? '16px' : '20px',
+          marginBottom: isMobile ? '1.5rem' : '2rem',
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)',
           display: 'flex',
           overflowX: isMobile ? 'auto' : 'hidden',
           WebkitOverflowScrolling: 'touch',
-          padding: '6px'
+          padding: '8px',
+          border: '1px solid rgba(0, 0, 0, 0.05)'
         }}>
           <button
             onClick={() => setActiveTab('all')}
@@ -351,22 +371,27 @@ const Dashboard: React.FC = () => {
               minWidth: isMobile ? '120px' : 'auto',
               padding: isMobile ? '0.875rem 1.25rem' : '1rem 1.5rem',
               background: activeTab === 'all' 
-                ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                ? 'linear-gradient(135deg, #1e293b 0%, #334155 100%)'
                 : 'transparent',
               color: activeTab === 'all' ? 'white' : '#64748b',
               border: 'none',
-              borderRadius: '12px',
+              borderRadius: '14px',
               cursor: 'pointer',
-              fontSize: isMobile ? '0.875rem' : '0.95rem',
-              fontWeight: activeTab === 'all' ? '700' : '600',
+              fontSize: isMobile ? '0.875rem' : '0.9375rem',
+              fontWeight: activeTab === 'all' ? '600' : '500',
               transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
               whiteSpace: 'nowrap',
               boxShadow: activeTab === 'all' 
-                ? '0 4px 12px rgba(102, 126, 234, 0.4)' 
-                : 'none'
+                ? '0 4px 16px rgba(30, 41, 59, 0.3)' 
+                : 'none',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.5rem'
             }}
           >
-            📋 All NFTs
+            <LayoutGrid className="w-4 h-4" />
+            <span>All NFTs</span>
           </button>
           <button
             onClick={() => setActiveTab('owned')}
@@ -376,22 +401,27 @@ const Dashboard: React.FC = () => {
               minWidth: isMobile ? '130px' : 'auto',
               padding: isMobile ? '0.875rem 1.25rem' : '1rem 1.5rem',
               background: activeTab === 'owned' 
-                ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                ? 'linear-gradient(135deg, #1e293b 0%, #334155 100%)'
                 : 'transparent',
               color: activeTab === 'owned' ? 'white' : !connected ? '#cbd5e1' : '#64748b',
               border: 'none',
-              borderRadius: '12px',
+              borderRadius: '14px',
               cursor: connected ? 'pointer' : 'not-allowed',
-              fontSize: isMobile ? '0.875rem' : '0.95rem',
-              fontWeight: activeTab === 'owned' ? '700' : '600',
+              fontSize: isMobile ? '0.875rem' : '0.9375rem',
+              fontWeight: activeTab === 'owned' ? '600' : '500',
               transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
               whiteSpace: 'nowrap',
               boxShadow: activeTab === 'owned' 
-                ? '0 4px 12px rgba(102, 126, 234, 0.4)' 
-                : 'none'
+                ? '0 4px 16px rgba(30, 41, 59, 0.3)' 
+                : 'none',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.5rem'
             }}
           >
-            🎨 Owned NFTs
+            <Gem className="w-4 h-4" />
+            <span>Owned</span>
           </button>
           <button
             onClick={() => setActiveTab('calendar')}
@@ -401,22 +431,27 @@ const Dashboard: React.FC = () => {
               minWidth: isMobile ? '120px' : 'auto',
               padding: isMobile ? '0.875rem 1.25rem' : '1rem 1.5rem',
               background: activeTab === 'calendar' 
-                ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                ? 'linear-gradient(135deg, #1e293b 0%, #334155 100%)'
                 : 'transparent',
               color: activeTab === 'calendar' ? 'white' : !connected ? '#cbd5e1' : '#64748b',
               border: 'none',
-              borderRadius: '12px',
+              borderRadius: '14px',
               cursor: connected ? 'pointer' : 'not-allowed',
-              fontSize: isMobile ? '0.875rem' : '0.95rem',
-              fontWeight: activeTab === 'calendar' ? '700' : '600',
+              fontSize: isMobile ? '0.875rem' : '0.9375rem',
+              fontWeight: activeTab === 'calendar' ? '600' : '500',
               transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
               whiteSpace: 'nowrap',
               boxShadow: activeTab === 'calendar' 
-                ? '0 4px 12px rgba(102, 126, 234, 0.4)' 
-                : 'none'
+                ? '0 4px 16px rgba(30, 41, 59, 0.3)' 
+                : 'none',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.5rem'
             }}
           >
-            📅 Calendar
+            <CalendarIcon className="w-4 h-4" />
+            <span>Calendar</span>
           </button>
           <button
             onClick={() => setActiveTab('activity')}
@@ -426,22 +461,27 @@ const Dashboard: React.FC = () => {
               minWidth: isMobile ? '120px' : 'auto',
               padding: isMobile ? '0.875rem 1.25rem' : '1rem 1.5rem',
               background: activeTab === 'activity' 
-                ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                ? 'linear-gradient(135deg, #1e293b 0%, #334155 100%)'
                 : 'transparent',
               color: activeTab === 'activity' ? 'white' : !connected ? '#cbd5e1' : '#64748b',
               border: 'none',
-              borderRadius: '12px',
+              borderRadius: '14px',
               cursor: connected ? 'pointer' : 'not-allowed',
-              fontSize: isMobile ? '0.875rem' : '0.95rem',
-              fontWeight: activeTab === 'activity' ? '700' : '600',
+              fontSize: isMobile ? '0.875rem' : '0.9375rem',
+              fontWeight: activeTab === 'activity' ? '600' : '500',
               transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
               whiteSpace: 'nowrap',
               boxShadow: activeTab === 'activity' 
-                ? '0 4px 12px rgba(102, 126, 234, 0.4)' 
-                : 'none'
+                ? '0 4px 16px rgba(30, 41, 59, 0.3)' 
+                : 'none',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.5rem'
             }}
           >
-            📊 Activity
+            <ActivityIcon className="w-4 h-4" />
+            <span>Activity</span>
           </button>
         </div>
 
@@ -941,16 +981,20 @@ const Dashboard: React.FC = () => {
                       padding: isMobile ? '0.5rem 0.75rem' : '0.5rem 1rem',
                       background: 'white',
                       border: '1px solid #e5e7eb',
-                      borderRadius: isMobile ? '8px' : '10px',
+                      borderRadius: isMobile ? '10px' : '12px',
                       cursor: 'pointer',
-                      fontSize: isMobile ? '0.75rem' : '0.875rem',
+                      fontSize: isMobile ? '0.8125rem' : '0.875rem',
                       minHeight: '44px',
                       fontWeight: '600',
-                      color: '#64748b',
-                      transition: 'all 0.2s'
+                      color: '#475569',
+                      transition: 'all 0.2s',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem'
                     }}
                   >
-                    ← Previous
+                    <ChevronLeft className="w-4 h-4" />
+                    <span>Previous</span>
                   </button>
                   <h3 style={{ fontSize: isMobile ? '1rem' : '1.25rem', fontWeight: '700', color: '#1f2937' }}>
                     {currentMonth.toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}
@@ -961,16 +1005,20 @@ const Dashboard: React.FC = () => {
                       padding: isMobile ? '0.5rem 0.75rem' : '0.5rem 1rem',
                       background: 'white',
                       border: '1px solid #e5e7eb',
-                      borderRadius: isMobile ? '8px' : '10px',
+                      borderRadius: isMobile ? '10px' : '12px',
                       cursor: 'pointer',
-                      fontSize: isMobile ? '0.75rem' : '0.875rem',
+                      fontSize: isMobile ? '0.8125rem' : '0.875rem',
                       minHeight: '44px',
                       fontWeight: '600',
-                      color: '#64748b',
-                      transition: 'all 0.2s'
+                      color: '#475569',
+                      transition: 'all 0.2s',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem'
                     }}
                   >
-                    Next →
+                    <span>Next</span>
+                    <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
 
@@ -1055,9 +1103,10 @@ const Dashboard: React.FC = () => {
                           <div style={{
                             fontSize: isMobile ? '0.65rem' : '0.75rem',
                             color: '#7c3aed',
-                            marginTop: '0.25rem'
+                            marginTop: '0.25rem',
+                            fontWeight: '600'
                           }}>
-                            🎨 {dayNFTs.length}
+                            {dayNFTs.length}
                           </div>
                         )}
                       </div>
@@ -1154,8 +1203,14 @@ const Dashboard: React.FC = () => {
                                         }
                                       }}
                                     >
-                                      <span>{isExpanded ? '▼' : '▶'}</span>
-                                      <span style={{ textDecoration: 'underline' }}>• {nft.display?.name}</span>
+                                      <ChevronDown 
+                                        className="w-4 h-4"
+                                        style={{
+                                          transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
+                                          transition: 'transform 0.2s ease'
+                                        }}
+                                      />
+                                      <span style={{ textDecoration: 'underline' }}>{nft.display?.name}</span>
                                     </div>
                                     
                                     {isExpanded && (

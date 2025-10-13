@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils';
+import { Package } from 'lucide-react';
 
 interface EmptyNFTsProps {
   title?: string;
@@ -40,9 +41,9 @@ export function EmptyNFTs({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        fontSize: '1.875rem'
+        color: '#9ca3af'
       }}>
-        📭
+        <Package className="w-8 h-8" />
       </div>
 
       {/* Title */}
