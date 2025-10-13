@@ -59,17 +59,18 @@ export function Accordion({ isOpen, children, duration = 0.3 }: AccordionProps) 
 interface RotateIconProps {
   isOpen: boolean;
   icon?: string;
+  children?: ReactNode;
   duration?: number;
 }
 
-export function RotateIcon({ isOpen, icon = '▶', duration = 0.2 }: RotateIconProps) {
+export function RotateIcon({ isOpen, icon, children, duration = 0.2 }: RotateIconProps) {
   return (
     <motion.span
       animate={{ rotate: isOpen ? 90 : 0 }}
       transition={{ duration, ease: 'easeOut' }}
       style={{ display: 'inline-block' }}
     >
-      {icon}
+      {children || icon || '▶'}
     </motion.span>
   );
 }

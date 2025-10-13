@@ -54,6 +54,8 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
 
   // Events 管理用ステート
   const [events, setEvents] = useState<AdminMintEvent[]>([]);
+  const [eventSortBy, setEventSortBy] = useState<'name' | 'collection' | 'date' | 'mints'>('date');
+  const [eventSortOrder, setEventSortOrder] = useState<'asc' | 'desc'>('desc');
   const [newEvent, setNewEvent] = useState<Partial<AdminMintEvent>>({
     name: '',
     description: '',
@@ -901,7 +903,13 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
 
   // バッチ処理実行
   const executeBatchProcess = async () => {
-    if (!confirm('バッチ処理を実行しますか？')) return;
+    // バッチ設定のcollectionIdを確認
+    if (!batchConfig?.collectionId) {
+      setMessage('⚠️ バッチ設定で監視対象コレクションを選択してください');
+      return;
+    }
+    
+    if (!confirm('バッチ処理を実行しますか？\n登録されている全ユーザーのNFT保有状態を確認し、Discordロールを更新します。')) return;
 
     setBatchLoading(true);
     try {
@@ -909,20 +917,21 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
-          collectionId: collections[0]?.id || '',
-          action: 'verify'
+          collectionId: batchConfig.collectionId,
+          action: 'check_and_update_roles'
         })
       });
 
       const data = await response.json();
       if (data.success) {
-        setMessage('バッチ処理が正常に実行されました');
+        setMessage('✅ バッチ処理が正常に実行されました');
         fetchBatchStats(); // 統計を更新
+        fetchBatchConfig(); // 設定を更新（lastRun/nextRunが更新される）
       } else {
-        setMessage('バッチ処理の実行に失敗しました');
+        setMessage(`❌ バッチ処理の実行に失敗しました: ${data.error || '不明なエラー'}`);
       }
-    } catch {
-      setMessage('エラーが発生しました');
+    } catch (error: any) {
+      setMessage(`エラーが発生しました: ${error.message || 'ネットワークエラー'}`);
     }
     setBatchLoading(false);
   };
@@ -1523,12 +1532,19 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
                   }}>
                     <h5 style={{ margin: '0 0 1rem 0', color: '#495057' }}>現在の設定</h5>
                                          <div style={{ display: 'grid', gap: '0.5rem' }}>
-                       <div>
-                         <strong>バッチ処理:</strong> {batchConfig.enabled ? '有効' : '無効'}
-                       </div>
-                       <div>
-                         <strong>実行間隔:</strong> {batchConfig.interval}分
-                       </div>
+                    <div>
+                       <strong>バッチ処理:</strong> {batchConfig.enabled ? '有効' : '無効'}
+                     </div>
+                     <div>
+                       <strong>実行間隔:</strong> {batchConfig.interval}分
+                     </div>
+                     <div>
+                       <strong>監視対象:</strong> {
+                         batchConfig.collectionId 
+                           ? (collections.find(col => col.id === batchConfig.collectionId)?.name || `ID: ${batchConfig.collectionId}`)
+                           : '未設定 ⚠️'
+                       }
+                     </div>
                        <div>
                          <strong>バッチサイズ:</strong> {batchConfig.maxUsersPerBatch}ユーザー
                        </div>
@@ -1629,6 +1645,37 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
                            />
                            バッチ処理時のDM通知を有効にする
                          </label>
+                       </div>
+
+                       <div>
+                         <label>監視対象コレクション:</label>
+                         <select
+                           value={editingBatchConfig.collectionId || ''}
+                           onChange={(e) => setEditingBatchConfig({
+                             ...editingBatchConfig,
+                             collectionId: e.target.value
+                           })}
+                           disabled={batchLoading}
+                           style={{ 
+                             padding: '0.5rem', 
+                             borderRadius: '4px', 
+                             border: '1px solid #ccc', 
+                             marginLeft: '1rem', 
+                             minWidth: '300px' 
+                           }}
+                         >
+                           <option value="">コレクションを選択してください</option>
+                           {collections.map(col => (
+                             <option key={col.id} value={col.id}>
+                               {col.name} ({col.roleName})
+                             </option>
+                           ))}
+                         </select>
+                         {(!editingBatchConfig.collectionId || editingBatchConfig.collectionId === '') && (
+                           <div style={{ color: '#dc3545', fontSize: '0.85rem', marginTop: '0.25rem' }}>
+                             ⚠️ コレクションを選択しないとバッチ処理が動作しません
+                           </div>
+                         )}
                        </div>
 
                       <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
@@ -1869,96 +1916,328 @@ function AdminPanel({ mode }: { mode?: AdminMode }) {
           {/* 作成/編集フォームは新しいEventEditorに移行しました（旧フォーム削除済み） */}
           {/* イベント一覧 */}
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h4 style={{ margin: 0 }}>イベント一覧</h4>
-              <button
-                onClick={fetchEvents}
-                style={{ padding: '0.25rem 0.75rem', background: '#007bff', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem' }}
-              >
-                一覧を更新
-              </button>
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center', 
+              marginBottom: '1.5rem',
+              paddingBottom: '1rem',
+              borderBottom: '2px solid #e5e7eb'
+            }}>
+              <div>
+                <h4 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: '#1f2937' }}>イベント管理</h4>
+                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem', color: '#6b7280' }}>{events.length}件のイベント</p>
+              </div>
+              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <label style={{ fontSize: '0.875rem', color: '#6b7280', fontWeight: 500 }}>並び順:</label>
+                  <select
+                    value={eventSortBy}
+                    onChange={(e) => setEventSortBy(e.target.value as any)}
+                    style={{ 
+                      padding: '0.5rem 0.75rem', 
+                      border: '1px solid #d1d5db', 
+                      borderRadius: '8px', 
+                      fontSize: '0.875rem',
+                      background: 'white',
+                      cursor: 'pointer',
+                      outline: 'none',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    <option value="date">開催日時</option>
+                    <option value="name">イベント名</option>
+                    <option value="collection">コレクション</option>
+                    <option value="mints">ミント数</option>
+                  </select>
+                  <button
+                    onClick={() => setEventSortOrder(eventSortOrder === 'asc' ? 'desc' : 'asc')}
+                    style={{ 
+                      padding: '0.5rem 0.75rem', 
+                      background: 'white', 
+                      border: '1px solid #d1d5db', 
+                      borderRadius: '8px', 
+                      cursor: 'pointer', 
+                      fontSize: '0.875rem',
+                      fontWeight: 600,
+                      color: '#374151',
+                      transition: 'all 0.2s'
+                    }}
+                    title={eventSortOrder === 'asc' ? '昇順' : '降順'}
+                  >
+                    {eventSortOrder === 'asc' ? '昇順 ↑' : '降順 ↓'}
+                  </button>
+                </div>
+                <button
+                  onClick={fetchEvents}
+                  style={{ 
+                    padding: '0.5rem 1rem', 
+                    background: '#3b82f6', 
+                    color: 'white', 
+                    border: 'none', 
+                    borderRadius: '8px', 
+                    cursor: 'pointer', 
+                    fontSize: '0.875rem',
+                    fontWeight: 600,
+                    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#2563eb'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = '#3b82f6'}
+                >
+                  更新
+                </button>
+              </div>
             </div>
-            {events.map(ev => (
-              <div key={ev.id} style={{ border: '1px solid #ccc', padding: '1rem', borderRadius: '8px', marginBottom: '0.5rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600 }}>{ev.name}</div>
-                    <div style={{ fontSize: '0.9rem', color: '#555' }}>{ev.description}</div>
-                    <div style={{ fontSize: '0.85rem', color: '#333' }}>期間: {new Date(ev.startAt).toLocaleString('ja-JP')} - {new Date(ev.endAt).toLocaleString('ja-JP')}</div>
-                    <div style={{ fontSize: '0.85rem', color: '#333' }}>状態: {ev.active ? 'Active' : 'Inactive'}</div>
-                    <div style={{ fontSize: '0.85rem', color: '#333' }}>
-                      ID: <span style={{ fontFamily: 'monospace' }}>{ev.id}</span>
-                      <button
-                        onClick={async () => { try { await navigator.clipboard.writeText(ev.id); setMessage('イベントIDをコピーしました'); } catch { setMessage(ev.id); } }}
-                        style={{ marginLeft: '0.5rem', padding: '0.1rem 0.4rem', background: '#6b7280', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: '0.75rem' }}
-                      >
-                        コピー
-                      </button>
-                    </div>
-                    <div style={{ fontSize: '0.85rem', color: '#333' }}>
-                      ミント進捗: {typeof ev.mintedCount === 'number' ? ev.mintedCount : 0}
-                      {typeof ev.totalCap === 'number' ? ` / ${ev.totalCap}（残り ${Math.max((ev.totalCap || 0) - (ev.mintedCount || 0), 0)}）` : ' / 上限なし'}
-                    </div>
-                    {/* カウントダウン */}
-                    <div style={{ fontSize: '0.85rem', color: '#1f2937' }}>
-                      {(() => {
-                        const start = Date.parse(ev.startAt);
-                        const end = Date.parse(ev.endAt);
-                        if (nowTs < start) {
-                          const rem = Math.max(0, start - nowTs);
-                          const h = Math.floor(rem / 3600000);
-                          const m = Math.floor((rem % 3600000) / 60000);
-                          const s = Math.floor((rem % 60000) / 1000);
-                          return `開始まで: ${h}時間 ${m}分 ${s}秒`;
-                        } else if (nowTs <= end) {
-                          const rem = Math.max(0, end - nowTs);
-                          const h = Math.floor(rem / 3600000);
-                          const m = Math.floor((rem % 3600000) / 60000);
-                          const s = Math.floor((rem % 60000) / 1000);
-                          return `終了まで: ${h}時間 ${m}分 ${s}秒`;
-                        } else {
-                          return 'イベントは終了しました';
-                        }
-                      })()}
-                    </div>
-                    {ev.imageUrl && (
-                      <div style={{ marginTop: '0.25rem' }}>
-                        <div style={{ fontSize: '0.85rem', color: '#333', marginBottom: '0.25rem' }}>画像:</div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <img src={getImageDisplayUrl((ev as any).imageCid, ev.imageUrl)} alt={ev.name} style={{ width: 120, height: 'auto', borderRadius: 8, border: '1px solid #e5e7eb' }} />
-                          <a href={getImageDisplayUrl((ev as any).imageCid, ev.imageUrl)} target="_blank" rel="noreferrer" style={{ fontSize: '0.8rem' }}>新しいタブで開く</a>
+            
+            {(() => {
+              // ソート処理
+              const sortedEvents = [...events].sort((a, b) => {
+                let compareValue = 0;
+                
+                if (eventSortBy === 'name') {
+                  compareValue = a.name.localeCompare(b.name);
+                } else if (eventSortBy === 'collection') {
+                  const collA = mintCollections.find(col => a.collectionId === col.id)?.name || '';
+                  const collB = mintCollections.find(col => b.collectionId === col.id)?.name || '';
+                  compareValue = collA.localeCompare(collB);
+                } else if (eventSortBy === 'date') {
+                  compareValue = new Date(a.startAt).getTime() - new Date(b.startAt).getTime();
+                } else if (eventSortBy === 'mints') {
+                  compareValue = (a.mintedCount || 0) - (b.mintedCount || 0);
+                }
+                
+                return eventSortOrder === 'asc' ? compareValue : -compareValue;
+              });
+
+              return sortedEvents.map(ev => {
+                // イベントのコレクションIDからコレクション名を取得
+                const eventCollection = mintCollections.find(col => ev.collectionId === col.id);
+                const collectionName = eventCollection?.name || 'コレクション未設定';
+                
+                const start = Date.parse(ev.startAt);
+                const end = Date.parse(ev.endAt);
+                const isUpcoming = nowTs < start;
+                const isActive = nowTs >= start && nowTs <= end;
+                const isEnded = nowTs > end;
+                
+                return (
+                  <div key={ev.id} style={{ 
+                    border: '1px solid #e5e7eb', 
+                    borderLeft: `3px solid ${isActive ? '#10b981' : isEnded ? '#9ca3af' : '#3b82f6'}`,
+                    padding: '1.25rem', 
+                    borderRadius: '12px', 
+                    marginBottom: '1rem',
+                    background: 'white',
+                    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.boxShadow = '0 4px 6px rgba(0, 0, 0, 0.1)';
+                    e.currentTarget.style.transform = 'translateY(-1px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                  }}
+                  >
+                    <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'flex-start' }}>
+                      {/* 画像サムネイル */}
+                      {ev.imageUrl && (
+                        <div style={{
+                          width: 80,
+                          height: 80,
+                          borderRadius: 8,
+                          overflow: 'hidden',
+                          flexShrink: 0,
+                          border: '1px solid #e5e7eb'
+                        }}>
+                          <img 
+                            src={getImageDisplayUrl((ev as any).imageCid, ev.imageUrl)} 
+                            alt={ev.name} 
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                          />
+                        </div>
+                      )}
+                      
+                      {/* メイン情報 */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                          <h3 style={{ margin: 0, fontWeight: 600, fontSize: '1.125rem', color: '#111827' }}>{ev.name}</h3>
+                          <span style={{ 
+                            fontSize: '0.75rem', 
+                            padding: '0.25rem 0.75rem', 
+                            background: isActive ? '#d1fae5' : isEnded ? '#f3f4f6' : '#dbeafe', 
+                            color: isActive ? '#047857' : isEnded ? '#6b7280' : '#1e40af',
+                            borderRadius: '6px',
+                            fontWeight: 600,
+                            letterSpacing: '0.025em',
+                            textTransform: 'uppercase'
+                          }}>
+                            {isActive ? 'Active' : isEnded ? 'Ended' : 'Upcoming'}
+                          </span>
+                        </div>
+                        
+                        <div style={{ 
+                          fontSize: '0.8125rem', 
+                          color: '#6b7280', 
+                          marginBottom: '0.75rem', 
+                          display: 'inline-block', 
+                          padding: '0.25rem 0.75rem', 
+                          background: '#f9fafb', 
+                          borderRadius: '6px',
+                          border: '1px solid #e5e7eb'
+                        }}>
+                          Collection: {collectionName}
+                        </div>
+                        
+                        {ev.description && (
+                          <p style={{ 
+                            fontSize: '0.875rem', 
+                            color: '#6b7280', 
+                            marginBottom: '0.75rem', 
+                            overflow: 'hidden', 
+                            textOverflow: 'ellipsis', 
+                            whiteSpace: 'nowrap',
+                            margin: '0 0 0.75rem 0'
+                          }}>
+                            {ev.description}
+                          </p>
+                        )}
+                        
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', fontSize: '0.8125rem', color: '#4b5563' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontWeight: 500, marginBottom: '0.125rem' }}>期間</span>
+                            <span style={{ fontWeight: 500 }}>
+                              {new Date(ev.startAt).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 
+                              {' ~ '}
+                              {new Date(ev.endAt).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontWeight: 500, marginBottom: '0.125rem' }}>ミント進捗</span>
+                            <span style={{ fontWeight: 600, color: '#111827' }}>
+                              {typeof ev.mintedCount === 'number' ? ev.mintedCount.toLocaleString() : 0}
+                              <span style={{ fontWeight: 400, color: '#6b7280' }}>
+                                {typeof ev.totalCap === 'number' ? ` / ${ev.totalCap.toLocaleString()}` : ' / 無制限'}
+                              </span>
+                            </span>
+                          </div>
+                          {(isActive || isUpcoming) && (
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontWeight: 500, marginBottom: '0.125rem' }}>
+                                {isActive ? '終了まで' : '開始まで'}
+                              </span>
+                              <span style={{ fontWeight: 600, color: isActive ? '#10b981' : '#3b82f6' }}>
+                                {(() => {
+                                  const targetTime = isActive ? end : start;
+                                  const rem = Math.max(0, targetTime - nowTs);
+                                  const h = Math.floor(rem / 3600000);
+                                  const m = Math.floor((rem % 3600000) / 60000);
+                                  return `${h}時間 ${m}分`;
+                                })()}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </div>
-                    )}
+                      
+                      {/* アクションボタン */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flexShrink: 0 }}>
+                        <button
+                          onClick={async () => {
+                            const url = `${window.location.origin}/mint/${ev.id}`;
+                            try { await navigator.clipboard.writeText(url); setMessage('ミントURLをコピーしました'); } catch { setMessage(url); }
+                          }}
+                          style={{ 
+                            padding: '0.5rem 1rem', 
+                            background: '#10b981', 
+                            color: 'white', 
+                            border: 'none', 
+                            borderRadius: '6px', 
+                            cursor: 'pointer', 
+                            fontSize: '0.8125rem', 
+                            fontWeight: 600,
+                            whiteSpace: 'nowrap',
+                            transition: 'all 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = '#059669'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = '#10b981'}
+                        >
+                          URL コピー
+                        </button>
+                        <button 
+                          onClick={() => setEditingEventData(ev)} 
+                          style={{ 
+                            padding: '0.5rem 1rem', 
+                            background: '#3b82f6', 
+                            color: 'white', 
+                            border: 'none', 
+                            borderRadius: '6px', 
+                            cursor: 'pointer', 
+                            fontSize: '0.8125rem',
+                            fontWeight: 600,
+                            transition: 'all 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = '#2563eb'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = '#3b82f6'}
+                        >
+                          編集
+                        </button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              const res = await fetch(`${API_BASE_URL}/api/admin/events/${ev.id}/toggle-active`, { method: 'POST', headers: getAuthHeaders() });
+                              const data = await res.json();
+                              if (data.success) { setMessage('状態を切り替えました'); fetchEvents(); } else { setMessage(data.error || '切り替えに失敗しました'); }
+                            } catch { setMessage('切り替えに失敗しました'); }
+                          }}
+                          style={{ 
+                            padding: '0.5rem 1rem', 
+                            background: ev.active ? '#f59e0b' : '#6b7280', 
+                            color: 'white', 
+                            border: 'none', 
+                            borderRadius: '6px', 
+                            cursor: 'pointer', 
+                            fontSize: '0.8125rem',
+                            fontWeight: 600,
+                            transition: 'all 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = ev.active ? '#d97706' : '#4b5563'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = ev.active ? '#f59e0b' : '#6b7280'}
+                        >
+                          {ev.active ? '無効化' : '有効化'}
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteEvent(ev.id)} 
+                          style={{ 
+                            padding: '0.5rem 1rem', 
+                            background: 'white',
+                            color: '#ef4444', 
+                            border: '1px solid #fecaca', 
+                            borderRadius: '6px', 
+                            cursor: 'pointer', 
+                            fontSize: '0.8125rem',
+                            fontWeight: 600,
+                            transition: 'all 0.2s'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = '#ef4444';
+                            e.currentTarget.style.color = 'white';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'white';
+                            e.currentTarget.style.color = '#ef4444';
+                          }}
+                        >
+                          削除
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <button
-                      onClick={async () => {
-                        try {
-                          const res = await fetch(`${API_BASE_URL}/api/admin/events/${ev.id}/toggle-active`, { method: 'POST', headers: getAuthHeaders() });
-                          const data = await res.json();
-                          if (data.success) { setMessage('状態を切り替えました'); fetchEvents(); } else { setMessage(data.error || '切り替えに失敗しました'); }
-                        } catch { setMessage('切り替えに失敗しました'); }
-                      }}
-                      style={{ padding: '0.25rem 0.5rem', background: ev.active ? '#6c757d' : '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
-                    >
-                      {ev.active ? '無効化' : '有効化'}
-                    </button>
-                    <button
-                      onClick={async () => {
-                        const url = `${window.location.origin}/mint/${ev.id}`;
-                        try { await navigator.clipboard.writeText(url); setMessage('ミントURLをコピーしました'); } catch { setMessage(url); }
-                      }}
-                      style={{ padding: '0.25rem 0.5rem', background: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
-                    >
-                      URLコピー
-                    </button>
-                    <button onClick={() => setEditingEventData(ev)} style={{ padding: '0.25rem 0.5rem', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}>編集</button>
-                    <button onClick={() => handleDeleteEvent(ev.id)} style={{ padding: '0.25rem 0.5rem', background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}>削除</button>
-                  </div>
-                </div>
-              </div>
-            ))}
+                );
+              });
+            })()}
             {events.length === 0 && <p style={{ color: '#666' }}>イベントがありません</p>}
           </div>
         </div>

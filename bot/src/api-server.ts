@@ -362,6 +362,15 @@ app.post('/api/batch-process', async (req, res) => {
     // 認証済みユーザーのロールを処理
     for (const user of verifiedUsers) {
       try {
+        // 指定されたcollectionIdに対応するユーザーのみを処理
+        const userCollectionIds = Array.isArray(user.collectionIds) ? user.collectionIds : [];
+        const shouldProcess = userCollectionIds.includes(collectionId);
+        
+        if (!shouldProcess) {
+          console.log(`Skipping user ${user.discordId} (not subscribed to collection ${collectionId})`);
+          continue;
+        }
+        
         if (action === 'revoke') {
           // ロールを剥奪
           const success = await revokeRoleFromUser(user.discordId);
@@ -377,6 +386,30 @@ app.post('/api/batch-process', async (req, res) => {
             processedUsers++;
           } else {
             errors++;
+          }
+        } else if (action === 'check_and_update_roles') {
+          // NFT保有状態をチェックしてロールを更新
+          // hasNFTフィールドがある場合はそれを使用、ない場合は保有していると仮定
+          const hasNFT = user.hasNFT !== false;
+          
+          if (hasNFT) {
+            // NFTを保有している場合：ロールを付与
+            const success = await grantRoleToUser(user.discordId, collectionId, user.roleName);
+            if (success) {
+              processedUsers++;
+              console.log(`✅ Granted role to user ${user.discordId}`);
+            } else {
+              errors++;
+            }
+          } else {
+            // NFTを保有していない場合：ロールを剥奪
+            const success = await revokeRoleFromUser(user.discordId);
+            if (success) {
+              processedUsers++;
+              console.log(`⚠️ Revoked role from user ${user.discordId} (no NFT)`);
+            } else {
+              errors++;
+            }
           }
         }
       } catch (error) {

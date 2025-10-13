@@ -16,6 +16,7 @@ interface Event {
   eventDate?: string;
   collectionId: string;
   totalCap?: number;
+  mintedCount?: number;
   moveCall: {
     target: string;
     argumentsTemplate: string;

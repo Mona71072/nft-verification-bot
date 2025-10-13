@@ -433,34 +433,38 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
                         flexWrap: 'wrap',
                         marginBottom: '0.375rem'
                       }}>
-                        <div style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '0.375rem',
-                          padding: '0.25rem 0.625rem',
-                          background: '#f1f5f9',
-                          borderRadius: '6px',
-                          fontSize: isMobile ? '0.6875rem' : '0.75rem',
-                          color: '#475569',
-                          fontWeight: '600'
-                        }}>
-                          <Clock className="w-3 h-3" />
-                          <span>
-                            {new Date(activity.timestamp).toLocaleString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              timeZone: 'Asia/Tokyo'
-                            })} JST
+                        {activity.timestamp && !isNaN(new Date(activity.timestamp).getTime()) && (
+                          <div style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.375rem',
+                            padding: '0.25rem 0.625rem',
+                            background: '#f1f5f9',
+                            borderRadius: '6px',
+                            fontSize: isMobile ? '0.6875rem' : '0.75rem',
+                            color: '#475569',
+                            fontWeight: '600'
+                          }}>
+                            <Clock className="w-3 h-3" />
+                            <span>
+                              {new Date(activity.timestamp).toLocaleString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                timeZone: 'Asia/Tokyo'
+                              })} JST
+                            </span>
+                          </div>
+                        )}
+                        {activity.timestamp && !isNaN(new Date(activity.timestamp).getTime()) && (
+                          <span style={{
+                            fontSize: isMobile ? '0.6875rem' : '0.75rem',
+                            color: '#94a3b8'
+                          }}>
+                            {getRelativeTime(activity.timestamp)}
                           </span>
-                        </div>
-                        <span style={{
-                          fontSize: isMobile ? '0.6875rem' : '0.75rem',
-                          color: '#94a3b8'
-                        }}>
-                          {getRelativeTime(activity.timestamp)}
-                        </span>
+                        )}
                       </div>
                       
                       {/* Event Name (for mints) */}

@@ -5,7 +5,6 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { useWalletWithErrorHandling } from './hooks/useWallet';
 import { NFTVerification } from './components/NFTVerification';
-import AdminPanel from './AdminPanel';
 import MintPage from './MintPage';
 import Dashboard from './pages/Dashboard';
 import { queryClient } from './lib/query-client';
@@ -197,7 +196,42 @@ function App() {
                     </div>
                   );
                 }
-                if (path === '/admin') return <AdminPanel mode="admin" />;
+                
+                // 新しいページ構造
+                if (path === '/admin') {
+                  const AdminDashboard = React.lazy(() => import('./pages/admin/AdminDashboard'));
+                  return (
+                    <React.Suspense fallback={<div style={{ padding: '2rem', textAlign: 'center', color: 'white' }}>Loading...</div>}>
+                      <AdminDashboard />
+                    </React.Suspense>
+                  );
+                }
+                if (path.startsWith('/admin/mint/events')) {
+                  const EventManagement = React.lazy(() => import('./pages/admin/EventManagement'));
+                  return (
+                    <React.Suspense fallback={<div style={{ padding: '2rem', textAlign: 'center', color: 'white' }}>Loading...</div>}>
+                      <EventManagement />
+                    </React.Suspense>
+                  );
+                }
+                if (path.startsWith('/admin/mint/history')) {
+                  const MintHistory = React.lazy(() => import('./pages/admin/MintHistory'));
+                  return (
+                    <React.Suspense fallback={<div style={{ padding: '2rem', textAlign: 'center', color: 'white' }}>Loading...</div>}>
+                      <MintHistory />
+                    </React.Suspense>
+                  );
+                }
+                if (path.startsWith('/admin/roles')) {
+                  const RolesManagement = React.lazy(() => import('./pages/admin/RolesManagement'));
+                  return (
+                    <React.Suspense fallback={<div style={{ padding: '2rem', textAlign: 'center', color: 'white' }}>Loading...</div>}>
+                      <RolesManagement />
+                    </React.Suspense>
+                  );
+                }
+                
+                // レガシー: AdminMintPage
                 if (path.startsWith('/admin/mints')) {
                   const AdminMintPage = React.lazy(() => import('./pages/AdminMintPage'));
                   return (
@@ -214,8 +248,6 @@ function App() {
                     </React.Suspense>
                   );
                 }
-                if (path.startsWith('/admin/roles')) return <AdminPanel mode="roles" />;
-                if (path.startsWith('/admin/mint')) return <AdminPanel mode="mint" />;
               }
             }
             return <Dashboard />;

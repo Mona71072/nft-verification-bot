@@ -3,7 +3,7 @@ import React from 'react';
 interface WalrusImageUploadProps {
   imageCid?: string;
   imageMimeType?: string;
-  onUpload: (cid: string, mimeType: string) => void;
+  onUpload: (cid: string, mimeType: string, epochs?: number, expiry?: string) => void;
   apiBase?: string;
   onMessage?: (message: string, type?: 'info' | 'success' | 'error') => void;
 }
@@ -52,7 +52,7 @@ export default function WalrusImageUpload({ imageCid, imageMimeType, onUpload, a
     try {
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('epochs', '10'); // デフォルト10エポック
+      formData.append('epochs', '26'); // 約1年保存（26エポック ≈ 52週間）
 
       const response = await fetch(`${API_BASE}/api/walrus/store`, {
         method: 'POST',
@@ -75,8 +75,13 @@ export default function WalrusImageUpload({ imageCid, imageMimeType, onUpload, a
       const { blobId } = result.data || result;
       if (!blobId) throw new Error('Blob IDが返されませんでした');
 
-      onUpload(blobId, file.type);
-      showToast('画像をアップロードしました', 'success');
+      // 保存期限を計算（26 epochs = 約52週間 = 約364日）
+      const epochs = 26;
+      const expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() + (epochs * 14)); // 1 epoch = 14日
+      
+      onUpload(blobId, file.type, epochs, expiryDate.toISOString());
+      showToast(`画像をアップロードしました（保存期限: 約1年）`, 'success');
     } catch (error: any) {
       showToast(`アップロード失敗: ${error.message}`, 'error');
     } finally {
@@ -219,7 +224,7 @@ export default function WalrusImageUpload({ imageCid, imageMimeType, onUpload, a
             <br />
             • すべてのBlobは公開・探索可能
             <br />
-            • 保存期間: 10エポック（約20週間）
+            • 保存期間: 26エポック（約1年間）
           </div>
         </div>
       )}

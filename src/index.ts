@@ -107,6 +107,18 @@ app.get('/api/events', async (c) => {
     const listStr = await store.get('events');
     const list = listStr ? JSON.parse(listStr) : [];
     
+    // 各イベントにmintedCountを追加
+    const mintedStore = c.env.MINTED_STORE as KVNamespace | undefined;
+    if (mintedStore && Array.isArray(list)) {
+      for (const event of list) {
+        if (event && event.id) {
+          const mintedCountKey = `minted_count:${event.id}`;
+          const mintedCountStr = await mintedStore.get(mintedCountKey);
+          event.mintedCount = mintedCountStr ? Number(mintedCountStr) : 0;
+        }
+      }
+    }
+    
     return c.json({ success: true, data: list });
   } catch (error) {
     return c.json({ success: false, error: 'Failed to fetch events' }, 500);
@@ -126,6 +138,14 @@ app.get('/api/events/:id/public', async (c) => {
     const ev = Array.isArray(list) ? list.find((e: any) => e && e.id === id) : null;
     if (!ev) {
       return c.json({ success: false, error: 'Event not found' }, 404);
+    }
+
+    // mintedCountを追加
+    const mintedStore = c.env.MINTED_STORE as KVNamespace | undefined;
+    if (mintedStore) {
+      const mintedCountKey = `minted_count:${id}`;
+      const mintedCountStr = await mintedStore.get(mintedCountKey);
+      ev.mintedCount = mintedCountStr ? Number(mintedCountStr) : 0;
     }
 
     const now = Date.now();
@@ -593,11 +613,19 @@ app.get('/api/owned-nfts/:address', async (c) => {
 // 管理者認証チェック（KVストアから取得）
 async function isAdmin(c: any, address: string): Promise<boolean> {
   try {
+    // アドレスを正規化（小文字、トリム）
+    const normalizedAddress = address?.trim().toLowerCase();
+    if (!normalizedAddress) return false;
+
     // まず環境変数から確認
-    const envAdminList = c.env.ADMIN_ADDRESSES?.split(',') || [];
-    if (envAdminList.includes(address)) {
-        return true;
-      }
+    const envAdminList = (c.env.ADMIN_ADDRESSES || '')
+      .split(',')
+      .map((a: string) => a.trim().toLowerCase())
+      .filter(Boolean);
+    
+    if (envAdminList.includes(normalizedAddress)) {
+      return true;
+    }
 
     // KVストアから管理者リストを取得
     const store = c.env.COLLECTION_STORE as KVNamespace | undefined;
@@ -605,12 +633,16 @@ async function isAdmin(c: any, address: string): Promise<boolean> {
       const adminData = await store.get('admin_addresses');
       if (adminData) {
         const kvAdminList = JSON.parse(adminData);
-        return Array.isArray(kvAdminList) && kvAdminList.includes(address);
+        if (Array.isArray(kvAdminList)) {
+          const normalizedKvList = kvAdminList.map((a: string) => a.trim().toLowerCase());
+          return normalizedKvList.includes(normalizedAddress);
+        }
       }
     }
     
     return false;
-  } catch {
+  } catch (error) {
+    console.error('isAdmin check error:', error);
     return false;
   }
 }
@@ -724,6 +756,21 @@ app.delete('/api/admin/addresses/:address', async (c) => {
       return c.json({ success: false, error: 'address is required' }, 400);
     }
 
+    // 環境変数の管理者（メイン管理者）は削除できないように保護
+    const envAdminList = (c.env.ADMIN_ADDRESSES || '')
+      .split(',')
+      .map((a: string) => a.trim().toLowerCase())
+      .filter(Boolean);
+    
+    const normalizedAddressToRemove = addressToRemove.trim().toLowerCase();
+    
+    if (envAdminList.includes(normalizedAddressToRemove)) {
+      return c.json({ 
+        success: false, 
+        error: 'Cannot remove main administrator (protected by environment variable)' 
+      }, 403);
+    }
+
     const store = c.env.COLLECTION_STORE as KVNamespace | undefined;
     if (!store) {
       return c.json({ success: false, error: 'Collection store not available' }, 500);
@@ -739,7 +786,7 @@ app.delete('/api/admin/addresses/:address', async (c) => {
 
     // アドレスを削除（大文字小文字を区別しない）
     const filteredAddresses = addresses.filter(
-      (addr: string) => addr.toLowerCase() !== addressToRemove.toLowerCase()
+      (addr: string) => addr.toLowerCase() !== normalizedAddressToRemove
     );
 
     if (filteredAddresses.length === addresses.length) {
@@ -1041,6 +1088,18 @@ app.get('/api/admin/events', async (c) => {
     const listStr = await store.get('events');
     const list = listStr ? JSON.parse(listStr) : [];
     
+    // 各イベントにmintedCountを追加
+    const mintedStore = c.env.MINTED_STORE as KVNamespace | undefined;
+    if (mintedStore && Array.isArray(list)) {
+      for (const event of list) {
+        if (event && event.id) {
+          const mintedCountKey = `minted_count:${event.id}`;
+          const mintedCountStr = await mintedStore.get(mintedCountKey);
+          event.mintedCount = mintedCountStr ? Number(mintedCountStr) : 0;
+        }
+      }
+    }
+    
     return c.json({ success: true, data: list });
   } catch (error) {
     return c.json({ success: false, error: 'Failed to fetch events' }, 500);
@@ -1119,7 +1178,7 @@ app.post('/api/admin/events', async (c) => {
     }
 
     const body = await c.req.json();
-    const { name, description, startAt, endAt, eventDate, active = false, imageUrl, imageCid, imageMimeType, maxMints, mintPrice, collectionId, roleId, roleName, moveCall, totalCap } = body;
+    const { name, description, startAt, endAt, eventDate, active = false, imageUrl, imageCid, imageMimeType, imageStorageEpochs, imageStorageExpiry, maxMints, mintPrice, collectionId, roleId, roleName, moveCall, totalCap } = body;
 
     // 必須フィールドの検証
     if (!name || !description || !startAt || !endAt) {
@@ -1141,6 +1200,8 @@ app.post('/api/admin/events', async (c) => {
       imageUrl: imageUrl || '',
       imageCid: imageCid || '',
       imageMimeType: imageMimeType || '',
+      imageStorageEpochs: imageStorageEpochs || null,
+      imageStorageExpiry: imageStorageExpiry || null,
       maxMints: maxMints || null,
       mintPrice: mintPrice || null,
       collectionId: collectionId || '',
@@ -1188,7 +1249,7 @@ app.put('/api/admin/events/:id', async (c) => {
     }
 
     const body = await c.req.json();
-    const { name, description, startAt, endAt, eventDate, active, imageUrl, imageCid, imageMimeType, maxMints, mintPrice, collectionId, roleId, roleName, moveCall, totalCap } = body;
+    const { name, description, startAt, endAt, eventDate, active, imageUrl, imageCid, imageMimeType, imageStorageEpochs, imageStorageExpiry, maxMints, mintPrice, collectionId, roleId, roleName, moveCall, totalCap } = body;
 
     // イベントリストを取得
     const listStr = await store.get('events');
@@ -1212,6 +1273,8 @@ app.put('/api/admin/events/:id', async (c) => {
       ...(imageUrl !== undefined && { imageUrl }),
       ...(imageCid !== undefined && { imageCid }),
       ...(imageMimeType !== undefined && { imageMimeType }),
+      ...(imageStorageEpochs !== undefined && { imageStorageEpochs }),
+      ...(imageStorageExpiry !== undefined && { imageStorageExpiry }),
       ...(maxMints !== undefined && { maxMints }),
       ...(mintPrice !== undefined && { mintPrice }),
       ...(collectionId !== undefined && { collectionId }),
@@ -1516,17 +1579,19 @@ app.get('/api/mint-collections/:typePath/mints', async (c) => {
   try {
     const typePath = c.req.param('typePath');
     const limitRaw = c.req.query('limit');
+    const eventId = c.req.query('eventId'); // オプション: イベントIDでフィルタリング
     const limit = Math.min(Math.max(Number(limitRaw || 50), 1), 200);
     const mintedStore = c.env.MINTED_STORE as KVNamespace | undefined;
     if (!mintedStore) return c.json({ success: false, error: 'MINTED_STORE is not available' }, 503);
 
-    const idxKeyAll = `mint_index:${typePath}`;
-    console.log(`[Mint History] Looking for key: ${idxKeyAll}`);
+    // イベントIDが指定されている場合はイベント別インデックスを使用
+    const idxKey = eventId ? `mint_index:${typePath}:${eventId}` : `mint_index:${typePath}`;
+    console.log(`[Mint History] Looking for key: ${idxKey}`);
     
-    const idxAllStr = await mintedStore.get(idxKeyAll);
-    console.log(`[Mint History] Found data:`, idxAllStr ? `${idxAllStr.length} bytes` : 'null');
+    const idxStr = await mintedStore.get(idxKey);
+    console.log(`[Mint History] Found data:`, idxStr ? `${idxStr.length} bytes` : 'null');
     
-    const txs: string[] = idxAllStr ? JSON.parse(idxAllStr) : [];
+    const txs: string[] = idxStr ? JSON.parse(idxStr) : [];
     console.log(`[Mint History] Transaction count: ${txs.length}`);
     
     const slice = txs.slice(0, limit);
@@ -1951,6 +2016,50 @@ app.post('/api/admin/set-test-user', async (c) => {
       } catch (error) {
     console.error('Set test user error:', error);
     return c.json({ success: false, error: 'Failed to add test user' }, 500);
+  }
+});
+
+// 認証済みユーザーのcollectionIds更新API
+app.patch('/api/admin/verified-users/:discordId/collections', async (c) => {
+  try {
+    const admin = c.req.header('X-Admin-Address');
+    if (!admin || !(await isAdmin(c, admin))) return c.json({ success: false, error: 'forbidden' }, 403);
+
+    const discordId = c.req.param('discordId');
+    const { collectionIds } = await c.req.json();
+    
+    if (!discordId) {
+      return c.json({ success: false, error: 'discordId is required' }, 400);
+    }
+    
+    if (!Array.isArray(collectionIds)) {
+      return c.json({ success: false, error: 'collectionIds must be an array' }, 400);
+    }
+
+    const store = c.env.MINTED_STORE as KVNamespace | undefined;
+    if (!store) {
+      return c.json({ success: false, error: 'Minted store not available' }, 500);
+    }
+
+    // 既存ユーザーデータを取得
+    const existingData = await store.get(`verified_user:${discordId}`);
+    if (!existingData) {
+      return c.json({ success: false, error: 'User not found' }, 404);
+    }
+
+    const userData = JSON.parse(existingData);
+    
+    // collectionIdsを更新
+    userData.collectionIds = collectionIds;
+    userData.updatedAt = new Date().toISOString();
+    
+    // KVストアに保存
+    await store.put(`verified_user:${discordId}`, JSON.stringify(userData));
+
+    return c.json({ success: true, message: 'User collections updated successfully', data: userData });
+  } catch (error) {
+    console.error('Update user collections error:', error);
+    return c.json({ success: false, error: 'Failed to update user collections' }, 500);
   }
 });
 

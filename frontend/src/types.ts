@@ -57,6 +57,7 @@ export interface BatchConfig {
   maxUsersPerBatch: number;
   retryAttempts: number;
   enableDmNotifications: boolean;
+  collectionId?: string; // ロール管理用コレクションID
 }
 
 // DM通知設定の型定義
@@ -96,7 +97,8 @@ export const DEFAULT_BATCH_CONFIG: BatchConfig = {
   nextRun: '',
   maxUsersPerBatch: 100,
   retryAttempts: 3,
-  enableDmNotifications: true
+  enableDmNotifications: true,
+  collectionId: '' // デフォルトは未設定
 };
 
 // 管理UI用のイベント型
@@ -108,6 +110,8 @@ export interface AdminMintEvent {
   imageUrl?: string;
   imageCid?: string;
   imageMimeType?: string;
+  imageStorageEpochs?: number; // Walrus保存期間（epochs）
+  imageStorageExpiry?: string; // 画像保存期限（ISO日付）
   active: boolean;
   startAt: string; // ISO
   endAt: string;   // ISO

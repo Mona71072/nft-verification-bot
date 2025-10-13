@@ -49,6 +49,7 @@ const Dashboard: React.FC = () => {
   const { account, connected } = useWalletWithErrorHandling() as any;
   const [activeTab, setActiveTab] = useState<'all' | 'owned' | 'calendar' | 'activity'>('all');
   const [expandedCollections, setExpandedCollections] = useState<Set<string>>(new Set());
+  const [expandedEvents, setExpandedEvents] = useState<Set<string>>(new Set());
   const [selectedNFT, setSelectedNFT] = useState<OwnedNFT | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
@@ -88,68 +89,83 @@ const Dashboard: React.FC = () => {
   
   // Generate activities from owned NFTs
   const activities = useMemo(() => {
-    if (!connected || allOwnedNFTs.length === 0) {
+    if (!connected || allOwnedNFTs.length === 0 || events.length === 0) {
       return [];
     }
 
-    // Convert owned NFTs to mint activities
-    return allOwnedNFTs.map((nft) => {
-      // Use event_date or current time as timestamp
-      const timestamp = nft.display?.event_date 
-        ? new Date(nft.display.event_date).getTime()
-        : Date.now();
+    // KVに登録されているイベント名のセットを作成
+    const eventNames = new Set(events.map(e => e.name));
 
-      return {
-        id: `mint-${nft.objectId}`,
-        type: 'mint' as const,
-        timestamp: timestamp,
-        timestampMs: timestamp,
-        digest: undefined,
-        mint: {
-          objectId: nft.objectId,
-          name: nft.display?.name || 'Unnamed NFT',
-          image_url: nft.display?.image_url,
-          collection: nft.type,
-          eventName: nft.display?.name
+    // Convert owned NFTs to mint activities (KVに登録されているイベントのみ)
+    return allOwnedNFTs
+      .filter((nft) => {
+        // NFTの名前がKVに登録されているイベントと一致するかチェック
+        const nftName = nft.display?.name;
+        if (!nftName || !eventNames.has(nftName)) {
+          return false;
         }
-      };
-    }).sort((a, b) => b.timestamp - a.timestamp);
-  }, [connected, allOwnedNFTs]);
+        
+        // event_dateが有効な日付かチェック
+        if (nft.display?.event_date) {
+          const date = new Date(nft.display.event_date);
+          // 無効な日付を除外
+          if (isNaN(date.getTime())) {
+            return false;
+          }
+        }
+        
+        return true;
+      })
+      .map((nft) => {
+        // Use event_date or current time as timestamp
+        const timestamp = nft.display?.event_date 
+          ? new Date(nft.display.event_date).getTime()
+          : Date.now();
 
-  // Calculate individual mint counts for events (on-chain total)
-  // Note: May be shared across all events in the same collection,
-  // accurate individual counts require event-name-filtered GraphQL queries
-  // Currently showing collection totals for simplicity
-  const eventMintCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    
-    events.forEach(event => {
-      // Get total mints for the collection
-      const collectionTotal = onchainCounts.get(event.collectionId) || 0;
-      
-      // If there are other events in the same collection, distribute
-      const sameCollectionEvents = events.filter(e => e.collectionId === event.collectionId);
-      
-      if (sameCollectionEvents.length > 1) {
-        // Multiple events: calculate actual count from owned NFTs
-        const userMintCount = allOwnedNFTs.filter(nft => nft.display?.name === event.name).length;
-        counts.set(event.name, userMintCount > 0 ? userMintCount : Math.floor(collectionTotal / sameCollectionEvents.length));
-      } else {
-        // Single event: use collection total
-        counts.set(event.name, collectionTotal);
-      }
-    });
-    
-    return counts;
-  }, [events, onchainCounts, allOwnedNFTs]);
+        return {
+          id: `mint-${nft.objectId}`,
+          type: 'mint' as const,
+          timestamp: timestamp,
+          timestampMs: timestamp,
+          digest: undefined,
+          mint: {
+            objectId: nft.objectId,
+            name: nft.display?.name || 'Unnamed NFT',
+            image_url: nft.display?.image_url,
+            collection: nft.type,
+            eventName: nft.display?.name
+          }
+        };
+      })
+      .sort((a, b) => b.timestamp - a.timestamp);
+  }, [connected, allOwnedNFTs, events]);
+
 
   // Integrate loading state
   const loading = collectionsLoading || eventsLoading;
 
   // Calculate statistics (optimized with useMemo)
+  // 登録されているコレクションのミント数のみを合計
   const totalMints = useMemo(() => {
-    return Array.from(onchainCounts.values()).reduce((sum, count) => sum + count, 0);
-  }, [onchainCounts]);
+    let total = 0;
+    
+    collections.forEach(collection => {
+      const collectionTypePath = (collection as any).typePath || collection.packageId;
+      const collectionEvents = events.filter(e => e.collectionId === collectionTypePath);
+      
+      if (collectionEvents.length > 0) {
+        // イベントが紐付いている場合: KVのイベントミント数を合計
+        total += collectionEvents.reduce((sum, event) => {
+          return sum + (typeof event.mintedCount === 'number' ? event.mintedCount : 0);
+        }, 0);
+      } else {
+        // イベントが紐付いていない場合: オンチェーンのNFT総数
+        total += onchainCounts.get(collection.id) || 0;
+      }
+    });
+    
+    return total;
+  }, [collections, events, onchainCounts]);
 
   // Owned NFTs: Non-EventNFT type NFTs (Collection NFTs only)
   const nonEventNFTs = useMemo(() => {
@@ -534,8 +550,20 @@ const Dashboard: React.FC = () => {
                 gap: '1.5rem'
               }}>
                 {collections.map((collection) => {
-                  const collectionEvents = events.filter(e => e.collectionId === collection.id);
-                  const collectionMints = onchainCounts.get(collection.id) || 0;
+                  // コレクションの型パスを取得
+                  const collectionTypePath = (collection as any).typePath || collection.packageId;
+                  // イベントのcollectionIdと型パスで比較
+                  const collectionEvents = events.filter(e => e.collectionId === collectionTypePath);
+                  
+                  // ミント数の計算:
+                  // - イベントが紐付いている場合: KVに保存されているイベントのミント数を合計
+                  // - イベントが紐付いていない場合: オンチェーンのNFT総数を使用（ロール管理用コレクション）
+                  const collectionMints = collectionEvents.length > 0
+                    ? collectionEvents.reduce((sum, event) => {
+                        return sum + (typeof event.mintedCount === 'number' ? event.mintedCount : 0);
+                      }, 0)
+                    : (onchainCounts.get(collection.id) || 0);
+                  
                   const isExpanded = expandedCollections.has(collection.id);
 
                   return (
@@ -634,7 +662,7 @@ const Dashboard: React.FC = () => {
                           padding: isMobile ? '0.75rem 1rem 1rem 1rem' : '1rem 1.5rem 1.5rem 1.5rem',
                           background: '#f9fafb'
                         }}>
-                          {collectionEvents.length > 0 && (
+                          {collectionEvents.length > 0 ? (
                             <div>
                               <div style={{
                                 fontSize: '0.875rem',
@@ -645,85 +673,319 @@ const Dashboard: React.FC = () => {
                                 Mint Events
                               </div>
                               <div style={{ display: 'grid', gap: '0.5rem' }}>
-                                {collectionEvents.map((event) => (
-                                  <div
-                                    key={event.id}
-                                    style={{
-                                      display: 'flex',
-                                      justifyContent: 'space-between',
-                                      alignItems: isMobile ? 'flex-start' : 'center',
-                                      flexDirection: isMobile ? 'column' : 'row',
-                                      gap: isMobile ? '0.5rem' : '0',
-                                      padding: isMobile ? '0.75rem 0.5rem' : '0.75rem',
-                                      background: 'white',
-                                      borderRadius: isMobile ? '6px' : '8px',
-                                      border: '1px solid #e5e7eb',
-                                      transition: 'all 0.2s ease'
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      if (!isMobile) {
-                                        e.currentTarget.style.background = '#f9fafb';
-                                        e.currentTarget.style.transform = 'translateX(4px)';
-                                      }
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      if (!isMobile) {
-                                        e.currentTarget.style.background = 'white';
-                                        e.currentTarget.style.transform = 'translateX(0)';
-                                      }
-                                    }}
-                                  >
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '0.5rem' : '0.75rem', width: isMobile ? '100%' : 'auto' }}>
-                                      {event.imageUrl && (
+                                {collectionEvents.map((event) => {
+                                  const isEventExpanded = expandedEvents.has(event.id);
+                                  const eventNFTs = allOwnedNFTs.filter(nft => 
+                                    nft.display?.name === event.name || 
+                                    (nft.display?.name && nft.display.name.includes(event.name))
+                                  );
+                                  
+                                  return (
+                                    <div key={event.id}>
+                                      <div
+                                        onClick={() => {
+                                          const newExpanded = new Set(expandedEvents);
+                                          if (newExpanded.has(event.id)) {
+                                            newExpanded.delete(event.id);
+                                          } else {
+                                            newExpanded.add(event.id);
+                                          }
+                                          setExpandedEvents(newExpanded);
+                                        }}
+                                        style={{
+                                          display: 'flex',
+                                          justifyContent: 'space-between',
+                                          alignItems: isMobile ? 'flex-start' : 'center',
+                                          flexDirection: isMobile ? 'column' : 'row',
+                                          gap: isMobile ? '0.5rem' : '0',
+                                          padding: isMobile ? '0.75rem 0.5rem' : '0.75rem',
+                                          background: 'white',
+                                          borderRadius: isMobile ? '6px' : '8px',
+                                          border: '1px solid #e5e7eb',
+                                          transition: 'all 0.2s ease',
+                                          cursor: 'pointer'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                          if (!isMobile) {
+                                            e.currentTarget.style.background = '#f9fafb';
+                                            e.currentTarget.style.transform = 'translateX(4px)';
+                                          }
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          if (!isMobile) {
+                                            e.currentTarget.style.background = 'white';
+                                            e.currentTarget.style.transform = 'translateX(0)';
+                                          }
+                                        }}
+                                      >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '0.5rem' : '0.75rem', width: isMobile ? '100%' : 'auto' }}>
+                                          {event.imageUrl && (
+                                            <img
+                                              src={event.imageUrl}
+                                              alt={event.name}
+                                              style={{
+                                                width: isMobile ? '32px' : '40px',
+                                                height: isMobile ? '32px' : '40px',
+                                                borderRadius: '6px',
+                                                objectFit: 'cover'
+                                              }}
+                                            />
+                                          )}
+                                          <div style={{ flex: isMobile ? 1 : 'none' }}>
+                                            <div style={{
+                                              fontWeight: '600',
+                                              color: '#1a1a1a',
+                                              fontSize: isMobile ? '0.8rem' : '0.875rem'
+                                            }}>
+                                              {event.name}
+                                            </div>
+                                            {event.description && !isMobile && (
+                                              <div style={{
+                                                fontSize: '0.75rem',
+                                                color: '#999',
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                whiteSpace: 'nowrap',
+                                                maxWidth: '200px'
+                                              }}>
+                                                {event.description}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                        <div style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '0.75rem'
+                                        }}>
+                                          <span style={{
+                                            fontSize: '0.875rem',
+                                            fontWeight: '600',
+                                            color: '#667eea'
+                                          }}>
+                                            {typeof event.mintedCount === 'number' ? event.mintedCount : 0}
+                                            {event.totalCap ? ` / ${event.totalCap}` : ''} mints
+                                          </span>
+                                          <RotateIcon isOpen={isEventExpanded}>
+                                            <ChevronDown style={{ width: '16px', height: '16px', color: '#94a3b8' }} />
+                                          </RotateIcon>
+                                        </div>
+                                      </div>
+                                      
+                                      {/* Event NFTs */}
+                                      <Accordion isOpen={isEventExpanded} duration={0.3}>
+                                        <div style={{
+                                          padding: isMobile ? '0.75rem 0.5rem' : '1rem',
+                                          background: '#fafbfc',
+                                          borderTop: '1px solid #f0f0f0'
+                                        }}>
+                                          {eventNFTs.length > 0 ? (
+                                            <div style={{
+                                              display: 'grid',
+                                              gridTemplateColumns: isMobile 
+                                                ? '1fr' 
+                                                : isTablet 
+                                                  ? 'repeat(auto-fill, minmax(180px, 1fr))' 
+                                                  : 'repeat(auto-fill, minmax(200px, 1fr))',
+                                              gap: isMobile ? '0.75rem' : '1rem'
+                                            }}>
+                                              {eventNFTs.map((nft) => (
+                                                <div
+                                                  key={nft.objectId}
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setSelectedNFT(nft);
+                                                    setIsDrawerOpen(true);
+                                                  }}
+                                                  style={{
+                                                    border: '1px solid #e5e7eb',
+                                                    borderRadius: isMobile ? '8px' : '10px',
+                                                    overflow: 'hidden',
+                                                    transition: 'all 0.3s ease',
+                                                    cursor: 'pointer',
+                                                    background: 'white',
+                                                    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)'
+                                                  }}
+                                                  onMouseEnter={(e) => {
+                                                    if (!isMobile) {
+                                                      e.currentTarget.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.12)';
+                                                      e.currentTarget.style.transform = 'translateY(-2px)';
+                                                    }
+                                                  }}
+                                                  onMouseLeave={(e) => {
+                                                    if (!isMobile) {
+                                                      e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.08)';
+                                                      e.currentTarget.style.transform = 'translateY(0)';
+                                                    }
+                                                  }}
+                                                >
+                                                  {nft.display?.image_url && (
+                                                    <img
+                                                      src={convertIpfsUrl(nft.display?.image_url)}
+                                                      alt={nft.display?.name || event.name}
+                                                      style={{
+                                                        width: '100%',
+                                                        height: isMobile ? '140px' : '160px',
+                                                        objectFit: 'cover',
+                                                        background: '#f3f4f6'
+                                                      }}
+                                                      onError={(e) => {
+                                                        e.currentTarget.style.display = 'none';
+                                                      }}
+                                                    />
+                                                  )}
+                                                  <div style={{ padding: isMobile ? '0.625rem' : '0.75rem' }}>
+                                                    <h4 style={{
+                                                      fontSize: isMobile ? '0.8125rem' : '0.875rem',
+                                                      fontWeight: 'bold',
+                                                      color: '#1a1a1a',
+                                                      marginBottom: '0.375rem',
+                                                      overflow: 'hidden',
+                                                      textOverflow: 'ellipsis',
+                                                      whiteSpace: 'nowrap'
+                                                    }}>
+                                                      {nft.display?.name || event.name}
+                                                    </h4>
+                                                    <div style={{
+                                                      fontSize: '0.6875rem',
+                                                      color: '#999',
+                                                      wordBreak: 'break-all'
+                                                    }}>
+                                                      ID: {nft.objectId.slice(0, 6)}...{nft.objectId.slice(-4)}
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          ) : (
+                                            <div style={{
+                                              padding: '1rem',
+                                              textAlign: 'center',
+                                              color: '#94a3b8',
+                                              fontSize: '0.8125rem'
+                                            }}>
+                                              You don't own any NFTs from this event
+                                            </div>
+                                          )}
+                                        </div>
+                                      </Accordion>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ) : (
+                            <div>
+                              <div style={{
+                                fontSize: '0.875rem',
+                                fontWeight: '600',
+                                color: '#64748b',
+                                marginBottom: '0.75rem'
+                              }}>
+                                Owned NFTs
+                              </div>
+                              <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: isMobile 
+                                  ? '1fr' 
+                                  : isTablet 
+                                    ? 'repeat(auto-fill, minmax(200px, 1fr))' 
+                                    : 'repeat(auto-fill, minmax(220px, 1fr))',
+                                gap: isMobile ? '0.75rem' : '1rem'
+                              }}>
+                                {allOwnedNFTs
+                                  .filter(nft => nft.type && nft.type.includes(collection.packageId))
+                                  .map((nft, idx) => (
+                                    <div
+                                      key={nft.objectId || idx}
+                                      onClick={() => {
+                                        setSelectedNFT(nft);
+                                        setIsDrawerOpen(true);
+                                      }}
+                                      style={{
+                                        border: '1px solid #e5e7eb',
+                                        borderRadius: isMobile ? '8px' : '10px',
+                                        overflow: 'hidden',
+                                        transition: 'all 0.3s ease',
+                                        cursor: 'pointer',
+                                        background: 'white',
+                                        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)'
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        if (!isMobile) {
+                                          e.currentTarget.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.12)';
+                                          e.currentTarget.style.transform = 'translateY(-2px)';
+                                        }
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        if (!isMobile) {
+                                          e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.08)';
+                                          e.currentTarget.style.transform = 'translateY(0)';
+                                        }
+                                      }}
+                                    >
+                                      {nft.display?.image_url && (
                                         <img
-                                          src={event.imageUrl}
-                                          alt={event.name}
+                                          src={convertIpfsUrl(nft.display?.image_url)}
+                                          alt={nft.display?.name || collection.name}
                                           style={{
-                                            width: isMobile ? '32px' : '40px',
-                                            height: isMobile ? '32px' : '40px',
-                                            borderRadius: '6px',
-                                            objectFit: 'cover'
+                                            width: '100%',
+                                            height: isMobile ? '150px' : '180px',
+                                            objectFit: 'cover',
+                                            background: '#f3f4f6'
+                                          }}
+                                          onError={(e) => {
+                                            e.currentTarget.style.display = 'none';
                                           }}
                                         />
                                       )}
-                                      <div style={{ flex: isMobile ? 1 : 'none' }}>
-                                        <div style={{
-                                          fontWeight: '600',
+                                      <div style={{ padding: isMobile ? '0.75rem' : '1rem' }}>
+                                        <h3 style={{
+                                          fontSize: isMobile ? '0.875rem' : '0.9375rem',
+                                          fontWeight: 'bold',
                                           color: '#1a1a1a',
-                                          fontSize: isMobile ? '0.8rem' : '0.875rem'
+                                          marginBottom: '0.5rem',
+                                          overflow: 'hidden',
+                                          textOverflow: 'ellipsis',
+                                          whiteSpace: 'nowrap'
                                         }}>
-                                          {event.name}
-                                        </div>
-                                        {event.description && !isMobile && (
-                                          <div style={{
+                                          {nft.display?.name || collection.name}
+                                        </h3>
+                                        {nft.display?.description && (
+                                          <p style={{
                                             fontSize: '0.75rem',
-                                            color: '#999',
+                                            color: '#666',
+                                            marginBottom: '0.5rem',
+                                            lineHeight: '1.4',
                                             overflow: 'hidden',
-                                            textOverflow: 'ellipsis',
-                                            whiteSpace: 'nowrap',
-                                            maxWidth: '200px'
+                                            display: '-webkit-box',
+                                            WebkitLineClamp: 2,
+                                            WebkitBoxOrient: 'vertical'
                                           }}>
-                                            {event.description}
-                                          </div>
+                                            {nft.display?.description}
+                                          </p>
                                         )}
+                                        <div style={{
+                                          fontSize: '0.6875rem',
+                                          color: '#999',
+                                          wordBreak: 'break-all'
+                                        }}>
+                                          ID: {nft.objectId.slice(0, 6)}...{nft.objectId.slice(-4)}
+                                        </div>
                                       </div>
                                     </div>
-                                    <div style={{
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '0.5rem'
-                                    }}>
-                                      <span style={{
-                                        fontSize: '0.875rem',
-                                        fontWeight: '600',
-                                        color: '#667eea'
-                                      }}>
-                                        {eventMintCounts.get(event.name) || 0}
-                                        {event.totalCap ? ` / ${event.totalCap}` : ''} mints
-                                      </span>
-                                    </div>
+                                  ))}
+                                {allOwnedNFTs.filter(nft => nft.type && nft.type.includes(collection.packageId)).length === 0 && (
+                                  <div style={{
+                                    padding: '1.5rem',
+                                    textAlign: 'center',
+                                    color: '#94a3b8',
+                                    fontSize: '0.875rem',
+                                    gridColumn: '1 / -1'
+                                  }}>
+                                    No NFTs found in this collection
                                   </div>
-                                ))}
+                                )}
                               </div>
                             </div>
                           )}
