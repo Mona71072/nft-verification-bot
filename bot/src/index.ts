@@ -397,16 +397,49 @@ export async function sendVerificationFailureMessage(discordId: string, verifica
       return false;
     }
 
+    // DM設定テンプレートを取得
+    const dmSettingsResponse = await fetch(`${config.CLOUDFLARE_WORKERS_API_URL}/api/dm-settings`, {
+      headers: {
+        'User-Agent': 'Discord-Bot'
+      }
+    });
+
+    let template = null;
+    if (dmSettingsResponse.ok) {
+      const dmSettingsData = await dmSettingsResponse.json() as any;
+      if (dmSettingsData.success && dmSettingsData.data && dmSettingsData.data.templates) {
+        template = dmSettingsData.data.templates.failed;
+      }
+    }
+
+    // テンプレートがない場合はcustom_messageを使用
     const cm = verificationData?.custom_message || {};
     
-    if (cm.title && cm.description) {
-      console.log('Original description:', cm.description);
-      console.log('Description type:', typeof cm.description);
-      console.log('Description includes \\n:', cm.description.includes('\\n'));
-      console.log('Description includes actual newline:', cm.description.includes('\n'));
+    if (template) {
+      const description = template.description.replace(/\\n/g, '\n');
       
-      const description = cm.description.replace(/\\n/g, '\n'); // エスケープされた改行を実際の改行に変換
-      console.log('After replace:', description);
+      const failureEmbed = new EmbedBuilder()
+        .setTitle(template.title)
+        .setDescription(description)
+        .setColor(template.color ?? 0xED4245)
+        .setTimestamp();
+
+      const message = await user.send({
+        embeds: [failureEmbed]
+      });
+
+      // 5分後にメッセージを自動削除
+      setTimeout(async () => {
+        try {
+          await message.delete();
+        } catch (error) {
+          // メッセージが既に削除されている場合
+        }
+      }, 5 * 60 * 1000);
+
+      return true;
+    } else if (cm.title && cm.description) {
+      const description = cm.description.replace(/\\n/g, '\n');
       
       const failureEmbed = new EmbedBuilder()
         .setTitle(cm.title)
@@ -452,12 +485,44 @@ export async function revokeRoleFromUser(discordId: string, customMessage?: { ti
 
     // ユーザーにDM送信
     try {
-      if (customMessage?.title && customMessage?.description) {
-        console.log('Original description (revoke):', customMessage.description);
-        console.log('Description type:', typeof customMessage.description);
+      // DM設定テンプレートを取得
+      const dmSettingsResponse = await fetch(`${config.CLOUDFLARE_WORKERS_API_URL}/api/dm-settings`, {
+        headers: {
+          'User-Agent': 'Discord-Bot'
+        }
+      });
+
+      let template = null;
+      if (dmSettingsResponse.ok) {
+        const dmSettingsData = await dmSettingsResponse.json() as any;
+        if (dmSettingsData.success && dmSettingsData.data && dmSettingsData.data.templates) {
+          template = dmSettingsData.data.templates.revoked;
+        }
+      }
+
+      if (template) {
+        const description = template.description.replace(/\\n/g, '\n');
         
-        const description = customMessage.description.replace(/\\n/g, '\n'); // エスケープされた改行を実際の改行に変換
-        console.log('After replace (revoke):', description);
+        const revokeEmbed = new EmbedBuilder()
+          .setTitle(template.title)
+          .setDescription(description)
+          .setColor(template.color ?? 0xFFA500)
+          .setTimestamp();
+
+        const message = await member.send({
+          embeds: [revokeEmbed]
+        });
+
+        // 5分後にメッセージを自動削除
+        setTimeout(async () => {
+          try {
+            await message.delete();
+          } catch (error) {
+            // メッセージが既に削除されている場合
+          }
+        }, 5 * 60 * 1000);
+      } else if (customMessage?.title && customMessage?.description) {
+        const description = customMessage.description.replace(/\\n/g, '\n');
         
         const revokeEmbed = new EmbedBuilder()
           .setTitle(customMessage.title)
