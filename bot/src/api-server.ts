@@ -221,6 +221,99 @@ app.get('/api/discord/roles', async (req, res) => {
   }
 });
 
+// バッチ処理用のDM通知関数
+async function sendBatchNotification(discordId: string, action: string, data: { collectionName: string; roleName: string }) {
+  try {
+    // DM設定を取得
+    const dmSettingsResponse = await fetch(`${config.CLOUDFLARE_WORKERS_API_URL}/api/admin/dm-settings`, {
+      headers: {
+        'X-Admin-Address': '0x1234567890abcdef1234567890abcdef12345678',
+        'User-Agent': 'Discord-Bot'
+      }
+    });
+
+    if (!dmSettingsResponse.ok) {
+      console.error('Failed to fetch DM settings');
+      return false;
+    }
+
+    const dmSettingsData = await dmSettingsResponse.json() as any;
+    if (!dmSettingsData.success || !dmSettingsData.data) {
+      console.error('Invalid DM settings data');
+      return false;
+    }
+
+    const dmSettings = dmSettingsData.data;
+    
+    // バッチモードの通知設定をチェック
+    const batchMode = dmSettings.batchMode || 'new_and_revoke';
+    
+    // 通知を送信すべきかチェック
+    let shouldNotify = false;
+    if (batchMode === 'all') {
+      shouldNotify = true;
+    } else if (batchMode === 'new_and_revoke') {
+      shouldNotify = (action === 'grant_roles' || action === 'revoke_role');
+    } else if (batchMode === 'update_and_revoke') {
+      shouldNotify = (action === 'update' || action === 'revoke_role');
+    } else if (batchMode === 'revoke_only') {
+      shouldNotify = (action === 'revoke_role');
+    } else if (batchMode === 'none') {
+      shouldNotify = false;
+    }
+
+    if (!shouldNotify) {
+      console.log(`Batch notification skipped for action ${action} (mode: ${batchMode})`);
+      return true;
+    }
+
+    // ユーザーを取得
+    const user = await client.users.fetch(discordId);
+    if (!user) {
+      console.error('Discord user not found:', discordId);
+      return false;
+    }
+
+    // テンプレートを選択
+    const templates = dmSettings.templates;
+    let template;
+    
+    if (action === 'grant_roles') {
+      template = templates.successUpdate; // バッチ処理は更新扱い
+    } else if (action === 'revoke_role') {
+      template = templates.revoked;
+    }
+
+    if (!template) {
+      console.error('Template not found for action:', action);
+      return false;
+    }
+
+    // テンプレートの変数を置換
+    const description = template.description
+      .replace(/{collectionName}/g, data.collectionName)
+      .replace(/{roles}/g, data.roleName)
+      .replace(/\\n/g, '\n');
+
+    const embed = {
+      title: template.title,
+      description: description,
+      color: template.color,
+      timestamp: new Date().toISOString(),
+      footer: {
+        text: 'SXT NFT Verification System'
+      }
+    };
+
+    await user.send({ embeds: [embed] });
+    console.log('Batch notification sent to user:', discordId);
+    return true;
+  } catch (error) {
+    console.error('Error sending batch notification:', error);
+    return false;
+  }
+}
+
 // Discord DM通知エンドポイント
 app.post('/api/notify-discord', async (req, res) => {
   try {
@@ -266,8 +359,8 @@ app.post('/api/notify-discord', async (req, res) => {
             if (template) {
               // テンプレートを使用してDMを作成
               const description = template.description
-                .replace('{collectionName}', verificationData.roleName || 'NFT Holder')
-                .replace('{roles}', verificationData.roleName || 'NFT Holder')
+                .replace(/{collectionName}/g, verificationData.collectionName || verificationData.roleName || 'NFT Collection')
+                .replace(/{roles}/g, verificationData.roleName || 'NFT Holder')
                 .replace(/\\n/g, '\n'); // エスケープされた改行を実際の改行に変換
 
               embed = {
@@ -335,6 +428,21 @@ app.post('/api/batch-process', async (req, res) => {
 
     console.log('Batch process requested:', { collectionId, action, adminAddress });
 
+    // コレクション情報を取得
+    let collectionName = 'NFT Collection';
+    try {
+      const collectionsResponse = await fetch(`${config.CLOUDFLARE_WORKERS_API_URL}/api/collections`);
+      const collectionsData = await collectionsResponse.json() as any;
+      if (collectionsData.success && collectionsData.data) {
+        const collection = collectionsData.data.find((c: any) => c.id === collectionId);
+        if (collection) {
+          collectionName = collection.name;
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching collection info:', error);
+    }
+
     // Cloudflare Workersから認証済みユーザーを取得
     const workersResponse = await fetch(`${config.CLOUDFLARE_WORKERS_API_URL}/api/admin/verified-users`, {
       headers: {
@@ -394,19 +502,42 @@ app.post('/api/batch-process', async (req, res) => {
           
           if (hasNFT) {
             // NFTを保有している場合：ロールを付与
-            const success = await grantRoleToUser(user.discordId, collectionId, user.roleName);
-            if (success) {
+            // DM通知はgrantRoleToUserではなく、別途送信
+            const roleGranted = await grantRoleToUser(user.discordId, collectionId, user.roleName);
+            
+            if (roleGranted) {
               processedUsers++;
               console.log(`✅ Granted role to user ${user.discordId}`);
+              
+              // バッチ処理時のDM通知を送信
+              try {
+                await sendBatchNotification(user.discordId, 'grant_roles', {
+                  collectionName: collectionName,
+                  roleName: user.roleName || 'NFT Holder'
+                });
+              } catch (dmError) {
+                console.error('Failed to send batch notification DM:', dmError);
+              }
             } else {
               errors++;
             }
           } else {
             // NFTを保有していない場合：ロールを剥奪
-            const success = await revokeRoleFromUser(user.discordId);
-            if (success) {
+            const roleRevoked = await revokeRoleFromUser(user.discordId);
+            
+            if (roleRevoked) {
               processedUsers++;
               console.log(`⚠️ Revoked role from user ${user.discordId} (no NFT)`);
+              
+              // ロール剥奪のDM通知を送信
+              try {
+                await sendBatchNotification(user.discordId, 'revoke_role', {
+                  collectionName: collectionName,
+                  roleName: user.roleName || 'NFT Holder'
+                });
+              } catch (dmError) {
+                console.error('Failed to send revoke notification DM:', dmError);
+              }
             } else {
               errors++;
             }

@@ -1798,6 +1798,11 @@ app.post('/api/verify', async (c) => {
     // Discord Bot APIに通知
     try {
       const botApiUrl = c.env.DISCORD_BOT_API_URL || 'https://nft-verification-bot.onrender.com';
+      
+      // コレクション名を取得
+      const firstCollection = validCollections[0];
+      const collectionName = firstCollection?.name || 'NFT Collection';
+      
       await fetch(`${botApiUrl}/api/notify-discord`, {
         method: 'POST',
         headers: {
@@ -1809,7 +1814,8 @@ app.post('/api/verify', async (c) => {
           action: 'grant_roles',
           verificationData: {
             collectionId: collectionIds[0],
-      roleName: 'NFT Holder',
+            collectionName: collectionName,
+            roleName: firstCollection?.roleName || 'NFT Holder',
             notifyUser: true
           },
           timestamp: new Date().toISOString()
