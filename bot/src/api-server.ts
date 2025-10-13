@@ -327,6 +327,8 @@ app.post('/api/notify-discord', async (req, res) => {
     }
 
     console.log('Discord notification requested:', { discordId, action, verificationData });
+    console.log('verificationData.collectionName:', verificationData?.collectionName);
+    console.log('verificationData.roleName:', verificationData?.roleName);
 
     // Discordユーザーを取得
     const user = await client.users.fetch(discordId);
@@ -357,11 +359,17 @@ app.post('/api/notify-discord', async (req, res) => {
             const template = templates.successNew || templates.successUpdate;
             
             if (template) {
+              console.log('Template description BEFORE replace:', template.description);
+              console.log('Replacing with collectionName:', verificationData.collectionName);
+              console.log('Replacing with roleName:', verificationData.roleName);
+              
               // テンプレートを使用してDMを作成
               const description = template.description
                 .replace(/{collectionName}/g, verificationData.collectionName || verificationData.roleName || 'NFT Collection')
                 .replace(/{roles}/g, verificationData.roleName || 'NFT Holder')
                 .replace(/\\n/g, '\n'); // エスケープされた改行を実際の改行に変換
+
+              console.log('Template description AFTER replace:', description);
 
               embed = {
                 title: template.title,
