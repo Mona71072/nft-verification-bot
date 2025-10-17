@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout';
 import { Breadcrumb } from '../../components/admin/Breadcrumb';
 import { PageHeader } from '../../components/admin/PageHeader';
@@ -22,6 +22,7 @@ export default function MintHistory() {
   const [historyCollection, setHistoryCollection] = useState<string>('');
   const [selectedEventId, setSelectedEventId] = useState<string>(''); // 選択されたイベントID
   const [historySearch, setHistorySearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [historyEventFilter, setHistoryEventFilter] = useState('');
   const [historyDateFrom, setHistoryDateFrom] = useState('');
   const [historyDateTo, setHistoryDateTo] = useState('');
@@ -31,10 +32,38 @@ export default function MintHistory() {
   const [message, setMessage] = useState('');
   const historyPageSize = 20;
 
+  const fetchMintCollections = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/mint-collections`);
+      const data = await res.json();
+      if (data.success) setMintCollections(data.data || []);
+    } catch (e) {
+      console.error('Failed to fetch mint collections', e);
+    }
+  }, []);
+
+  const fetchEvents = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/events`);
+      const data = await res.json();
+      if (data.success) setEvents(data.data || []);
+    } catch (e) {
+      console.error('Failed to fetch events', e);
+    }
+  }, []);
+
   useEffect(() => {
     fetchMintCollections();
     fetchEvents();
-  }, []);
+  }, [fetchMintCollections, fetchEvents]);
+
+  // 検索のデバウンス
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(historySearch);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [historySearch]);
 
   // デバッグ: イベントとコレクションの関連を表示
   useEffect(() => {
@@ -51,26 +80,6 @@ export default function MintHistory() {
       });
     }
   }, [events, mintCollections]);
-
-  const fetchMintCollections = async () => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/mint-collections`);
-      const data = await res.json();
-      if (data.success) setMintCollections(data.data || []);
-    } catch (e) {
-      console.error('Failed to fetch mint collections', e);
-    }
-  };
-
-  const fetchEvents = async () => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/events`);
-      const data = await res.json();
-      if (data.success) setEvents(data.data || []);
-    } catch (e) {
-      console.error('Failed to fetch events', e);
-    }
-  };
 
   const fetchCollectionHistory = async (typePath: string, eventId?: string, limit: number = 100) => {
     if (!typePath) return;
@@ -164,14 +173,24 @@ export default function MintHistory() {
     }
   };
 
-  // フィルタリング済みの履歴データ
+  // イベント名のマップを事前計算（メモ化）
+  const eventNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    events.forEach(event => {
+      map.set(event.id, event.name);
+    });
+    return map;
+  }, [events]);
+
+  // フィルタリング済みの履歴データ（最適化）
   const filteredHistory = useMemo(() => {
     let filtered = [...historyItems];
 
-    if (historySearch) {
+    // 検索フィルター（最適化・デバウンス）
+    if (debouncedSearch) {
+      const searchLower = debouncedSearch.toLowerCase();
       filtered = filtered.filter(item => {
-        const searchLower = historySearch.toLowerCase();
-        const eventName = events.find(e => e.id === item.eventId)?.name || '';
+        const eventName = eventNameMap.get(item.eventId || '') || '';
         return (
           item.recipient?.toLowerCase().includes(searchLower) ||
           eventName.toLowerCase().includes(searchLower) ||
@@ -180,35 +199,38 @@ export default function MintHistory() {
       });
     }
 
+    // イベントフィルター
     if (historyEventFilter) {
       filtered = filtered.filter(item => item.eventId === historyEventFilter);
     }
 
-    if (historyDateFrom) {
-      filtered = filtered.filter(item => 
-        item.at && new Date(item.at) >= new Date(historyDateFrom)
-      );
-    }
-    if (historyDateTo) {
-      filtered = filtered.filter(item => 
-        item.at && new Date(item.at) <= new Date(historyDateTo)
-      );
+    // 日付フィルター（最適化）
+    if (historyDateFrom || historyDateTo) {
+      const fromDate = historyDateFrom ? new Date(historyDateFrom).getTime() : 0;
+      const toDate = historyDateTo ? new Date(historyDateTo).getTime() : Infinity;
+      
+      filtered = filtered.filter(item => {
+        if (!item.at) return false;
+        const itemTime = new Date(item.at).getTime();
+        return itemTime >= fromDate && itemTime <= toDate;
+      });
     }
 
+    // ソート（最適化）
     filtered.sort((a, b) => {
       let compareValue = 0;
       if (historySortBy === 'date') {
         compareValue = (a.at ? new Date(a.at).getTime() : 0) - (b.at ? new Date(b.at).getTime() : 0);
       } else if (historySortBy === 'event') {
-        const nameA = events.find(e => e.id === a.eventId)?.name || '';
-        const nameB = events.find(e => e.id === b.eventId)?.name || '';
+        const nameA = eventNameMap.get(a.eventId || '') || '';
+        const nameB = eventNameMap.get(b.eventId || '') || '';
         compareValue = nameA.localeCompare(nameB);
       }
       return historySortOrder === 'asc' ? compareValue : -compareValue;
     });
 
     return filtered;
-  }, [historyItems, historySearch, historyEventFilter, historyDateFrom, historyDateTo, historySortBy, historySortOrder, events]);
+  }, [historyItems, debouncedSearch, historyEventFilter, historyDateFrom, historyDateTo, historySortBy, historySortOrder, eventNameMap]);
 
   const paginatedHistory = useMemo(() => {
     const start = (historyPage - 1) * historyPageSize;

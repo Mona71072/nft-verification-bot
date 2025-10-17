@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ChevronDown, ChevronRight, Menu, X } from 'lucide-react';
+import { queryClient } from '../../lib/query-client';
 
 interface MenuItem {
   label: string;
@@ -12,10 +13,71 @@ interface AdminLayoutProps {
   currentPath: string;
 }
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
+
+function getAuthHeaders(): HeadersInit {
+  const addr = typeof window !== 'undefined' 
+    ? localStorage.getItem('currentWalletAddress') || (window as any).currentWalletAddress 
+    : undefined;
+  return {
+    'Content-Type': 'application/json',
+    ...(addr ? { 'X-Admin-Address': addr } : {})
+  };
+}
+
 export function AdminLayout({ children, currentPath }: AdminLayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['roles', 'mint']));
+
+  // 主要データの事前フェッチ
+  useEffect(() => {
+    const prefetchData = async () => {
+      try {
+        // コレクションデータの事前フェッチ
+        await queryClient.prefetchQuery({
+          queryKey: ['collections'],
+          queryFn: async () => {
+            const res = await fetch(`${API_BASE_URL}/api/collections`);
+            const data = await res.json();
+            return data.success ? data.data || [] : [];
+          },
+          staleTime: 5 * 60 * 1000, // 5分間キャッシュ
+        });
+
+        // イベントデータの事前フェッチ
+        await queryClient.prefetchQuery({
+          queryKey: ['events'],
+          queryFn: async () => {
+            const res = await fetch(`${API_BASE_URL}/api/events`);
+            const data = await res.json();
+            return data.success ? data.data || [] : [];
+          },
+          staleTime: 5 * 60 * 1000,
+        });
+
+        // ミントコレクションデータの事前フェッチ
+        await queryClient.prefetchQuery({
+          queryKey: ['mint-collections'],
+          queryFn: async () => {
+            const res = await fetch(`${API_BASE_URL}/api/mint-collections`);
+            const data = await res.json();
+            return data.success ? data.data || [] : [];
+          },
+          staleTime: 5 * 60 * 1000,
+        });
+      } catch (error) {
+        console.warn('Failed to prefetch admin data:', error);
+      }
+    };
+
+    // アイドル時に実行
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(prefetchData, { timeout: 2000 });
+    } else {
+      setTimeout(prefetchData, 100);
+    }
+  }, []);
 
   const menuItems: MenuItem[] = [
     {

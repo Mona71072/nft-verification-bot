@@ -1,3 +1,5 @@
+import { memo, useMemo } from 'react';
+
 interface StatCardProps {
   label: string;
   value: string | number;
@@ -6,7 +8,11 @@ interface StatCardProps {
   onClick?: () => void;
 }
 
-export function StatCard({ label, value, icon, gradient = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', onClick }: StatCardProps) {
+export const StatCard = memo(function StatCard({ label, value, icon, gradient = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', onClick }: StatCardProps) {
+  const formattedValue = useMemo(() => {
+    return typeof value === 'number' ? value.toLocaleString() : value;
+  }, [value]);
+
   return (
     <div
       onClick={onClick}
@@ -59,9 +65,9 @@ export function StatCard({ label, value, icon, gradient = 'linear-gradient(135de
         color: 'white',
         lineHeight: 1
       }}>
-        {typeof value === 'number' ? value.toLocaleString() : value}
+        {formattedValue}
       </div>
     </div>
   );
-}
+});
 

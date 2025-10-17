@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout';
 import { StatCard } from '../../components/admin/StatCard';
 import { NavigationCard } from '../../components/admin/NavigationCard';
@@ -23,28 +23,11 @@ export default function AdminDashboard() {
   const [events, setEvents] = useState<AdminMintEvent[]>([]);
   const [adminAddresses, setAdminAddresses] = useState<string[]>([]);
   const [newAdminAddress, setNewAdminAddress] = useState('');
-  const [loading, setLoading] = useState(false);
   const [adminLoading, setAdminLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [showAdmins, setShowAdmins] = useState(false);
 
-  // 統計データ
-  const stats = {
-    totalCollections: collections.length,
-    totalMintCollections: mintCollections.length,
-    totalEvents: events.length,
-    activeEvents: events.filter(e => e.active).length
-  };
-
-  // データ取得
-  useEffect(() => {
-    fetchCollections();
-    fetchMintCollections();
-    fetchEvents();
-    fetchAdminAddresses();
-  }, []);
-
-  const fetchCollections = async () => {
+  const fetchCollections = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/collections`);
       const data = await res.json();
@@ -52,9 +35,9 @@ export default function AdminDashboard() {
     } catch (e) {
       console.error('Failed to fetch collections', e);
     }
-  };
+  }, []);
 
-  const fetchMintCollections = async () => {
+  const fetchMintCollections = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/mint-collections`);
       const data = await res.json();
@@ -62,9 +45,9 @@ export default function AdminDashboard() {
     } catch (e) {
       console.error('Failed to fetch mint collections', e);
     }
-  };
+  }, []);
 
-  const fetchEvents = async () => {
+  const fetchEvents = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/admin/events`, { headers: getAuthHeaders() });
       const data = await res.json();
@@ -72,9 +55,9 @@ export default function AdminDashboard() {
     } catch (e) {
       console.error('Failed to fetch events', e);
     }
-  };
+  }, []);
 
-  const fetchAdminAddresses = async () => {
+  const fetchAdminAddresses = useCallback(async () => {
     setAdminLoading(true);
     try {
       const res = await fetch(`${API_BASE_URL}/api/admin/addresses`, { headers: getAuthHeaders() });
@@ -85,9 +68,9 @@ export default function AdminDashboard() {
     } finally {
       setAdminLoading(false);
     }
-  };
+  }, []);
 
-  const handleAddAdminAddress = async () => {
+  const handleAddAdminAddress = useCallback(async () => {
     if (!newAdminAddress.trim()) return;
     setAdminLoading(true);
     try {
@@ -110,9 +93,9 @@ export default function AdminDashboard() {
       setAdminLoading(false);
       setTimeout(() => setMessage(''), 3000);
     }
-  };
+  }, [newAdminAddress, fetchAdminAddresses]);
 
-  const handleRemoveAdminAddress = async (address: string) => {
+  const handleRemoveAdminAddress = useCallback(async (address: string) => {
     if (adminAddresses.length <= 1) {
       setMessage('最低1つの管理者が必要です');
       setTimeout(() => setMessage(''), 3000);
@@ -139,7 +122,39 @@ export default function AdminDashboard() {
       setAdminLoading(false);
       setTimeout(() => setMessage(''), 3000);
     }
-  };
+  }, [adminAddresses.length, fetchAdminAddresses]);
+
+  // 統計データ（メモ化）
+  const stats = useMemo(() => ({
+    totalCollections: collections.length,
+    totalMintCollections: mintCollections.length,
+    totalEvents: events.length,
+    activeEvents: events.filter(e => e.active).length
+  }), [collections.length, mintCollections.length, events.length, events]);
+
+  // データ取得
+  useEffect(() => {
+    fetchCollections();
+    fetchMintCollections();
+    fetchEvents();
+    fetchAdminAddresses();
+  }, [fetchCollections, fetchMintCollections, fetchEvents, fetchAdminAddresses]);
+
+  // 非クリティカルな処理をアイドル時に実行
+  useEffect(() => {
+    const runIdleTasks = () => {
+      // 統計データの詳細計算など、重い処理をアイドル時に実行
+      if ('requestIdleCallback' in window) {
+        requestIdleCallback(() => {
+          // 必要に応じて追加の処理をここに配置
+          console.log('Idle tasks completed');
+        }, { timeout: 5000 });
+      }
+    };
+
+    const timer = setTimeout(runIdleTasks, 1000);
+    return () => clearTimeout(timer);
+  }, []);
 
   return (
     <AdminLayout currentPath="/admin">
