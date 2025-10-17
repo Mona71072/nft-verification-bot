@@ -8,7 +8,7 @@ import { useWalletWithErrorHandling } from '../../hooks/useWallet';
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
 
 export default function RolesManagement() {
-  const { account, connected } = useWalletWithErrorHandling() as any;
+  const { account, connected } = useWalletWithErrorHandling() as { account: any; connected: boolean };
   const [activeTab, setActiveTab] = useState<'collections' | 'users' | 'batch' | 'dm-settings'>('collections');
   
   // States
@@ -1539,7 +1539,7 @@ export default function RolesManagement() {
             )}
           </div>
 
-          {console.log('DM Settings state:', dmSettings) || dmSettings ? (
+          {dmSettings ? (
             dmEditing && editingDm ? (
               /* 編集モード */
               <div>
@@ -2114,7 +2114,7 @@ export default function RolesManagement() {
                           update_and_revoke: '認証更新とロール削除のみ',
                           revoke_only: 'ロール削除のみ',
                           none: '通知なし'
-                        }[dmSettings.mode] || dmSettings.mode}
+                        }[dmSettings?.mode] || dmSettings?.mode}
                       </div>
                     </div>
                     <div>
@@ -2128,7 +2128,7 @@ export default function RolesManagement() {
                           update_and_revoke: '認証更新とロール削除のみ',
                           revoke_only: 'ロール削除のみ',
                           none: '通知なし'
-                        }[dmSettings.batchMode] || dmSettings.batchMode}
+                        }[dmSettings?.batchMode] || dmSettings?.batchMode}
                       </div>
                     </div>
                   </div>
@@ -2147,7 +2147,7 @@ export default function RolesManagement() {
                       <div style={{ marginBottom: '0.5rem' }}>
                         <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 500 }}>タイトル: </span>
                         <span style={{ fontSize: '0.875rem', color: '#111827', fontWeight: 600 }}>
-                          {dmSettings.templates.successNew.title}
+                          {dmSettings?.templates?.successNew?.title}
                         </span>
                       </div>
                       <div>
@@ -2164,7 +2164,7 @@ export default function RolesManagement() {
                           border: '1px solid #bbf7d0',
                           lineHeight: 1.5
                         }}>
-                          {(dmSettings.templates.successNew.description || '').replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')}
+                          {(dmSettings?.templates?.successNew?.description || '').replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')}
                         </div>
                       </div>
                     </div>
@@ -2176,7 +2176,7 @@ export default function RolesManagement() {
                       <div style={{ marginBottom: '0.5rem' }}>
                         <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 500 }}>タイトル: </span>
                         <span style={{ fontSize: '0.875rem', color: '#111827', fontWeight: 600 }}>
-                          {dmSettings.templates.successUpdate.title}
+                          {dmSettings?.templates?.successUpdate?.title}
                         </span>
                       </div>
                       <div>
@@ -2193,7 +2193,7 @@ export default function RolesManagement() {
                           border: '1px solid #93c5fd',
                           lineHeight: 1.5
                         }}>
-                          {(dmSettings.templates.successUpdate.description || '').replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')}
+                          {(dmSettings?.templates?.successUpdate?.description || '').replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')}
                         </div>
                       </div>
                     </div>
@@ -2205,7 +2205,7 @@ export default function RolesManagement() {
                       <div style={{ marginBottom: '0.5rem' }}>
                         <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 500 }}>タイトル: </span>
                         <span style={{ fontSize: '0.875rem', color: '#111827', fontWeight: 600 }}>
-                          {dmSettings.templates.failed.title}
+                          {dmSettings?.templates?.failed?.title}
                         </span>
                       </div>
                       <div>
@@ -2222,7 +2222,7 @@ export default function RolesManagement() {
                           border: '1px solid #fca5a5',
                           lineHeight: 1.5
                         }}>
-                          {(dmSettings.templates.failed.description || '').replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')}
+                          {(dmSettings?.templates?.failed?.description || '').replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')}
                         </div>
                       </div>
                     </div>
@@ -2234,7 +2234,7 @@ export default function RolesManagement() {
                       <div style={{ marginBottom: '0.5rem' }}>
                         <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 500 }}>タイトル: </span>
                         <span style={{ fontSize: '0.875rem', color: '#111827', fontWeight: 600 }}>
-                          {dmSettings.templates.revoked.title}
+                          {dmSettings?.templates?.revoked?.title}
                         </span>
                       </div>
                       <div>
@@ -2251,7 +2251,7 @@ export default function RolesManagement() {
                           border: '1px solid #fdba74',
                           lineHeight: 1.5
                         }}>
-                          {(dmSettings.templates.revoked.description || '').replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')}
+                          {(dmSettings?.templates?.revoked?.description || '').replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')}
                         </div>
                       </div>
                     </div>
@@ -2271,7 +2271,7 @@ export default function RolesManagement() {
                       <div style={{ marginBottom: '0.5rem' }}>
                         <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 500 }}>タイトル: </span>
                         <span style={{ fontSize: '0.875rem', color: '#111827', fontWeight: 600 }}>
-                          {dmSettings.channelTemplates?.verificationChannel?.title || 'Not set'}
+                          {dmSettings?.channelTemplates?.verificationChannel?.title || 'Not set'}
                         </span>
                       </div>
                       <div>
@@ -2288,7 +2288,7 @@ export default function RolesManagement() {
                           border: '1px solid #c7d2fe',
                           lineHeight: 1.5
                         }}>
-                          {(dmSettings.channelTemplates?.verificationChannel?.description || 'Not set').replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')}
+                          {(dmSettings?.channelTemplates?.verificationChannel?.description || 'Not set').replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')}
                         </div>
                       </div>
                     </div>
@@ -2300,7 +2300,7 @@ export default function RolesManagement() {
                       <div style={{ marginBottom: '0.5rem' }}>
                         <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 500 }}>タイトル: </span>
                         <span style={{ fontSize: '0.875rem', color: '#111827', fontWeight: 600 }}>
-                          {dmSettings.channelTemplates?.verificationStart?.title || 'Not set'}
+                          {dmSettings?.channelTemplates?.verificationStart?.title || 'Not set'}
                         </span>
                       </div>
                       <div>
@@ -2317,7 +2317,7 @@ export default function RolesManagement() {
                           border: '1px solid #c7d2fe',
                           lineHeight: 1.5
                         }}>
-                          {(dmSettings.channelTemplates?.verificationStart?.description || 'Not set').replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')}
+                          {(dmSettings?.channelTemplates?.verificationStart?.description || 'Not set').replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')}
                         </div>
                       </div>
                     </div>
@@ -2339,7 +2339,7 @@ export default function RolesManagement() {
                           borderRadius: '6px',
                           border: '1px solid #e5e7eb'
                         }}>
-                          {dmSettings.channelTemplates?.verificationUrl || 'Not set'}
+                          {dmSettings?.channelTemplates?.verificationUrl || 'Not set'}
                         </div>
                       </div>
                     </div>
