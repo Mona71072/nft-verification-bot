@@ -45,7 +45,7 @@ const convertIpfsUrl = (url: string | undefined): string | undefined => {
   return url;
 };
 
-const Dashboard: React.FC = () => {
+const HomePage: React.FC = () => {
   const { account, connected } = useWalletWithErrorHandling() as any;
   const [activeTab, setActiveTab] = useState<'all' | 'owned' | 'calendar' | 'activity'>('all');
   const [expandedCollections, setExpandedCollections] = useState<Set<string>>(new Set());
