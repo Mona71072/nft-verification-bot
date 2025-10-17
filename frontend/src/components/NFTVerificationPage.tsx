@@ -14,7 +14,19 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verificat
 export const NFTVerificationPage: React.FC = () => {
   useWalletWithErrorHandling();
   const [discordId, setDiscordId] = useState('');
-  const { deviceType, isMobile } = useResponsive();
+  
+  // エラーハンドリング付きでuseResponsiveフックを使用
+  let deviceType: 'mobile' | 'tablet' | 'desktop' = 'desktop';
+  let isMobile = false;
+  
+  try {
+    const responsive = useResponsive();
+    deviceType = responsive.deviceType;
+    isMobile = responsive.isMobile;
+  } catch (error) {
+    console.error('useResponsive error:', error);
+    // フォールバック値を使用
+  }
   
   // コレクション選択機能を追加
   const { collections, selectedCollections, checkAllCollections, handleCheckAllCollections, handleCollectionToggle } = useCollections(API_BASE_URL);
@@ -30,8 +42,10 @@ export const NFTVerificationPage: React.FC = () => {
     }
   }, [discordIdFromUrl]);
 
-  return (
-    <div style={{
+  // エラーハンドリング付きでコンポーネントをレンダリング
+  try {
+    return (
+      <div style={{
       minHeight: '100vh',
       background: `
         radial-gradient(circle at 20% 20%, rgba(102, 126, 234, 0.8) 0%, transparent 50%),
@@ -307,4 +321,32 @@ export const NFTVerificationPage: React.FC = () => {
       `}</style>
     </div>
   );
+  } catch (error) {
+    console.error('NFTVerificationPage render error:', error);
+    return (
+      <div style={{
+        minHeight: '100vh',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: 'white',
+        fontFamily: 'system-ui, -apple-system, sans-serif'
+      }}>
+        <div style={{
+          textAlign: 'center',
+          padding: '2rem',
+          background: 'rgba(255, 255, 255, 0.1)',
+          borderRadius: '16px',
+          backdropFilter: 'blur(10px)'
+        }}>
+          <h1 style={{ marginBottom: '1rem' }}>NFT Verification Portal</h1>
+          <p style={{ marginBottom: '1rem' }}>Loading verification system...</p>
+          <p style={{ fontSize: '0.875rem', opacity: 0.8 }}>
+            If this message persists, please refresh the page.
+          </p>
+        </div>
+      </div>
+    );
+  }
 };
