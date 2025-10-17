@@ -33,7 +33,12 @@ export const NFTVerificationPage: React.FC = () => {
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      background: `
+        radial-gradient(circle at 20% 20%, rgba(102, 126, 234, 0.8) 0%, transparent 50%),
+        radial-gradient(circle at 80% 80%, rgba(118, 75, 162, 0.6) 0%, transparent 50%),
+        radial-gradient(circle at 40% 60%, rgba(240, 147, 251, 0.4) 0%, transparent 50%),
+        linear-gradient(135deg, #0f0f23 0%, #1a1a2e 25%, #16213e 50%, #0f3460 75%, #533483 100%)
+      `,
       position: 'relative',
       overflow: 'hidden',
       fontFamily: 'system-ui, -apple-system, sans-serif'
@@ -99,17 +104,21 @@ export const NFTVerificationPage: React.FC = () => {
         zIndex: 1
       }}>
         <div style={{
-          background: 'rgba(255, 255, 255, 0.95)',
-          backdropFilter: 'blur(20px)',
-          borderRadius: '24px',
+          background: `
+            linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%),
+            linear-gradient(45deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)
+          `,
+          backdropFilter: 'blur(30px)',
+          borderRadius: '32px',
           padding: getResponsiveValue('1.5rem', '2rem', '3rem', deviceType),
           maxWidth: getResponsiveValue('100%', '90%', '600px', deviceType),
           width: '100%',
           boxShadow: `
-            0 32px 64px rgba(0, 0, 0, 0.12),
-            0 0 0 1px rgba(255, 255, 255, 0.2)
+            0 40px 80px rgba(0, 0, 0, 0.3),
+            0 0 0 1px rgba(255, 255, 255, 0.1),
+            inset 0 1px 0 rgba(255, 255, 255, 0.2)
           `,
-          border: '1px solid rgba(255, 255, 255, 0.2)',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
           position: 'relative',
           overflow: 'hidden'
         }}>
@@ -124,56 +133,115 @@ export const NFTVerificationPage: React.FC = () => {
           }} />
 
           <div style={{ textAlign: 'center', marginBottom: getResponsiveValue('2rem', '2.5rem', '3rem', deviceType) }}>
-            {/* Logo/Icon */}
+            {/* Modern Header with Tech Aesthetics */}
             <div style={{
-              width: getResponsiveValue('60px', '70px', '80px', deviceType),
-              height: getResponsiveValue('60px', '70px', '80px', deviceType),
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              borderRadius: '20px',
-              margin: '0 auto 1.5rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 8px 32px rgba(102, 126, 234, 0.3)',
-              position: 'relative'
+              position: 'relative',
+              marginBottom: getResponsiveValue('2rem', '2.5rem', '3rem', deviceType)
             }}>
+              {/* Animated Tech Grid Background */}
               <div style={{
-                width: getResponsiveValue('30px', '35px', '40px', deviceType),
-                height: getResponsiveValue('30px', '35px', '40px', deviceType),
-                background: 'white',
-                borderRadius: '8px',
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: getResponsiveValue('200px', '250px', '300px', deviceType),
+                height: getResponsiveValue('200px', '250px', '300px', deviceType),
+                background: `
+                  linear-gradient(45deg, transparent 48%, rgba(102, 126, 234, 0.1) 49%, rgba(102, 126, 234, 0.1) 51%, transparent 52%),
+                  linear-gradient(-45deg, transparent 48%, rgba(118, 75, 162, 0.1) 49%, rgba(118, 75, 162, 0.1) 51%, transparent 52%)
+                `,
+                backgroundSize: '20px 20px',
+                animation: 'techGrid 20s linear infinite',
+                opacity: 0.6,
+                zIndex: 0
+              }} />
+              
+              {/* Central Tech Circle */}
+              <div style={{
+                position: 'relative',
+                width: getResponsiveValue('120px', '140px', '160px', deviceType),
+                height: getResponsiveValue('120px', '140px', '160px', deviceType),
+                margin: '0 auto',
+                background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)',
+                borderRadius: '50%',
+                border: '2px solid rgba(102, 126, 234, 0.3)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: getResponsiveValue('1.125rem', '1.25rem', '1.5rem', deviceType),
-                fontWeight: 'bold',
-                color: '#667eea'
+                zIndex: 1,
+                overflow: 'hidden'
               }}>
-                SXT
+                {/* Inner Tech Pattern */}
+                <div style={{
+                  width: '80%',
+                  height: '80%',
+                  background: 'linear-gradient(45deg, transparent 30%, rgba(102, 126, 234, 0.2) 50%, transparent 70%)',
+                  borderRadius: '50%',
+                  position: 'relative',
+                  animation: 'techPulse 3s ease-in-out infinite'
+                }}>
+                  {/* Central Dot */}
+                  <div style={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    width: '8px',
+                    height: '8px',
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    borderRadius: '50%',
+                    boxShadow: '0 0 20px rgba(102, 126, 234, 0.6)'
+                  }} />
+                </div>
               </div>
             </div>
 
             <h1 style={{
               fontSize: getResponsiveValue('1.75rem', '2rem', '2.5rem', deviceType),
-              fontWeight: '800',
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              fontWeight: '900',
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%)',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
               backgroundClip: 'text',
               marginBottom: '1rem',
-              letterSpacing: '-0.02em'
+              letterSpacing: '-0.03em',
+              textShadow: '0 0 30px rgba(102, 126, 234, 0.3)',
+              position: 'relative'
             }}>
               NFT Verification Portal
             </h1>
+            
+            <div style={{
+              position: 'relative',
+              marginBottom: '1rem'
+            }}>
+              <div style={{
+                display: 'inline-block',
+                padding: getResponsiveValue('0.5rem 1rem', '0.625rem 1.25rem', '0.75rem 1.5rem', deviceType),
+                background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)',
+                border: '1px solid rgba(102, 126, 234, 0.2)',
+                borderRadius: '50px',
+                fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType),
+                fontWeight: '600',
+                color: '#667eea',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                backdropFilter: 'blur(10px)',
+                boxShadow: '0 4px 20px rgba(102, 126, 234, 0.1)'
+              }}>
+                Advanced Blockchain Technology
+              </div>
+            </div>
+            
             <p style={{
               color: '#64748b',
               fontSize: getResponsiveValue('0.875rem', '1rem', '1.125rem', deviceType),
               lineHeight: '1.6',
-              maxWidth: '400px',
+              maxWidth: '500px',
               margin: '0 auto',
               fontWeight: '500'
             }}>
-              Verify your SXT NFT collection and automatically receive your Discord role with advanced verification technology.
+              Verify your NFT collection ownership and automatically receive your Discord role with cutting-edge blockchain verification technology.
             </p>
           </div>
 
@@ -210,6 +278,31 @@ export const NFTVerificationPage: React.FC = () => {
         @keyframes float {
           0%, 100% { transform: translateY(0px) rotate(0deg); }
           50% { transform: translateY(-20px) rotate(180deg); }
+        }
+        
+        @keyframes techGrid {
+          0% { transform: translate(-50%, -50%) rotate(0deg); }
+          100% { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+        
+        @keyframes techPulse {
+          0%, 100% { 
+            transform: scale(1);
+            opacity: 0.8;
+          }
+          50% { 
+            transform: scale(1.1);
+            opacity: 1;
+          }
+        }
+        
+        @keyframes techGlow {
+          0%, 100% { 
+            box-shadow: 0 0 20px rgba(102, 126, 234, 0.6);
+          }
+          50% { 
+            box-shadow: 0 0 40px rgba(102, 126, 234, 0.8), 0 0 60px rgba(118, 75, 162, 0.4);
+          }
         }
       `}</style>
     </div>
