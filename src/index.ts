@@ -1399,6 +1399,26 @@ app.get('/api/admin/batch-config', async (c) => {
   }
 });
 
+// 管理者用バッチ設定更新API
+app.put('/api/admin/batch-config', async (c) => {
+  try {
+    const admin = c.req.header('X-Admin-Address');
+    if (!admin || !(await isAdmin(c, admin))) return c.json({ success: false, error: 'forbidden' }, 403);
+
+    const config = await c.req.json();
+    const store = c.env.COLLECTION_STORE as KVNamespace | undefined;
+    
+    if (!store) {
+      return c.json({ success: false, error: 'Collection store not available' }, 500);
+    }
+
+    await store.put('batch_config', JSON.stringify(config));
+    return c.json({ success: true, data: config, message: 'Batch config updated' });
+  } catch (error) {
+    return c.json({ success: false, error: 'Failed to update batch config' }, 500);
+  }
+});
+
 // 管理者用バッチ統計API
 app.get('/api/admin/batch-stats', async (c) => {
   try {
