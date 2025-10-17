@@ -8,7 +8,7 @@ import { useWalletWithErrorHandling } from '../../hooks/useWallet';
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
 
 export default function RolesManagement() {
-  const { account } = useWalletWithErrorHandling() as { account: any; connected: boolean };
+  useWalletWithErrorHandling();
   const [activeTab, setActiveTab] = useState<'collections' | 'users' | 'batch' | 'dm-settings'>('collections');
   
   // States
