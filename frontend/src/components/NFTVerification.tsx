@@ -163,7 +163,7 @@ export const NFTVerification: React.FC = () => {
               marginBottom: '1rem',
               letterSpacing: '-0.02em'
             }}>
-              NFT Verification Portal
+              SyndicateXTokyo Portal
             </h1>
             <p style={{
               color: '#64748b',
