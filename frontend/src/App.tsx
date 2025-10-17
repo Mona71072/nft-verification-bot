@@ -4,7 +4,7 @@ import { ConnectButton } from '@mysten/dapp-kit';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { useWalletWithErrorHandling } from './hooks/useWallet';
-import { NFTVerification } from './components/NFTVerification';
+import { NFTVerificationPage } from './components/NFTVerificationPage';
 import MintPage from './MintPage';
 import Dashboard from './pages/Dashboard';
 import { queryClient } from './lib/query-client';
@@ -176,7 +176,7 @@ function App() {
           try {
             if (typeof window !== 'undefined') {
               const path = window.location.pathname;
-              if (path === '/Verification') return <NFTVerification />;
+              if (path === '/Verification') return <NFTVerificationPage />;
               if (path.startsWith('/mint')) return <MintPage />;
               if (path.startsWith('/admin')) {
                 if (!isAdmin) {

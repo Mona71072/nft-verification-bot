@@ -11,7 +11,7 @@ import { VerificationForm } from './VerificationForm';
 // APIベースURLの設定（本番環境用）
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
 
-export const NFTVerification: React.FC = () => {
+export const NFTVerificationPage: React.FC = () => {
   useWalletWithErrorHandling();
   const [discordId, setDiscordId] = useState('');
   const { deviceType, isMobile } = useResponsive();
@@ -163,7 +163,7 @@ export const NFTVerification: React.FC = () => {
               marginBottom: '1rem',
               letterSpacing: '-0.02em'
             }}>
-              SyndicateXTokyo Portal
+              NFT Verification Portal
             </h1>
             <p style={{
               color: '#64748b',
