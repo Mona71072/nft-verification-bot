@@ -41,7 +41,9 @@ export default function RolesManagement() {
   // データ取得関数をメモ化
   const fetchCollections = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/collections`);
+      const res = await fetch(`${API_BASE_URL}/api/collections`, { 
+        headers: getAuthHeaders() 
+      });
       const data = await res.json();
       if (data.success) setCollections(data.data || []);
     } catch (e) {
@@ -51,7 +53,9 @@ export default function RolesManagement() {
 
   const fetchDiscordRoles = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/discord/roles`);
+      const res = await fetch(`${API_BASE_URL}/api/discord/roles`, { 
+        headers: getAuthHeaders() 
+      });
       const data = await res.json();
       if (data.success) setDiscordRoles(data.data || []);
     } catch (e) {
@@ -76,7 +80,9 @@ export default function RolesManagement() {
 
   const fetchBatchConfig = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/admin/batch-config`);
+      const res = await fetch(`${API_BASE_URL}/api/admin/batch-config`, { 
+        headers: getAuthHeaders() 
+      });
       const data = await res.json();
       if (data.success) setBatchConfig(data.data);
     } catch (e) {
@@ -87,7 +93,9 @@ export default function RolesManagement() {
   const fetchBatchStats = useCallback(async () => {
     setBatchLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/admin/batch-stats`);
+      const res = await fetch(`${API_BASE_URL}/api/admin/batch-stats`, { 
+        headers: getAuthHeaders() 
+      });
       const data = await res.json();
       if (data.success) setBatchStats(data.data);
     } catch (e) {
@@ -99,7 +107,9 @@ export default function RolesManagement() {
 
   const fetchDmSettings = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/admin/dm-settings`);
+      const res = await fetch(`${API_BASE_URL}/api/admin/dm-settings`, { 
+        headers: getAuthHeaders() 
+      });
       const data = await res.json();
       if (data.success) setDmSettings(data.data);
     } catch (e) {
