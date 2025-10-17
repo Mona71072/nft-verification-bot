@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout';
 import { Breadcrumb } from '../../components/admin/Breadcrumb';
 import { PageHeader } from '../../components/admin/PageHeader';
@@ -33,19 +33,18 @@ export default function EventManagement() {
   const [creatingCollection, setCreatingCollection] = useState<boolean>(false);
   const [createColMessage, setCreateColMessage] = useState<string>('');
 
-  // カウントダウン用
+  // カウントダウン用（最適化）
   const [nowTs, setNowTs] = useState<number>(Date.now());
   useEffect(() => {
+    // アクティブなイベントがある場合のみカウントダウンを実行
+    const hasActiveEvents = events.some(event => event.active);
+    if (!hasActiveEvents) return;
+    
     const id = setInterval(() => setNowTs(Date.now()), 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [events]);
 
-  useEffect(() => {
-    fetchEvents();
-    fetchMintCollections();
-  }, []);
-
-  const fetchEvents = async () => {
+  const fetchEvents = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/admin/events`, { headers: getAuthHeaders() });
       const data = await res.json();
@@ -53,9 +52,9 @@ export default function EventManagement() {
     } catch (e) {
       console.error('Failed to fetch events', e);
     }
-  };
+  }, []);
 
-  const fetchMintCollections = async () => {
+  const fetchMintCollections = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/mint-collections`);
       const data = await res.json();
@@ -63,7 +62,12 @@ export default function EventManagement() {
     } catch (e) {
       console.error('Failed to fetch mint collections', e);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchEvents();
+    fetchMintCollections();
+  }, [fetchEvents, fetchMintCollections]);
 
   // コレクション作成関数
   const getDefaultTypePath = () => {
@@ -226,24 +230,26 @@ export default function EventManagement() {
     );
   }
 
-  // ソート処理
-  const sortedEvents = [...events].sort((a, b) => {
-    let compareValue = 0;
-    
-    if (eventSortBy === 'name') {
-      compareValue = a.name.localeCompare(b.name);
-    } else if (eventSortBy === 'collection') {
-      const collA = mintCollections.find(col => a.collectionId === col.id)?.name || '';
-      const collB = mintCollections.find(col => b.collectionId === col.id)?.name || '';
-      compareValue = collA.localeCompare(collB);
-    } else if (eventSortBy === 'date') {
-      compareValue = new Date(a.startAt).getTime() - new Date(b.startAt).getTime();
-    } else if (eventSortBy === 'mints') {
-      compareValue = (a.mintedCount || 0) - (b.mintedCount || 0);
-    }
-    
-    return eventSortOrder === 'asc' ? compareValue : -compareValue;
-  });
+  // ソート処理（メモ化）
+  const sortedEvents = useMemo(() => {
+    return [...events].sort((a, b) => {
+      let compareValue = 0;
+      
+      if (eventSortBy === 'name') {
+        compareValue = a.name.localeCompare(b.name);
+      } else if (eventSortBy === 'collection') {
+        const collA = mintCollections.find(col => a.collectionId === col.id)?.name || '';
+        const collB = mintCollections.find(col => b.collectionId === col.id)?.name || '';
+        compareValue = collA.localeCompare(collB);
+      } else if (eventSortBy === 'date') {
+        compareValue = new Date(a.startAt).getTime() - new Date(b.startAt).getTime();
+      } else if (eventSortBy === 'mints') {
+        compareValue = (a.mintedCount || 0) - (b.mintedCount || 0);
+      }
+      
+      return eventSortOrder === 'asc' ? compareValue : -compareValue;
+    });
+  }, [events, eventSortBy, eventSortOrder, mintCollections]);
 
   return (
     <AdminLayout currentPath="/admin/mint/events">

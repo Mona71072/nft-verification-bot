@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout';
 import { Breadcrumb } from '../../components/admin/Breadcrumb';
 import { PageHeader } from '../../components/admin/PageHeader';
@@ -38,6 +38,73 @@ export default function RolesManagement() {
   const [dmEditing, setDmEditing] = useState(false);
   const [editingDm, setEditingDm] = useState<DmSettings | null>(null);
 
+  // データ取得関数をメモ化
+  const fetchCollections = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/collections`);
+      const data = await res.json();
+      if (data.success) setCollections(data.data || []);
+    } catch (e) {
+      console.error('Failed to fetch collections', e);
+    }
+  }, []);
+
+  const fetchDiscordRoles = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/discord/roles`);
+      const data = await res.json();
+      if (data.success) setDiscordRoles(data.data || []);
+    } catch (e) {
+      console.error('Failed to fetch discord roles', e);
+    }
+  }, []);
+
+  const fetchVerifiedUsers = useCallback(async () => {
+    setUsersLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/discord/verified-users`);
+      const data = await res.json();
+      if (data.success) setVerifiedUsers(data.data || []);
+    } catch (e) {
+      console.error('Failed to fetch verified users', e);
+    } finally {
+      setUsersLoading(false);
+    }
+  }, []);
+
+  const fetchBatchConfig = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/batch-config`);
+      const data = await res.json();
+      if (data.success) setBatchConfig(data.data);
+    } catch (e) {
+      console.error('Failed to fetch batch config', e);
+    }
+  }, []);
+
+  const fetchBatchStats = useCallback(async () => {
+    setBatchLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/batch-stats`);
+      const data = await res.json();
+      if (data.success) setBatchStats(data.data);
+    } catch (e) {
+      console.error('Failed to fetch batch stats', e);
+    } finally {
+      setBatchLoading(false);
+    }
+  }, []);
+
+  const fetchDmSettings = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/dm-settings`);
+      const data = await res.json();
+      if (data.success) setDmSettings(data.data);
+    } catch (e) {
+      console.error('Failed to fetch DM settings', e);
+    }
+  }, []);
+
   useEffect(() => {
     fetchCollections();
     fetchDiscordRoles();
@@ -45,7 +112,7 @@ export default function RolesManagement() {
     fetchBatchConfig();
     fetchBatchStats();
     fetchDmSettings();
-  }, []);
+  }, [fetchCollections, fetchDiscordRoles, fetchVerifiedUsers, fetchBatchConfig, fetchBatchStats, fetchDmSettings]);
 
   // タブ変更時にデータを取得
   useEffect(() => {
@@ -87,75 +154,6 @@ export default function RolesManagement() {
     return headers;
   };
 
-  const fetchCollections = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/collections`, { headers: getAuthHeaders() });
-      const data = await response.json();
-      if (data.success) setCollections(data.data);
-    } catch (error) {
-      console.error('Failed to fetch collections:', error);
-    }
-  };
-
-  const fetchDiscordRoles = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/discord/roles`, { headers: getAuthHeaders() });
-      if (!response.ok) {
-        setDiscordRoles([]);
-        return;
-      }
-      const data = await response.json();
-      if (data.success) setDiscordRoles(data.data || []);
-    } catch (error) {
-      setDiscordRoles([]);
-    }
-  };
-
-  const fetchVerifiedUsers = async () => {
-    setUsersLoading(true);
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/verified-users`, { headers: getAuthHeaders() });
-      const data = await response.json();
-      if (data.success) setVerifiedUsers(data.data || []);
-    } catch (error) {
-      console.error('Failed to fetch verified users:', error);
-    } finally {
-      setUsersLoading(false);
-    }
-  };
-
-  const fetchBatchConfig = async () => {
-    setBatchLoading(true);
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/admin/batch-config`, { headers: getAuthHeaders() });
-      const data = await response.json();
-      if (data.success) setBatchConfig(data.data);
-    } catch (error) {
-      console.error('Failed to fetch batch config:', error);
-    } finally {
-      setBatchLoading(false);
-    }
-  };
-
-  const fetchBatchStats = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/admin/batch-stats`, { headers: getAuthHeaders() });
-      const data = await response.json();
-      if (data.success) setBatchStats(data.data);
-    } catch (error) {
-      console.error('Failed to fetch batch stats:', error);
-    }
-  };
-
-  const fetchDmSettings = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/dm-settings`, { headers: getAuthHeaders() });
-      const data = await response.json();
-      if (data.success) setDmSettings(data.data);
-    } catch (error) {
-      console.error('Failed to fetch DM settings:', error);
-    }
-  };
 
   const handleRoleSelect = (roleId: string) => {
     const role = discordRoles.find(r => r.id === roleId);
