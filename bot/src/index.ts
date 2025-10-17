@@ -416,7 +416,9 @@ export async function sendVerificationFailureMessage(discordId: string, verifica
     const cm = verificationData?.custom_message || {};
     
     if (template) {
+      console.log('Failed template description BEFORE replace:', template.description);
       const description = template.description.replace(/\\n/g, '\n');
+      console.log('Failed template description AFTER replace:', description);
       
       const failureEmbed = new EmbedBuilder()
         .setTitle(template.title)
@@ -502,9 +504,11 @@ export async function revokeRoleFromUser(discordId: string, customMessage?: { ti
 
       if (template) {
         const roleName = role.name || 'NFT Holder';
+        console.log('Revoked template description BEFORE replace:', template.description);
         const description = template.description
           .replace(/{roles}/g, roleName)
           .replace(/\\n/g, '\n');
+        console.log('Revoked template description AFTER replace:', description);
         
         const revokeEmbed = new EmbedBuilder()
           .setTitle(template.title)
