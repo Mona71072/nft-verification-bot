@@ -6,7 +6,7 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { useWalletWithErrorHandling } from './hooks/useWallet';
 import { NFTVerificationPage } from './components/NFTVerificationPage';
 import MintPage from './MintPage';
-import Dashboard from './pages/Dashboard';
+import HomePage from './pages/HomePage';
 import { queryClient } from './lib/query-client';
 
 // APIベースURLの設定（本番環境用）
@@ -250,7 +250,7 @@ function App() {
                 }
               }
             }
-            return <Dashboard />;
+            return <HomePage />;
           } catch (error) {
             console.error('Component rendering error:', error);
             return (
