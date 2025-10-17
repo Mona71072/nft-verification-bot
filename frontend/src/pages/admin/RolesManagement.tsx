@@ -62,7 +62,9 @@ export default function RolesManagement() {
   const fetchVerifiedUsers = useCallback(async () => {
     setUsersLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/discord/verified-users`);
+      const res = await fetch(`${API_BASE_URL}/api/admin/verified-users`, { 
+        headers: getAuthHeaders() 
+      });
       const data = await res.json();
       if (data.success) setVerifiedUsers(data.data || []);
     } catch (e) {
@@ -136,22 +138,14 @@ export default function RolesManagement() {
     }
   }, [message]);
 
-  const getAuthHeaders = () => {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    try {
-      headers['X-Wallet-Connected'] = connected ? 'true' : 'false';
-      let addr = localStorage.getItem('currentWalletAddress');
-      if (!addr && connected && account?.address) {
-        addr = account.address;
-        localStorage.setItem('currentWalletAddress', account.address);
-      }
-      if (addr) {
-        headers['X-Admin-Address'] = addr;
-      }
-    } catch (error) {
-      console.error('Error getting wallet address:', error);
-    }
-    return headers;
+  const getAuthHeaders = (): HeadersInit => {
+    const addr = typeof window !== 'undefined' 
+      ? localStorage.getItem('currentWalletAddress') || (window as any).currentWalletAddress 
+      : undefined;
+    return {
+      'Content-Type': 'application/json',
+      ...(addr ? { 'X-Admin-Address': addr } : {})
+    };
   };
 
 
