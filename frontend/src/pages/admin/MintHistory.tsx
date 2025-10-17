@@ -182,6 +182,8 @@ export default function MintHistory() {
     return map;
   }, [events]);
 
+
+
   // フィルタリング済みの履歴データ（最適化）
   const filteredHistory = useMemo(() => {
     let filtered = [...historyItems];
