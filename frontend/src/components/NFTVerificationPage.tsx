@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useWalletWithErrorHandling } from '../hooks/useWallet';
 import { useCollections } from '../hooks/useCollections';
 import { useVerification } from '../hooks/useVerification';
@@ -9,7 +9,7 @@ import { CollectionSelector } from './CollectionSelector';
 import { VerificationForm } from './VerificationForm';
 
 // APIベースURLの設定（本番環境用）
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
+const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
 
 export const NFTVerificationPage: React.FC = () => {
   useWalletWithErrorHandling();
