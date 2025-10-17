@@ -202,7 +202,7 @@ async function handleVerifyNFT(interaction) {
         const startTitle = unescapeText(startTemplate?.title);
         const startDescription = unescapeText(startTemplate?.description);
         const baseUrl = templates.verificationUrl || config_1.config.VERIFICATION_URL;
-        const verificationUrl = `${baseUrl}?discord_id=${interaction.user.id}`;
+        const verificationUrl = `${baseUrl}/Verification?discord_id=${interaction.user.id}`;
         const verifyEmbed = new discord_js_1.EmbedBuilder()
             .setTitle(startTitle)
             .setDescription(startDescription)
@@ -345,11 +345,49 @@ async function sendVerificationFailureMessage(discordId, verificationData) {
             console.error('User not found');
             return false;
         }
+        // DM設定テンプレートを取得
+        const dmSettingsResponse = await fetch(`${config_1.config.CLOUDFLARE_WORKERS_API_URL}/api/dm-settings`, {
+            headers: {
+                'User-Agent': 'Discord-Bot'
+            }
+        });
+        let template = null;
+        if (dmSettingsResponse.ok) {
+            const dmSettingsData = await dmSettingsResponse.json();
+            if (dmSettingsData.success && dmSettingsData.data && dmSettingsData.data.templates) {
+                template = dmSettingsData.data.templates.failed;
+            }
+        }
+        // テンプレートがない場合はcustom_messageを使用
         const cm = verificationData?.custom_message || {};
-        if (cm.title && cm.description) {
+        if (template) {
+            console.log('Failed template description BEFORE replace:', template.description);
+            const description = template.description.replace(/\\n/g, '\n');
+            console.log('Failed template description AFTER replace:', description);
+            const failureEmbed = new discord_js_1.EmbedBuilder()
+                .setTitle(template.title)
+                .setDescription(description)
+                .setColor(template.color ?? 0xED4245)
+                .setTimestamp();
+            const message = await user.send({
+                embeds: [failureEmbed]
+            });
+            // 5分後にメッセージを自動削除
+            setTimeout(async () => {
+                try {
+                    await message.delete();
+                }
+                catch (error) {
+                    // メッセージが既に削除されている場合
+                }
+            }, 5 * 60 * 1000);
+            return true;
+        }
+        else if (cm.title && cm.description) {
+            const description = cm.description.replace(/\\n/g, '\n');
             const failureEmbed = new discord_js_1.EmbedBuilder()
                 .setTitle(cm.title)
-                .setDescription(cm.description)
+                .setDescription(description)
                 .setColor(cm.color ?? 0xED4245)
                 .setTimestamp();
             const message = await user.send({
@@ -386,10 +424,49 @@ async function revokeRoleFromUser(discordId, customMessage) {
         await member.roles.remove(role);
         // ユーザーにDM送信
         try {
-            if (customMessage?.title && customMessage?.description) {
+            // DM設定テンプレートを取得
+            const dmSettingsResponse = await fetch(`${config_1.config.CLOUDFLARE_WORKERS_API_URL}/api/dm-settings`, {
+                headers: {
+                    'User-Agent': 'Discord-Bot'
+                }
+            });
+            let template = null;
+            if (dmSettingsResponse.ok) {
+                const dmSettingsData = await dmSettingsResponse.json();
+                if (dmSettingsData.success && dmSettingsData.data && dmSettingsData.data.templates) {
+                    template = dmSettingsData.data.templates.revoked;
+                }
+            }
+            if (template) {
+                const roleName = role.name || 'NFT Holder';
+                console.log('Revoked template description BEFORE replace:', template.description);
+                const description = template.description
+                    .replace(/{roles}/g, roleName)
+                    .replace(/\\n/g, '\n');
+                console.log('Revoked template description AFTER replace:', description);
+                const revokeEmbed = new discord_js_1.EmbedBuilder()
+                    .setTitle(template.title)
+                    .setDescription(description)
+                    .setColor(template.color ?? 0xFFA500)
+                    .setTimestamp();
+                const message = await member.send({
+                    embeds: [revokeEmbed]
+                });
+                // 5分後にメッセージを自動削除
+                setTimeout(async () => {
+                    try {
+                        await message.delete();
+                    }
+                    catch (error) {
+                        // メッセージが既に削除されている場合
+                    }
+                }, 5 * 60 * 1000);
+            }
+            else if (customMessage?.title && customMessage?.description) {
+                const description = customMessage.description.replace(/\\n/g, '\n');
                 const revokeEmbed = new discord_js_1.EmbedBuilder()
                     .setTitle(customMessage.title)
-                    .setDescription(customMessage.description)
+                    .setDescription(description)
                     .setColor(customMessage.color ?? 0xED4245)
                     .setTimestamp();
                 const message = await member.send({
