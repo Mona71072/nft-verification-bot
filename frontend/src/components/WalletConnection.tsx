@@ -1,11 +1,13 @@
 import { ConnectButton } from '@mysten/dapp-kit';
+import { useResponsive, getResponsiveValue } from '../hooks/useResponsive';
 
 export const WalletConnection: React.FC = () => {
+  const { deviceType } = useResponsive();
 
   return (
     <div style={{ 
       marginBottom: '2rem',
-      padding: '1.5rem',
+      padding: getResponsiveValue('1rem', '1.25rem', '1.5rem', deviceType),
       background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
       borderRadius: '16px',
       border: '1px solid rgba(148, 163, 184, 0.1)',
@@ -37,8 +39,8 @@ export const WalletConnection: React.FC = () => {
           marginBottom: '0.75rem'
         }}>
           <div style={{
-            width: '32px',
-            height: '32px',
+            width: getResponsiveValue('28px', '30px', '32px', deviceType),
+            height: getResponsiveValue('28px', '30px', '32px', deviceType),
             background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
             borderRadius: '8px',
             display: 'flex',
@@ -47,7 +49,7 @@ export const WalletConnection: React.FC = () => {
             marginRight: '0.75rem',
             boxShadow: '0 4px 12px rgba(102, 126, 234, 0.2)'
           }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ color: 'white' }}>
+            <svg width={getResponsiveValue('14', '15', '16', deviceType)} height={getResponsiveValue('14', '15', '16', deviceType)} viewBox="0 0 24 24" fill="none" style={{ color: 'white' }}>
               <path d="M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               <path d="M9 12L11 14L15 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
@@ -56,13 +58,13 @@ export const WalletConnection: React.FC = () => {
             fontWeight: '700', 
             color: '#1e293b', 
             margin: 0,
-            fontSize: '1.125rem'
+            fontSize: getResponsiveValue('1rem', '1.0625rem', '1.125rem', deviceType)
           }}>
             Connect Your Wallet
           </h3>
         </div>
         <p style={{ 
-          fontSize: '0.875rem', 
+          fontSize: getResponsiveValue('0.8125rem', '0.84375rem', '0.875rem', deviceType), 
           color: '#64748b',
           margin: 0,
           lineHeight: '1.5',

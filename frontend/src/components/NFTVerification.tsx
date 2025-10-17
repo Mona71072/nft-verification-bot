@@ -3,6 +3,7 @@ import { useWalletWithErrorHandling } from '../hooks/useWallet';
 import { useCollections } from '../hooks/useCollections';
 import { useVerification } from '../hooks/useVerification';
 import { useUrlParams } from '../hooks/useUrlParams';
+import { useResponsive, getResponsiveValue } from '../hooks/useResponsive';
 import { WalletConnection } from './WalletConnection';
 import { CollectionSelector } from './CollectionSelector';
 import { VerificationForm } from './VerificationForm';
@@ -13,6 +14,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verificat
 export const NFTVerification: React.FC = () => {
   useWalletWithErrorHandling();
   const [discordId, setDiscordId] = useState('');
+  const { deviceType, isMobile } = useResponsive();
   
   // コレクション選択機能を追加
   const { collections, selectedCollections, checkAllCollections, handleCheckAllCollections, handleCollectionToggle } = useCollections(API_BASE_URL);
@@ -51,43 +53,47 @@ export const NFTVerification: React.FC = () => {
         pointerEvents: 'none'
       }} />
       
-      {/* Floating Elements */}
-      <div style={{
-        position: 'absolute',
-        top: '10%',
-        left: '10%',
-        width: '60px',
-        height: '60px',
-        background: 'rgba(255, 255, 255, 0.1)',
-        borderRadius: '50%',
-        animation: 'float 6s ease-in-out infinite'
-      }} />
-      <div style={{
-        position: 'absolute',
-        top: '20%',
-        right: '15%',
-        width: '40px',
-        height: '40px',
-        background: 'rgba(255, 255, 255, 0.08)',
-        borderRadius: '50%',
-        animation: 'float 8s ease-in-out infinite reverse'
-      }} />
-      <div style={{
-        position: 'absolute',
-        bottom: '20%',
-        left: '20%',
-        width: '80px',
-        height: '80px',
-        background: 'rgba(255, 255, 255, 0.05)',
-        borderRadius: '50%',
-        animation: 'float 10s ease-in-out infinite'
-      }} />
+      {/* Floating Elements - Hidden on mobile for performance */}
+      {!isMobile && (
+        <>
+          <div style={{
+            position: 'absolute',
+            top: '10%',
+            left: '10%',
+            width: '60px',
+            height: '60px',
+            background: 'rgba(255, 255, 255, 0.1)',
+            borderRadius: '50%',
+            animation: 'float 6s ease-in-out infinite'
+          }} />
+          <div style={{
+            position: 'absolute',
+            top: '20%',
+            right: '15%',
+            width: '40px',
+            height: '40px',
+            background: 'rgba(255, 255, 255, 0.08)',
+            borderRadius: '50%',
+            animation: 'float 8s ease-in-out infinite reverse'
+          }} />
+          <div style={{
+            position: 'absolute',
+            bottom: '20%',
+            left: '20%',
+            width: '80px',
+            height: '80px',
+            background: 'rgba(255, 255, 255, 0.05)',
+            borderRadius: '50%',
+            animation: 'float 10s ease-in-out infinite'
+          }} />
+        </>
+      )}
 
       <div style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '2rem 1rem',
+        padding: getResponsiveValue('1rem', '1.5rem', '2rem', deviceType),
         minHeight: '100vh',
         position: 'relative',
         zIndex: 1
@@ -96,8 +102,8 @@ export const NFTVerification: React.FC = () => {
           background: 'rgba(255, 255, 255, 0.95)',
           backdropFilter: 'blur(20px)',
           borderRadius: '24px',
-          padding: '3rem',
-          maxWidth: '600px',
+          padding: getResponsiveValue('1.5rem', '2rem', '3rem', deviceType),
+          maxWidth: getResponsiveValue('100%', '90%', '600px', deviceType),
           width: '100%',
           boxShadow: `
             0 32px 64px rgba(0, 0, 0, 0.12),
@@ -117,11 +123,11 @@ export const NFTVerification: React.FC = () => {
             background: 'linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.8), transparent)'
           }} />
 
-          <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
+          <div style={{ textAlign: 'center', marginBottom: getResponsiveValue('2rem', '2.5rem', '3rem', deviceType) }}>
             {/* Logo/Icon */}
             <div style={{
-              width: '80px',
-              height: '80px',
+              width: getResponsiveValue('60px', '70px', '80px', deviceType),
+              height: getResponsiveValue('60px', '70px', '80px', deviceType),
               background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
               borderRadius: '20px',
               margin: '0 auto 1.5rem',
@@ -132,14 +138,14 @@ export const NFTVerification: React.FC = () => {
               position: 'relative'
             }}>
               <div style={{
-                width: '40px',
-                height: '40px',
+                width: getResponsiveValue('30px', '35px', '40px', deviceType),
+                height: getResponsiveValue('30px', '35px', '40px', deviceType),
                 background: 'white',
                 borderRadius: '8px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: '1.5rem',
+                fontSize: getResponsiveValue('1.125rem', '1.25rem', '1.5rem', deviceType),
                 fontWeight: 'bold',
                 color: '#667eea'
               }}>
@@ -148,7 +154,7 @@ export const NFTVerification: React.FC = () => {
             </div>
 
             <h1 style={{
-              fontSize: '2.5rem',
+              fontSize: getResponsiveValue('1.75rem', '2rem', '2.5rem', deviceType),
               fontWeight: '800',
               background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
               WebkitBackgroundClip: 'text',
@@ -161,7 +167,7 @@ export const NFTVerification: React.FC = () => {
             </h1>
             <p style={{
               color: '#64748b',
-              fontSize: '1.125rem',
+              fontSize: getResponsiveValue('0.875rem', '1rem', '1.125rem', deviceType),
               lineHeight: '1.6',
               maxWidth: '400px',
               margin: '0 auto',
