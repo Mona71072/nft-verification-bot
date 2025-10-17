@@ -1332,6 +1332,26 @@ app.get('/api/admin/dm-settings', async (c) => {
   }
 });
 
+// 管理者用DM設定更新API
+app.put('/api/admin/dm-settings', async (c) => {
+  try {
+    const admin = c.req.header('X-Admin-Address');
+    if (!admin || !(await isAdmin(c, admin))) return c.json({ success: false, error: 'forbidden' }, 403);
+
+    const settings = await c.req.json();
+    const store = c.env.DM_TEMPLATE_STORE as KVNamespace | undefined;
+    
+    if (!store) {
+      return c.json({ success: false, error: 'DM store not available' }, 500);
+    }
+
+    await store.put('dm_settings', JSON.stringify(settings));
+    return c.json({ success: true, data: settings, message: 'DM settings updated' });
+  } catch (error) {
+    return c.json({ success: false, error: 'Failed to update DM settings' }, 500);
+  }
+});
+
 // 管理者用バッチ設定API
 app.get('/api/admin/batch-config', async (c) => {
   try {
