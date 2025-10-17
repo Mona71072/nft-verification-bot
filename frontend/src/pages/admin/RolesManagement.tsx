@@ -107,11 +107,18 @@ export default function RolesManagement() {
 
   const fetchDmSettings = useCallback(async () => {
     try {
+      console.log('Fetching DM settings...');
       const res = await fetch(`${API_BASE_URL}/api/admin/dm-settings`, { 
         headers: getAuthHeaders() 
       });
       const data = await res.json();
-      if (data.success) setDmSettings(data.data);
+      console.log('DM settings response:', data);
+      if (data.success) {
+        setDmSettings(data.data);
+        console.log('DM settings set:', data.data);
+      } else {
+        console.error('DM settings fetch failed:', data.error);
+      }
     } catch (e) {
       console.error('Failed to fetch DM settings', e);
     }
@@ -1532,7 +1539,7 @@ export default function RolesManagement() {
             )}
           </div>
 
-          {dmSettings ? (
+          {console.log('DM Settings state:', dmSettings) || dmSettings ? (
             dmEditing && editingDm ? (
               /* 編集モード */
               <div>
