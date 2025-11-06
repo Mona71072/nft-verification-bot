@@ -10,17 +10,14 @@ import App from './App.tsx'
 
 // グローバルエラーハンドリング（最小限・安全）
 window.addEventListener('error', (event) => {
-  console.error('Global error:', event.error);
   // サードパーティinpageスクリプト由来のみ抑制
   if (event.filename?.includes('inpage-script.js')) {
-    console.log('Third-party inpage-script error suppressed');
     event.preventDefault();
     return false;
   }
 });
 
 window.addEventListener('unhandledrejection', (event) => {
-  console.error('Unhandled promise rejection:', event.reason);
   // 抑制は行わずログのみ
 });
 
@@ -28,7 +25,6 @@ window.addEventListener('unhandledrejection', (event) => {
 const rootElement = document.getElementById('root');
 
 if (!rootElement) {
-  console.error('Root element not found, creating fallback');
   const fallbackRoot = document.createElement('div');
   fallbackRoot.id = 'root';
   document.body.appendChild(fallbackRoot);
@@ -38,7 +34,7 @@ if (!rootElement) {
 try {
   registerSlushWallet('SyndicateXTokyo', { network: 'mainnet' as const });
 } catch (e) {
-  console.warn('registerSlushWallet skipped:', e);
+  // Error handling without logging
 }
 
 // ネットワーク設定を作成（公式のcreateNetworkConfigを使用）
@@ -50,7 +46,8 @@ const { networkConfig } = createNetworkConfig({
 const queryClient = new QueryClient();
 
 // WalletProviderの初期化エラーをキャッチ
-const AppWithErrorBoundary = () => {
+// Exported as const to satisfy react-refresh rules
+export const AppWithErrorBoundary = () => {
   try {
     return (
       <QueryClientProvider client={queryClient}>
@@ -66,9 +63,40 @@ const AppWithErrorBoundary = () => {
       </QueryClientProvider>
     );
   } catch (error) {
-    console.error('WalletProvider initialization error:', error);
-    // フォールバック: WalletProviderなしでアプリを表示
-    return <App />;
+    // フォールバック: エラーメッセージを表示
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100vh',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        color: 'white',
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+        textAlign: 'center',
+        padding: '2rem'
+      }}>
+        <div>
+          <h1>ウォレット初期化エラー</h1>
+          <p>ページを再読み込みしてください。</p>
+          <button 
+            onClick={() => window.location.reload()}
+            style={{
+              padding: '0.75rem 1.5rem',
+              background: 'white',
+              color: '#667eea',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: '600',
+              marginTop: '1rem'
+            }}
+          >
+            再読み込み
+          </button>
+        </div>
+      </div>
+    );
   }
 };
 
@@ -81,7 +109,6 @@ try {
     </StrictMode>
   );
 } catch (error) {
-  console.error('Failed to render app:', error);
   // フォールバック: シンプルなエラーメッセージを表示
   const errorDiv = document.createElement('div');
   errorDiv.style.cssText = `

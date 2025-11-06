@@ -52,11 +52,10 @@ export function useEvents() {
         
         return data.data;
       } catch (error) {
-        console.error('Failed to fetch events:', error);
         throw new Error('イベントの取得に失敗しました');
       }
     },
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 15 * 60 * 1000, // 15 minutes（リクエスト削減のため延長）
   });
 }
 
@@ -77,11 +76,10 @@ export function useEventPublic(eventId: string) {
         
         return data.data;
       } catch (error) {
-        console.error('Failed to fetch event:', error);
         throw new Error('イベント情報の取得に失敗しました');
       }
     },
     enabled: !!eventId, // eventIdがある場合のみ実行
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 15 * 60 * 1000, // 15 minutes（リクエスト削減のため延長）
   });
 }

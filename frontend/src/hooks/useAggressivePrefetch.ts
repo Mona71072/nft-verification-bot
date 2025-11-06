@@ -21,16 +21,29 @@ export function useAggressivePrefetch() {
       return;
     }
 
+    // キャッシュが既に存在し、まだ新鮮な場合はスキップ（リクエスト削減のため）
+    const cachedData = queryClient.getQueryData(config.queryKey);
+    if (cachedData) {
+      const queryState = queryClient.getQueryState(config.queryKey);
+      if (queryState?.dataUpdatedAt) {
+        const age = Date.now() - queryState.dataUpdatedAt;
+        const staleTime = config.staleTime || 15 * 60 * 1000;
+        if (age < staleTime) {
+          prefetchedQueries.current.add(queryKey);
+          return; // キャッシュがまだ新鮮なのでスキップ
+        }
+      }
+    }
+
     try {
       await queryClient.prefetchQuery({
         queryKey: config.queryKey,
         queryFn: config.queryFn,
-        staleTime: config.staleTime || 5 * 60 * 1000,
+        staleTime: config.staleTime || 15 * 60 * 1000, // デフォルトを15分に延長
       });
       
       prefetchedQueries.current.add(queryKey);
     } catch (error) {
-      console.warn(`Failed to prefetch ${queryKey}:`, error);
     }
   }, []);
 
@@ -98,7 +111,7 @@ export function useAggressivePrefetch() {
         return data.success ? data.data || [] : [];
       },
       priority: 'high',
-      staleTime: 5 * 60 * 1000
+      staleTime: 15 * 60 * 1000 // リクエスト削減のため延長（5分→15分）
     });
 
     addPrefetch({
@@ -109,7 +122,7 @@ export function useAggressivePrefetch() {
         return data.success ? data.data || [] : [];
       },
       priority: 'high',
-      staleTime: 5 * 60 * 1000
+      staleTime: 15 * 60 * 1000 // リクエスト削減のため延長（5分→15分）
     });
 
     // 中優先度: ミント関連データ
@@ -121,7 +134,7 @@ export function useAggressivePrefetch() {
         return data.success ? data.data || [] : [];
       },
       priority: 'medium',
-      staleTime: 10 * 60 * 1000
+      staleTime: 20 * 60 * 1000 // リクエスト削減のため延長（10分→20分）
     });
 
     // 低優先度: 統計データ
@@ -133,7 +146,7 @@ export function useAggressivePrefetch() {
         return data.success ? data.data : null;
       },
       priority: 'low',
-      staleTime: 15 * 60 * 1000
+      staleTime: 30 * 60 * 1000 // リクエスト削減のため延長（15分→30分）
     });
   }, [addPrefetch]);
 
@@ -180,10 +193,18 @@ export function useAggressivePrefetch() {
     }
   }, [addPrefetch]);
 
-  // 初期化
+  // 初期化（リクエスト削減のため、プリフェッチを遅延・条件付きに）
   useEffect(() => {
-    // ページロード後に基本データをプリフェッチ
-    const timer = setTimeout(prefetchAdminData, 1000);
+    // ページロード後に基本データをプリフェッチ（遅延を増やす）
+    // 既にキャッシュが存在する場合はスキップ
+    const timer = setTimeout(() => {
+      // キャッシュが存在する場合はスキップ
+      const hasCollectionsCache = queryClient.getQueryData(['collections']);
+      const hasEventsCache = queryClient.getQueryData(['events']);
+      if (!hasCollectionsCache || !hasEventsCache) {
+        prefetchAdminData();
+      }
+    }, 3000); // 遅延を増やす（1000ms→3000ms）
     return () => clearTimeout(timer);
   }, [prefetchAdminData]);
 

@@ -15,3 +15,10 @@
     color: hsl(var(--foreground));
   }
 }
+
+/* ConnectButtonのモバイル表示時の2段表示を防ぐ */
+@media (max-width: 640px) {
+  [data-dapp-kit] button {
+    white-space: nowrap !important;
+  }
+}

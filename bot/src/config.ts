@@ -39,7 +39,6 @@ export function validateConfig() {
   const missingFields = requiredFields.filter(field => !config[field as keyof typeof config]);
 
   if (missingFields.length > 0) {
-    console.error('Missing required environment variables:', missingFields);
     return false;
   }
 

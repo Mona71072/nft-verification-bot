@@ -35,7 +35,6 @@ export const VerificationForm: React.FC<VerificationFormProps> = ({
       }
       return false;
     } catch (error) {
-      console.error('Error checking Discord ID from URL:', error);
       return false;
     }
   };

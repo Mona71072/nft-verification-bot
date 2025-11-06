@@ -1,5 +1,6 @@
 import React from 'react';
 import { ToastProvider, useToast } from '../components/ui/ToastProvider';
+import { useEvents } from '../hooks/queries/useEvents';
 
 type Step = 'wallet' | 'event' | 'sign' | 'mint' | 'result';
 type Status = 'idle' | 'loading' | 'success' | 'error';
@@ -20,27 +21,21 @@ function MintFlowPageInner() {
   const { showToast } = useToast();
   const [step, setStep] = React.useState<Step>('wallet');
   const [status, setStatus] = React.useState<Status>('idle');
-  const [events, setEvents] = React.useState<Event[]>([]);
   const [selectedEvent, setSelectedEvent] = React.useState<Event | null>(null);
   const [walletAddress, setWalletAddress] = React.useState<string>('');
   const [txDigest, setTxDigest] = React.useState<string>('');
 
   const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
 
-  // イベント一覧取得
+  // TanStack Queryを使用してキャッシュを活用（リクエスト削減のため）
+  const { data: eventsData = [], isLoading: eventsLoading, error: eventsError } = useEvents();
+  
+  // エラーハンドリング
   React.useEffect(() => {
-    if (step === 'event') {
-      (async () => {
-        try {
-          const res = await fetch(`${API_BASE}/api/events`);
-          const json = await res.json();
-          if (json.success) setEvents(json.data || []);
-        } catch (e) {
-          showToast('イベント一覧の取得に失敗しました', 'error');
-        }
-      })();
+    if (eventsError && step === 'event') {
+      showToast('イベント一覧の取得に失敗しました', 'error');
     }
-  }, [step, showToast]);
+  }, [eventsError, step, showToast]);
 
   const onWalletConnect = (address: string) => {
     setWalletAddress(address);
@@ -160,7 +155,7 @@ function MintFlowPageInner() {
         )}
         
         {step === 'event' && (
-          <EventStep events={events} onSelect={onEventSelect} loading={status === 'loading'} />
+          <EventStep events={eventsData as Event[]} onSelect={onEventSelect} loading={eventsLoading || status === 'loading'} />
         )}
         
         {step === 'sign' && (
@@ -286,7 +281,7 @@ function SignStep({ event, onSign, loading }: { event: Event | null, onSign: () 
 }
 
 // ミント実行ステップ
-function MintStep({ event, onMint, loading }: { event: Event | null, onMint: () => void, loading: boolean }) {
+function MintStep({ onMint, loading }: { event: Event | null, onMint: () => void, loading: boolean }) {
   return (
     <div style={{ textAlign: 'center' }}>
       <h3 style={{ fontSize: 20, marginBottom: 16 }}>ミント実行</h3>
@@ -327,7 +322,7 @@ function MintStep({ event, onMint, loading }: { event: Event | null, onMint: () 
 }
 
 // 結果表示ステップ
-function ResultStep({ success, txDigest, event, onRetry }: { 
+function ResultStep({ success, txDigest, onRetry }: { 
   success: boolean, 
   txDigest: string, 
   event: Event | null, 

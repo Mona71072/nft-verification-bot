@@ -7,9 +7,6 @@ export const useUrlParams = () => {
 
   useEffect(() => {
     try {
-      console.log('🔍 Checking URL for Discord ID parameter...');
-      console.log('🔍 Current URL:', window.location.href);
-      console.log('🔍 Search params:', window.location.search);
       
       const urlParams = new URLSearchParams(window.location.search);
       
@@ -27,20 +24,13 @@ export const useUrlParams = () => {
         }
       }
       
-      console.log('🔍 All URL params:', Object.fromEntries(urlParams.entries()));
-      console.log('🔍 Discord ID from URL:', foundDiscordId);
-      console.log('🔍 Parameter used:', foundParam);
       
       if (foundDiscordId) {
         setDiscordIdFromUrl(foundDiscordId);
         setParamUsed(foundParam);
-        console.log('✅ Discord ID set from URL:', foundDiscordId, 'via parameter:', foundParam);
       } else {
-        console.log('⚠️ No Discord ID parameter found in URL');
-        console.log('⚠️ Checked parameters:', possibleParams);
       }
     } catch (error: unknown) {
-      console.error('Error parsing URL parameters:', error);
     }
   }, []);
 

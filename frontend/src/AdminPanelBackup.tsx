@@ -1,0 +1,3203 @@
+import React, { useState, useEffect } from 'react';
+import type { DmSettings, DmMode } from './types';
+
+import type { NFTCollection, DiscordRole, BatchConfig, BatchStats, VerifiedUser, AdminMintEvent } from './types';
+import { useWalletWithErrorHandling } from './hooks/useWallet';
+import { getImageDisplayUrl } from './utils/walrus';
+import EventEditor from './components/EventEditor';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
+
+type AdminMode = 'admin' | 'roles' | 'mint' | undefined;
+
+function AdminPanel({ mode }: { mode?: AdminMode }) {
+  const { account, connected } = useWalletWithErrorHandling() as any;
+  
+  // スピンアニメーション用のCSS
+  React.useEffect(() => {
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    `;
+    document.head.appendChild(style);
+    return () => {
+      document.head.removeChild(style);
+    };
+  }, []);
+  const [collections, setCollections] = useState<NFTCollection[]>([]); // ロール管理用コレクション
+  const [mintCollections, setMintCollections] = useState<any[]>([]); // ミント管理用コレクション
+  const [discordRoles, setDiscordRoles] = useState<DiscordRole[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+  const [editingCollection, setEditingCollection] = useState<NFTCollection | null>(null);
+  
+  // バッチ処理関連の状態
+  const [batchConfig, setBatchConfig] = useState<BatchConfig | null>(null);
+  const [batchStats, setBatchStats] = useState<BatchStats | null>(null);
+  const [batchLoading, setBatchLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<'collections' | 'events' | 'batch' | 'users' | 'admins' | 'dm-settings' | 'history'>(
+    mode === 'mint' ? 'events' : mode === 'admin' ? 'admins' : 'collections'
+  );
+  const [isCreatingEvent, setIsCreatingEvent] = useState(false);
+  const [editingEventData, setEditingEventData] = useState<AdminMintEvent | null>(null);
+
+  // 表示タブをmodeで制限
+  const allowedTabs: Array<'collections' | 'events' | 'batch' | 'users' | 'admins' | 'dm-settings' | 'history'> =
+    mode === 'mint'
+      ? ['events', 'history']
+      : mode === 'roles'
+      ? ['collections', 'batch', 'users', 'dm-settings']
+      : ['collections', 'events', 'batch', 'users', 'admins', 'dm-settings', 'history']; // admin mode: 全タブアクセス可能
+
+  // Events 管理用ステート
+  const [events, setEvents] = useState<AdminMintEvent[]>([]);
+  const [eventSortBy, setEventSortBy] = useState<'name' | 'collection' | 'date' | 'mints'>('date');
+  const [eventSortOrder, setEventSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [newEvent, setNewEvent] = useState<Partial<AdminMintEvent>>({
+    name: '',
+    description: '',
+    collectionId: '',
+    imageUrl: '',
+    active: true,
+    startAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+    endAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+    moveCall: { target: '', typeArguments: [], argumentsTemplate: ['{recipient}', '{name}', '{imageCid}', '{imageMimeType}', '{eventDate}'], gasBudget: 20000000 },
+    totalCap: undefined
+  });
+
+  // コレクション作成UI用ステート
+  const [createColName, setCreateColName] = useState<string>('');
+  const [createColSymbol, setCreateColSymbol] = useState<string>('');
+  const [createColTypePath, setCreateColTypePath] = useState<string>('');
+  const [creatingCollection, setCreatingCollection] = useState<boolean>(false);
+  const [createColMessage, setCreateColMessage] = useState<string>('');
+  const [createColResult, setCreateColResult] = useState<any>(null);
+  const [defaultTypePath, setDefaultTypePath] = useState<string>('');
+
+  const proposeSymbol = (name: string | undefined) => {
+    if (!name) return '';
+    const ascii = name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    return ascii.slice(0, 6) || 'EVENT';
+  };
+
+  const handleCreateCollectionViaMove = async () => {
+    try {
+      if (creatingCollection) return;
+      if (!connected || !account?.address) {
+        setCreateColMessage('ウォレットを接続してください');
+        return;
+      }
+      setCreatingCollection(true);
+      setCreateColMessage('コレクション作成中...');
+      setCreateColResult(null);
+
+      try { localStorage.setItem('currentWalletAddress', account.address); } catch {
+        // localStorage が使用できない環境では無視
+      }
+
+      // バックエンドからmove-targetsを取得（環境変数から取得）
+      const mtResponse = await fetch(`${API_BASE_URL}/api/move-targets`);
+      const mtData = await mtResponse.json();
+      const defaultMoveTarget = mtData?.data?.defaultMoveTarget;
+      
+      if (!defaultMoveTarget) {
+        setCreateColMessage('エラー: DEFAULT_MOVE_TARGETが設定されていません。環境変数を確認してください。');
+        setCreatingCollection(false);
+        return;
+      }
+
+      const packageId = defaultMoveTarget.split('::')[0];
+      const autoTypePath = defaultMoveTarget.replace('::mint_to', '::EventNFT');
+      
+      const body: any = {
+        name: createColName || (newEvent.name || 'Event Collection'),
+        packageId: packageId,
+        typePath: autoTypePath,  // 自動生成された型パスを常に使用
+        description: `Symbol: ${createColSymbol || proposeSymbol(newEvent.name)}, Image: ${(newEvent as any).imageCid || 'none'}`
+      };
+
+      const res = await fetch(`${API_BASE_URL}/api/mint-collections`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (!data?.success) {
+        setCreateColMessage(data?.error || 'コレクション作成に失敗しました');
+      } else {
+        setCreateColMessage('コレクションを作成しました');
+        // mint-collectionsのレスポンスフォーマットに合わせる
+        setCreateColResult({ 
+          success: true, 
+          data: { 
+            collection: data.data,
+            moveResult: { txDigest: 'N/A (KV Store only)' }
+          } 
+        });
+        try { await fetchMintCollections(); } catch {
+          // コレクション取得エラーは無視
+        }
+      }
+    } catch (e: any) {
+      setCreateColMessage(e?.message || 'エラーが発生しました');
+    } finally {
+      setCreatingCollection(false);
+    }
+  };
+
+  // Walrus アップロードUI用
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+
+
+
+  // 画像自動圧縮（512KB以下に、より積極的）
+  const compressImage = async (file: File): Promise<File> => {
+    const maxSize = 512 * 1024; // 512KB（より厳しく）
+    if (file.size <= maxSize) return file;
+
+    return new Promise((resolve) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d')!;
+      const img = new Image();
+      
+      img.onload = () => {
+        // より小さく縮小（最大800x600）
+        const maxW = 800, maxH = 600;
+        let { width, height } = img;
+        if (width > maxW || height > maxH) {
+          const ratio = Math.min(maxW / width, maxH / height);
+          width *= ratio;
+          height *= ratio;
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // より低い品質から開始、512KB以下になるまで調整
+        let quality = 0.7;
+        const tryCompress = () => {
+          canvas.toBlob((blob) => {
+            if (blob) {
+              console.log(`Compression attempt: quality=${quality}, size=${Math.round(blob.size/1024)}KB`);
+              if (blob.size <= maxSize || quality <= 0.05) {
+                const compressedFile = new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' });
+                console.log(`Final compressed: ${Math.round(compressedFile.size/1024)}KB`);
+                resolve(compressedFile);
+              } else {
+                quality -= 0.05; // より細かく調整
+                tryCompress();
+              }
+            } else {
+              resolve(file); // フォールバック
+            }
+          }, 'image/jpeg', quality);
+        };
+        tryCompress();
+      };
+      
+      img.onerror = () => resolve(file); // エラー時はそのまま
+      img.src = URL.createObjectURL(file);
+    });
+  };
+
+
+
+  // カウントダウン用（1秒ごとに更新）
+  const [nowTs, setNowTs] = useState<number>(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowTs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // WorkersのWalrus設定を取得し、自動適用（初回）
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/walrus/config`);
+        const data = await res.json();
+        if (data?.success) {
+          // ゲートウェイ設定は固定値を使用
+          // uploadはプロキシを標準にするため、空のままでもOK
+        }
+      } catch {
+        // 設定取得エラーは無視（デフォルト値を使用）
+      }
+    })();
+  }, []);
+
+  // 認証済みユーザー関連の状態
+  const [verifiedUsers, setVerifiedUsers] = useState<VerifiedUser[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+
+  // 管理者関連の状態
+  const [adminAddresses, setAdminAddresses] = useState<string[]>([]);
+  const [newAdminAddress, setNewAdminAddress] = useState('');
+  const [adminLoading, setAdminLoading] = useState(false);
+
+  // DM通知設定
+  const [dmSettings, setDmSettings] = useState<DmSettings | null>(null);
+  const [dmEditing, setDmEditing] = useState(false);
+  const [editingDm, setEditingDm] = useState<DmSettings | null>(null);
+
+  const [newCollection, setNewCollection] = useState({
+    name: '',
+    packageId: '',
+    roleId: '',
+    roleName: '',
+    description: ''
+  });
+
+  // メッセージを5秒後に自動で消すためのuseEffect
+  useEffect(() => {
+    if (message) {
+      const timer = setTimeout(() => {
+        setMessage('');
+      }, 5000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [message]);
+
+  // 管理者認証ヘッダーを生成
+  const getAuthHeaders = () => {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    try {
+      // ウォレット接続状態をヘッダーに含める
+      headers['X-Wallet-Connected'] = connected ? 'true' : 'false';
+      
+      // 複数の方法でアドレスを取得
+      let addr = localStorage.getItem('currentWalletAddress');
+      
+      // フォールバック: 直接ウォレットから取得
+      if (!addr) {
+        // 正しいウォレットAPIを使用
+        if (connected && account?.address) {
+          addr = account.address;
+          // localStorageにも保存
+          localStorage.setItem('currentWalletAddress', account.address);
+        }
+      }
+      
+      if (addr) {
+        headers['X-Admin-Address'] = addr;
+      } else {
+        console.warn('⚠️ No wallet address found');
+      }
+    } catch (error) {
+      console.error('❌ Error getting wallet address:', error);
+    }
+    return headers;
+  };
+
+  const fetchCollections = async () => {
+    try {
+      // ロール管理用コレクションを取得
+      const response = await fetch(`${API_BASE_URL}/api/collections`, {
+        headers: getAuthHeaders()
+      });
+      const data = await response.json();
+      if (data.success) {
+        setCollections(data.data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch collections:', error);
+    }
+  };
+
+  // ミント用コレクション取得
+  const fetchMintCollections = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/mint-collections`, {
+        headers: getAuthHeaders()
+      });
+      const data = await response.json();
+      if (data.success) {
+        setMintCollections(data.data || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch mint collections:', error);
+    }
+  };
+
+  // Discordロール取得
+  const fetchDiscordRoles = async () => {
+    try {
+      console.log('🔄 Fetching Discord roles...');
+      const headers = getAuthHeaders();
+      console.log('📋 Request headers:', headers);
+      
+      const response = await fetch(`${API_BASE_URL}/api/discord/roles`, {
+        headers
+      });
+      
+      console.log('📊 Response status:', response.status, response.statusText);
+      
+      if (!response.ok) {
+        console.error('❌ Discord roles API not available:', response.status, response.statusText);
+        setDiscordRoles([]);
+        return;
+      }
+      
+      const data = await response.json();
+      if (data.success) {
+        setDiscordRoles(data.data || []);
+        console.log(`✅ Loaded ${data.data?.length || 0} Discord roles`);
+      } else {
+        console.error('❌ Failed to fetch Discord roles:', data.error);
+        setDiscordRoles([]);
+      }
+    } catch (error) {
+      console.error('❌ Error fetching Discord roles:', error);
+      setDiscordRoles([]);
+    }
+  };
+
+  // Events 取得
+  const fetchEvents = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/events`, { headers: getAuthHeaders() });
+      const data = await res.json();
+      if (data.success) setEvents(data.data || []);
+    } catch (e) {
+      console.error('❌ Failed to fetch events', e);
+    }
+  };
+
+  const handleCreateEvent = async () => {
+    if (!newEvent?.name || !newEvent?.collectionId || !newEvent?.startAt || !newEvent?.endAt) {
+      setMessage('必須項目（イベント名・コレクション・開始/終了）を入力してください');
+      return;
+    }
+
+    setLoading(true);
+    setMessage('🔄 イベントを作成中...');
+
+    try {
+      // 1. 画像自動アップロード＆BLOB登録（未設定の場合）
+      if (!((newEvent as any).imageUrl) && !((newEvent as any).imageCid) && uploadFile) {
+        setMessage('🔄 画像をWalrusにアップロード中...（約30秒かかります）');
+        
+        try {
+          // 画像圧縮（高速化）
+          setMessage('🔄 画像を圧縮中...');
+          const compressedFile = await compressImage(uploadFile);
+          setMessage('🔄 Walrusにアップロード中...（BLOB登録含む）');
+          
+          const form = new FormData();
+          form.append('file', compressedFile);
+          
+          // タイムアウトを60秒に設定
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 60000);
+          
+          const uploadRes = await fetch(`${API_BASE_URL}/api/walrus/upload`, {
+            method: 'POST',
+            body: form,
+            signal: controller.signal
+          });
+          
+          clearTimeout(timeoutId);
+          
+          if (!uploadRes.ok) {
+            throw new Error(`アップロード失敗 (${uploadRes.status}): ${await uploadRes.text()}`);
+          }
+          
+          const uploadData = await uploadRes.json();
+          if (uploadData.success && uploadData.data) {
+            const cid = uploadData.data.blob_id || uploadData.data.blobId;
+            if (cid) {
+              (newEvent as any).imageCid = cid;
+              (newEvent as any).imageMimeType = compressedFile.type || 'application/octet-stream';
+              (newEvent as any).imageUrl = `https://aggregator.mainnet.walrus.space/v1/blobs/${cid}`;
+              setMessage('✅ 画像アップロード完了！BLOB登録済み');
+            }
+          } else {
+            throw new Error(uploadData.error || '画像アップロードに失敗しました');
+          }
+        } catch (uploadError: any) {
+          console.error('Image upload error:', uploadError);
+          
+          // ユーザーフレンドリーなエラーメッセージ
+          let userMessage = uploadError.message;
+          if (uploadError.message?.includes('reserved for another transaction') || 
+              uploadError.message?.includes('object is locked') ||
+              uploadError.message?.includes('quorum of validators')) {
+            userMessage = '⏳ ネットワークが混雑しています。少し待ってから再試行してください。';
+          } else if (uploadError.message?.includes('502') || uploadError.message?.includes('Bad Gateway')) {
+            userMessage = '🔄 サーバーが一時的に利用できません。しばらく待ってから再試行してください。';
+          } else if (uploadError.message?.includes('timeout')) {
+            userMessage = '⏰ アップロードがタイムアウトしました。ネットワーク接続を確認してください。';
+          }
+          
+          setMessage(`❌ 画像アップロードエラー: ${userMessage}`);
+          
+          // リトライ可能なエラーの場合、リトライボタンを表示
+          if (uploadError.message?.includes('reserved for another transaction') || 
+              uploadError.message?.includes('object is locked') ||
+              uploadError.message?.includes('quorum of validators') ||
+              uploadError.message?.includes('502')) {
+            
+            // 3秒後に自動リトライを提案
+            setTimeout(() => {
+              if (confirm('🔄 自動でリトライしますか？（キャンセルで手動操作に戻ります）')) {
+                handleCreateEvent(); // 再実行
+              }
+            }, 3000);
+          }
+          
+          setLoading(false);
+          return;
+        }
+      }
+
+      // 2. Moveターゲットの自動補完
+      if (!newEvent?.moveCall?.target) {
+        setMessage('🔄 Move設定を準備中...');
+        try {
+          const mt = await fetch(`${API_BASE_URL}/api/move-targets`).then(r => r.json()).catch(() => null);
+          const target = mt?.data?.defaultMoveTarget || '';
+          if (target) {
+            (newEvent as any).moveCall = {
+              target,
+              typeArguments: [],
+              argumentsTemplate: ['{recipient}', '{name}', '{description}', '{imageCid}', '{imageMimeType}', '{eventDate}'],
+              gasBudget: 50_000_000
+            };
+            setMessage('✅ Move設定完了');
+          }
+        } catch (moveError) {
+          console.warn('Move target setup failed:', moveError);
+        }
+      }
+
+      // 3. 日時の整合性チェック
+      try {
+        const st = Date.parse(newEvent.startAt as string);
+        const ed = Date.parse(newEvent.endAt as string);
+        if (isFinite(st) && isFinite(ed) && ed <= st) {
+          setMessage('❌ 終了日時は開始日時より後に設定してください');
+          setLoading(false);
+          return;
+        }
+      } catch (dateError) {
+        console.warn('Date validation error:', dateError);
+      }
+
+      // 4. イベント作成
+      setMessage('🚀 イベントを作成中...');
+      
+      // イベントデータに画像情報を明示的に追加
+      const eventData = {
+        ...newEvent,
+        imageUrl: (newEvent as any).imageUrl || '',
+        imageCid: (newEvent as any).imageCid || '',
+        imageMimeType: (newEvent as any).imageMimeType || ''
+      };
+      
+      console.log('📤 Sending event data:', eventData);
+      
+      // イベント作成のタイムアウト設定
+      const createController = new AbortController();
+      const createTimeoutId = setTimeout(() => createController.abort(), 30000);
+      
+      const res = await fetch(`${API_BASE_URL}/api/admin/events`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(eventData),
+        signal: createController.signal
+      });
+      
+      clearTimeout(createTimeoutId);
+      
+      const data = await res.json();
+      if (data.success) {
+        setMessage('🎉 イベントを作成しました！');
+        
+        // フォームリセット
+        setNewEvent({
+          name: '', 
+          description: '', 
+          collectionId: '', 
+          imageUrl: '', 
+          active: true,
+          startAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+          endAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+          moveCall: { 
+            target: '', 
+            typeArguments: [], 
+            argumentsTemplate: ['{recipient}', '{name}', '{imageCid}', '{imageMimeType}'], 
+            gasBudget: 50_000_000 
+          }
+        });
+        setUploadFile(null); // アップロードファイルもリセット
+        
+        // イベントリスト更新
+        fetchEvents();
+        
+        // 成功メッセージを少し長めに表示
+        setTimeout(() => {
+          setMessage('');
+        }, 3000);
+      } else {
+        throw new Error(data.error || 'イベントの作成に失敗しました');
+      }
+    } catch (e: any) {
+      console.error('Event creation error:', e);
+      setMessage(`❌ ${e?.message || 'イベントの作成に失敗しました'}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // handleUpdateEvent は新しいEventEditorに移行したため削除
+
+  const handleDeleteEvent = async (id: string) => {
+    if (!confirm('このイベントを削除しますか？')) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/events/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessage('イベントを削除しました');
+        fetchEvents();
+      } else {
+        setMessage(data.error || 'イベントの削除に失敗しました');
+      }
+    } catch {
+      setMessage('イベントの削除に失敗しました');
+    }
+    setLoading(false);
+  };
+
+  // DM通知設定の取得
+  const fetchDmSettings = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/dm-settings`, { headers: getAuthHeaders() });
+      const data = await res.json();
+      if (data.success) {
+        setDmSettings(data.data);
+        // テンプレートが空の場合は初期化を試行
+        if (!data.data.templates || 
+            !data.data.templates.successNew?.title || 
+            !data.data.templates.successUpdate?.title || 
+            !data.data.templates.failed?.title || 
+            !data.data.templates.revoked?.title ||
+            !data.data.channelTemplates ||
+            !data.data.channelTemplates.verificationChannel?.title ||
+            !data.data.channelTemplates.verificationStart?.title ||
+            !data.data.channelTemplates.verificationUrl) {
+          console.log('⚠️ DM templates or channel templates are empty, attempting to initialize...');
+          await initializeDmSettings();
+        }
+      }
+    } catch (e) {
+      console.error('❌ Failed to fetch DM settings', e);
+    }
+  };
+
+  // DM通知設定の初期化
+  const initializeDmSettings = async () => {
+    try {
+      console.log('🔄 Initializing DM settings...');
+      const res = await fetch(`${API_BASE_URL}/api/admin/dm-settings/initialize`, {
+        method: 'POST',
+        headers: getAuthHeaders()
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDmSettings(data.data);
+        console.log('✅ DM settings initialized successfully');
+      } else {
+        console.error('❌ Failed to initialize DM settings:', data.error);
+      }
+    } catch (e) {
+      console.error('❌ Failed to initialize DM settings', e);
+    }
+  };
+
+  // DM通知設定の保存
+  const saveDmSettings = async () => {
+    if (!editingDm) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/dm-settings`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(editingDm)
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDmSettings(data.data);
+        setDmEditing(false);
+        setEditingDm(null);
+        setMessage('DM通知設定を保存しました');
+      } else {
+        setMessage('DM通知設定の保存に失敗しました');
+      }
+    } catch (e) {
+      console.error('❌ Failed to save DM settings', e);
+      setMessage('DM通知設定の保存に失敗しました');
+    }
+  };
+
+  // 認証済みユーザー一覧取得
+  const fetchVerifiedUsers = async () => {
+    setUsersLoading(true);
+    try {
+      console.log('🔄 Fetching verified users...');
+      const response = await fetch(`${API_BASE_URL}/api/admin/verified-users`, {
+        headers: getAuthHeaders()
+      });
+      const data = await response.json();
+      if (data.success) {
+        setVerifiedUsers(data.data);
+        console.log(`✅ Loaded ${data.data.length} verified users`);
+      } else {
+        console.error('❌ Failed to fetch verified users:', data.error);
+        setMessage('認証済みユーザーの取得に失敗しました');
+      }
+    } catch (error) {
+      console.error('❌ Error fetching verified users:', error);
+      setMessage('認証済みユーザーの取得中にエラーが発生しました');
+    }
+    setUsersLoading(false);
+  };
+
+  // 管理者アドレス一覧取得
+  const fetchAdminAddresses = async () => {
+    setAdminLoading(true);
+    try {
+      console.log('🔄 Fetching admin addresses...');
+      const response = await fetch(`${API_BASE_URL}/api/admin/addresses`, {
+        headers: getAuthHeaders()
+      });
+      const data = await response.json();
+      if (data.success) {
+        setAdminAddresses(data.data);
+        console.log(`✅ Loaded ${data.data.length} admin addresses`);
+      } else {
+        console.error('❌ Failed to fetch admin addresses:', data.error);
+        setMessage('管理者アドレスの取得に失敗しました');
+      }
+    } catch (error) {
+      console.error('❌ Error fetching admin addresses:', error);
+      setMessage('管理者アドレスの取得中にエラーが発生しました');
+    }
+    setAdminLoading(false);
+  };
+
+  // 管理者アドレス追加
+  const handleAddAdminAddress = async () => {
+    if (!newAdminAddress || !newAdminAddress.trim()) {
+      setMessage('有効なアドレスを入力してください');
+      return;
+    }
+
+    // 既に存在するかチェック
+    if (adminAddresses.some(addr => addr.toLowerCase() === newAdminAddress.toLowerCase())) {
+      setMessage('このアドレスは既に管理者として登録されています');
+      return;
+    }
+
+    setAdminLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/admin/addresses`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ address: newAdminAddress.trim() })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setAdminAddresses(data.data);
+        setNewAdminAddress('');
+        setMessage('管理者アドレスが正常に追加されました');
+        console.log('✅ Admin address added successfully');
+      } else {
+        console.error('❌ Failed to add admin address:', data.error);
+        setMessage(`管理者アドレスの追加に失敗しました: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('❌ Failed to add admin address:', error);
+      setMessage('管理者アドレスの追加に失敗しました');
+    }
+    setAdminLoading(false);
+  };
+
+  // 管理者アドレス削除
+  const handleRemoveAdminAddress = async (address: string) => {
+    if (adminAddresses.length <= 1) {
+      setMessage('管理者アドレスを全て削除することはできません。最低1つの管理者アドレスが必要です');
+      return;
+    }
+
+    if (!confirm(`管理者アドレス "${address}" を削除しますか？`)) {
+      return;
+    }
+
+    setAdminLoading(true);
+    try {
+      console.log(`🗑️ Removing admin address: ${address}`);
+      const response = await fetch(`${API_BASE_URL}/api/admin/addresses/${encodeURIComponent(address)}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+      const data = await response.json();
+      if (data.success) {
+        setAdminAddresses(data.data);
+        setMessage('管理者アドレスが正常に削除されました');
+        console.log('✅ Admin address removed successfully');
+      } else {
+        console.error('❌ Failed to remove admin address:', data.error);
+        setMessage(`管理者アドレスの削除に失敗しました: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('❌ Failed to remove admin address:', error);
+      setMessage('管理者アドレスの削除に失敗しました');
+    }
+    setAdminLoading(false);
+  };
+
+  // ロール選択時の処理
+  const handleRoleSelect = (roleId: string) => {
+    const selectedRole = discordRoles.find(role => role.id === roleId);
+    if (selectedRole) {
+      setNewCollection({
+        ...newCollection,
+        roleId: selectedRole.id,
+        roleName: selectedRole.name
+      });
+    } else {
+      setNewCollection({
+        ...newCollection,
+        roleId: '',
+        roleName: ''
+      });
+    }
+  };
+
+  const handleAddCollection = async () => {
+    if (!newCollection.name || !newCollection.packageId || !newCollection.roleId || !newCollection.roleName) {
+      setMessage('すべての必須フィールドを入力してください');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/collections`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(newCollection)
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setMessage('コレクションが正常に追加されました');
+        setNewCollection({ name: '', packageId: '', roleId: '', roleName: '', description: '' });
+        fetchCollections();
+      } else {
+        setMessage('コレクションの追加に失敗しました');
+      }
+    } catch {
+      setMessage('エラーが発生しました');
+    }
+    setLoading(false);
+  };
+
+  const handleDeleteCollection = async (id: string) => {
+    if (!confirm('このコレクションを削除しますか？')) return;
+
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/collections/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setMessage('コレクションが正常に削除されました');
+        fetchCollections();
+      } else {
+        setMessage('コレクションの削除に失敗しました');
+      }
+    } catch {
+      setMessage('エラーが発生しました');
+    }
+    setLoading(false);
+  };
+
+  // コレクション編集開始
+  const handleEditCollection = (collection: NFTCollection) => {
+    setEditingCollection(collection);
+    setNewCollection({
+      name: collection.name,
+      packageId: collection.packageId,
+      roleId: collection.roleId,
+      roleName: collection.roleName,
+      description: collection.description
+    });
+  };
+
+  // コレクション編集キャンセル
+  const handleCancelEdit = () => {
+    setEditingCollection(null);
+    setNewCollection({ name: '', packageId: '', roleId: '', roleName: '', description: '' });
+  };
+
+  // コレクション更新
+  const handleUpdateCollection = async () => {
+    if (!editingCollection || !newCollection.name || !newCollection.packageId || !newCollection.roleId || !newCollection.roleName) {
+      setMessage('すべての必須フィールドを入力してください');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/collections/${editingCollection.id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(newCollection)
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setMessage('コレクションが正常に更新されました');
+        setEditingCollection(null);
+        setNewCollection({ name: '', packageId: '', roleId: '', roleName: '', description: '' });
+        fetchCollections();
+      } else {
+        setMessage('コレクションの更新に失敗しました');
+      }
+    } catch {
+      setMessage('エラーが発生しました');
+    }
+    setLoading(false);
+  };
+
+  // バッチ処理設定取得
+  const fetchBatchConfig = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/admin/batch-config`, {
+        headers: getAuthHeaders()
+      });
+      const data = await response.json();
+      if (data.success) {
+        setBatchConfig(data.data);
+      }
+    } catch {
+      console.error('Failed to fetch batch config');
+    }
+  };
+
+  // バッチ処理統計取得
+  const fetchBatchStats = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/admin/batch-stats`, {
+        headers: getAuthHeaders()
+      });
+      const data = await response.json();
+      if (data.success) {
+        setBatchStats(data.data);
+      }
+    } catch {
+      console.error('Failed to fetch batch stats');
+    }
+  };
+
+  // バッチ処理実行
+  const executeBatchProcess = async () => {
+    // バッチ設定のcollectionIdを確認
+    if (!batchConfig?.collectionId) {
+      setMessage('⚠️ バッチ設定で監視対象コレクションを選択してください');
+      return;
+    }
+    
+    if (!confirm('バッチ処理を実行しますか？\n登録されている全ユーザーのNFT保有状態を確認し、Discordロールを更新します。')) return;
+
+    setBatchLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/batch-process`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          collectionId: batchConfig.collectionId,
+          action: 'check_and_update_roles'
+        })
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setMessage('✅ バッチ処理が正常に実行されました');
+        fetchBatchStats(); // 統計を更新
+        fetchBatchConfig(); // 設定を更新（lastRun/nextRunが更新される）
+      } else {
+        setMessage(`❌ バッチ処理の実行に失敗しました: ${data.error || '不明なエラー'}`);
+      }
+    } catch (error: any) {
+      setMessage(`エラーが発生しました: ${error.message || 'ネットワークエラー'}`);
+    }
+    setBatchLoading(false);
+  };
+
+  // バッチ処理設定の編集用状態
+  const [editingBatchConfig, setEditingBatchConfig] = useState<BatchConfig | null>(null);
+  const [batchConfigEditing, setBatchConfigEditing] = useState(false);
+
+  // バッチ処理設定更新
+  const updateBatchConfig = async (config: Partial<BatchConfig>) => {
+    setBatchLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/admin/batch-config`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(config)
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setMessage('バッチ処理設定が正常に更新されました');
+        setBatchConfig(data.data);
+        setBatchConfigEditing(false);
+        setEditingBatchConfig(null);
+        fetchBatchStats(); // 統計を更新
+      } else {
+        setMessage('バッチ処理設定の更新に失敗しました');
+      }
+    } catch {
+      setMessage('エラーが発生しました');
+    }
+    setBatchLoading(false);
+  };
+
+  // バッチ処理設定編集開始
+  const handleEditBatchConfig = () => {
+    if (batchConfig) {
+      setEditingBatchConfig({ ...batchConfig });
+      setBatchConfigEditing(true);
+    }
+  };
+
+  // バッチ処理設定編集キャンセル
+  const handleCancelBatchConfigEdit = () => {
+    setBatchConfigEditing(false);
+    setEditingBatchConfig(null);
+  };
+
+  // バッチ処理設定保存
+  const handleSaveBatchConfig = () => {
+    if (editingBatchConfig) {
+      updateBatchConfig(editingBatchConfig);
+    }
+  };
+
+  // 総ユーザー数クリック時の処理
+  const handleTotalUsersClick = () => {
+    setActiveTab('users');
+    fetchVerifiedUsers();
+  };
+
+  // デフォルト型パスを取得
+  useEffect(() => {
+    const fetchDefaultTypePath = async () => {
+      try {
+        const mtResponse = await fetch(`${API_BASE_URL}/api/move-targets`);
+        const mtData = await mtResponse.json();
+        const defaultMoveTarget = mtData?.data?.defaultMoveTarget;
+        if (defaultMoveTarget) {
+          const typePath = defaultMoveTarget.replace('::mint_to', '::EventNFT');
+          setDefaultTypePath(typePath);
+          setCreateColTypePath(typePath);
+        }
+      } catch (e) {
+        console.error('Failed to fetch default type path:', e);
+      }
+    };
+    fetchDefaultTypePath();
+  }, []);
+
+  // コンポーネントマウント時にデータを取得
+  useEffect(() => {
+    fetchCollections();
+    fetchDiscordRoles();
+    fetchBatchConfig();
+    fetchBatchStats();
+    fetchDmSettings();
+    fetchEvents();
+  }, []);
+
+  // タブ変更時にデータを取得
+  useEffect(() => {
+    if (activeTab === 'users') {
+      fetchVerifiedUsers();
+    } else if (activeTab === 'admins') {
+      fetchAdminAddresses();
+    } else if (activeTab === 'dm-settings') {
+      fetchDmSettings();
+    } else if (activeTab === 'events') {
+      fetchEvents();
+    } else if (activeTab === 'batch') {
+      fetchBatchStats();
+    } else if (activeTab === 'history') {
+      fetchMintCollections(); // ミント管理用コレクションを取得
+    }
+  }, [activeTab]);
+
+  // コレクション別ミント履歴
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyItems, setHistoryItems] = useState<Array<{ txDigest: string; eventId?: string; recipient?: string; objectIds?: string[]; at?: string }>>([]);
+  const [historyCollection, setHistoryCollection] = useState<string>('');
+
+  const fetchCollectionHistory = async (typePath: string, limit: number = 50) => {
+    if (!typePath) return;
+    setHistoryLoading(true);
+    console.log('[Frontend] Fetching history for typePath:', typePath);
+    try {
+      const encoded = encodeURIComponent(typePath);
+      const url = `${API_BASE_URL}/api/mint-collections/${encoded}/mints?limit=${limit}`;
+      console.log('[Frontend] Request URL:', url);
+      
+      const res = await fetch(url);
+      const data = await res.json();
+      
+      console.log('[Frontend] Response:', data);
+      
+      if (data.success) {
+        console.log('[Frontend] History items count:', data.data?.length || 0);
+        setHistoryItems(Array.isArray(data.data) ? data.data : []);
+      } else {
+        setMessage(`履歴の取得に失敗しました: ${data.error || 'unknown error'}`);
+        setHistoryItems([]);
+      }
+    } catch (e) {
+      console.error('Failed to fetch collection history', e);
+      setMessage('履歴の取得に失敗しました');
+      setHistoryItems([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  // EventEditor用の保存ハンドラー
+  const handleSaveEvent = async (eventData: any) => {
+    try {
+      setLoading(true);
+      setMessage('イベントを保存中...');
+      
+      // moveCall の自動設定（空または target がない場合）
+      if (!eventData.moveCall || !eventData.moveCall.target) {
+        setMessage('🔄 Move設定を準備中...');
+        try {
+          const mt = await fetch(`${API_BASE_URL}/api/move-targets`).then(r => r.json()).catch(() => null);
+          const target = mt?.data?.defaultMoveTarget || '';
+          if (target) {
+            eventData.moveCall = {
+              target,
+              typeArguments: [],
+              argumentsTemplate: ['{recipient}', '{name}', '{description}', '{imageCid}', '{imageMimeType}', '{eventDate}'],
+              gasBudget: 50_000_000
+            };
+            setMessage('✅ Move設定完了');
+          }
+        } catch (moveError) {
+          console.warn('Move target setup failed:', moveError);
+        }
+      }
+      
+      const url = eventData.id 
+        ? `${API_BASE_URL}/api/admin/events/${eventData.id}`
+        : `${API_BASE_URL}/api/admin/events`;
+      
+      const method = eventData.id ? 'PUT' : 'POST';
+      
+      // status を active に変換して送信
+      const payload = { 
+        ...eventData, 
+        active: eventData.status === 'published' 
+      };
+      
+      console.log('🔍 Debug - Saving event:', { url, method, payload, headers: getAuthHeaders() });
+      
+      const response = await fetch(url, {
+        method,
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload)
+      });
+      
+      console.log('🔍 Debug - Response status:', response.status);
+      
+      const result = await response.json();
+      console.log('🔍 Debug - Response data:', result);
+      
+      if (result.success) {
+        const isDraft = eventData.status === 'draft';
+        setMessage(isDraft ? 'ドラフトを保存しました' : 'イベントを保存しました');
+        
+        // ドラフトの場合は画面を閉じず、データのみ更新
+        if (!isDraft) {
+          setIsCreatingEvent(false);
+          setEditingEventData(null);
+        } else {
+          // ドラフト保存の場合は、編集中のイベントデータを更新
+          if (result.data) {
+            setEditingEventData(result.data);
+          }
+        }
+        
+        await fetchEvents();
+      } else {
+        throw new Error(result.error || '保存に失敗しました');
+      }
+    } catch (error: any) {
+      setMessage(`エラー: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // EventEditorを表示する場合
+  if (isCreatingEvent || editingEventData) {
+    return (
+      <EventEditor
+        event={editingEventData ? { ...editingEventData, moveCall: editingEventData.moveCall || {} } : undefined}
+        onSave={handleSaveEvent}
+        onCancel={() => {
+          setIsCreatingEvent(false);
+          setEditingEventData(null);
+        }}
+      />
+    );
+  }
+
+  return (
+    <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
+      <h1 style={{ marginBottom: '1rem' }}>
+        {mode === 'admin' ? '管理者ページ' : mode === 'mint' ? 'ミント管理' : mode === 'roles' ? 'ロール管理' : 'NFT Verification 管理パネル'}
+      </h1>
+
+      {mode === 'admin' && (
+        <div style={{ marginBottom: '2rem', display: 'grid', gap: '0.75rem', maxWidth: '400px' }}>
+          <button 
+            onClick={() => {
+              window.history.pushState({}, '', '/admin/roles');
+              window.dispatchEvent(new PopStateEvent('popstate'));
+            }} 
+            style={{ padding: '0.75rem 1rem', background: '#f8f9fa', borderRadius: 8, fontWeight: 600, color: '#1f2937', textAlign: 'center', border: '1px solid #d1d5db', cursor: 'pointer', width: '100%' }}
+          >
+            ロール管理へ
+          </button>
+          <button 
+            onClick={() => {
+              window.history.pushState({}, '', '/admin/mint');
+              window.dispatchEvent(new PopStateEvent('popstate'));
+            }}
+            style={{ padding: '0.75rem 1rem', background: '#f8f9fa', borderRadius: 8, fontWeight: 600, color: '#1f2937', textAlign: 'center', border: '1px solid #d1d5db', cursor: 'pointer', width: '100%' }}
+          >
+            ミント管理へ
+          </button>
+        </div>
+      )}
+
+      {/* タブナビゲーション */}
+      <div style={{ 
+        display: 'flex', 
+        gap: '0.5rem', 
+        marginBottom: '2rem',
+        borderBottom: '1px solid #ccc',
+        paddingBottom: '1rem',
+        flexWrap: 'wrap'
+      }}>
+        {allowedTabs.includes('collections') && (
+        <button
+          onClick={() => setActiveTab('collections')}
+          style={{
+            padding: '0.5rem 1rem',
+            background: activeTab === 'collections' ? '#007bff' : '#f8f9fa',
+            color: activeTab === 'collections' ? 'white' : '#333',
+            border: '1px solid #ccc',
+            borderRadius: '4px',
+            cursor: 'pointer'
+          }}
+        >
+          コレクション管理
+        </button>
+        )}
+        {allowedTabs.includes('events') && (
+        <button
+          onClick={() => setActiveTab('events')}
+          style={{
+            padding: '0.5rem 1rem',
+            background: activeTab === 'events' ? '#007bff' : '#f8f9fa',
+            color: activeTab === 'events' ? 'white' : '#333',
+            border: '1px solid #ccc',
+            borderRadius: '4px',
+            cursor: 'pointer'
+          }}
+        >
+          イベント管理
+        </button>
+        )}
+        {allowedTabs.includes('batch') && (
+        <button
+          onClick={() => setActiveTab('batch')}
+          style={{
+            padding: '0.5rem 1rem',
+            background: activeTab === 'batch' ? '#007bff' : '#f8f9fa',
+            color: activeTab === 'batch' ? 'white' : '#333',
+            border: '1px solid #ccc',
+            borderRadius: '4px',
+            cursor: 'pointer'
+          }}
+        >
+          バッチ処理管理
+        </button>
+        )}
+        {allowedTabs.includes('users') && (
+        <button
+          onClick={() => setActiveTab('users')}
+          style={{
+            padding: '0.5rem 1rem',
+            background: activeTab === 'users' ? '#007bff' : '#f8f9fa',
+            color: activeTab === 'users' ? 'white' : '#333',
+            border: '1px solid #ccc',
+            borderRadius: '4px',
+            cursor: 'pointer'
+          }}
+        >
+          認証済みユーザー
+        </button>
+        )}
+        {allowedTabs.includes('admins') && (
+        <button
+          onClick={() => setActiveTab('admins')}
+          style={{
+            padding: '0.5rem 1rem',
+            background: activeTab === 'admins' ? '#007bff' : '#f8f9fa',
+            color: activeTab === 'admins' ? 'white' : '#333',
+            border: '1px solid #ccc',
+            borderRadius: '4px',
+            cursor: 'pointer'
+          }}
+        >
+          管理者管理
+        </button>
+        )}
+        {allowedTabs.includes('dm-settings') && (
+        <button
+          onClick={() => setActiveTab('dm-settings')}
+          style={{
+            padding: '0.5rem 1rem',
+            background: activeTab === 'dm-settings' ? '#007bff' : '#f8f9fa',
+            color: activeTab === 'dm-settings' ? 'white' : '#333',
+            border: '1px solid #ccc',
+            borderRadius: '4px',
+            cursor: 'pointer'
+          }}
+        >
+          DM通知設定
+        </button>
+        )}
+        {allowedTabs.includes('history') && (
+        <button
+          onClick={() => setActiveTab('history')}
+          style={{
+            padding: '0.5rem 1rem',
+            background: activeTab === 'history' ? '#007bff' : '#f8f9fa',
+            color: activeTab === 'history' ? 'white' : '#333',
+            border: '1px solid #ccc',
+            borderRadius: 4,
+            cursor: 'pointer',
+            fontWeight: 500
+          }}
+        >
+          コレクション履歴
+        </button>
+        )}
+      </div>
+
+      {activeTab === 'collections' && (
+        <>
+          {/* New Collection Add Form */}
+          <div style={{ 
+            marginBottom: '2rem', 
+            padding: '1rem', 
+            border: '1px solid #ccc',
+            borderRadius: '8px'
+          }}>
+            <h3>{editingCollection ? 'コレクション編集' : '新しいコレクション追加'}</h3>
+            <div style={{ display: 'grid', gap: '0.5rem', maxWidth: '600px' }}>
+              <input 
+                type="text" 
+                placeholder="コレクション名" 
+                value={newCollection.name} 
+                onChange={(e) => setNewCollection({...newCollection, name: e.target.value})}
+                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+              />
+              <input 
+                type="text" 
+                placeholder="Package ID (例: 0x123...::nft::NFT)" 
+                value={newCollection.packageId} 
+                onChange={(e) => setNewCollection({...newCollection, packageId: e.target.value})}
+                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+              />
+              <select
+                value={newCollection.roleId}
+                onChange={(e) => handleRoleSelect(e.target.value)}
+                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+              >
+                <option value="">ロールを選択してください</option>
+                {discordRoles.length > 0 ? (
+                  discordRoles.map(role => (
+                  <option key={role.id} value={role.id}>
+                    {role.name} (ID: {role.id})
+                  </option>
+                  ))
+                ) : (
+                  <option value="" disabled>
+                    Discordロールを読み込み中... (Bot APIが利用できない場合は手動で入力してください)
+                  </option>
+                )}
+              </select>
+              <input 
+                type="text" 
+                placeholder="ロールID（手動入力、Discordロールが読み込めない場合）" 
+                value={newCollection.roleId} 
+                onChange={(e) => setNewCollection({...newCollection, roleId: e.target.value})}
+                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+              />
+              <input 
+                type="text" 
+                placeholder="ロール名（自動設定）" 
+                value={newCollection.roleName} 
+                onChange={(e) => setNewCollection({...newCollection, roleName: e.target.value})}
+                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                readOnly
+              />
+              <textarea 
+                placeholder="説明" 
+                value={newCollection.description} 
+                onChange={(e) => setNewCollection({...newCollection, description: e.target.value})}
+                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', minHeight: '80px' }}
+              />
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                {editingCollection ? (
+                  <>
+                    <button 
+                      onClick={handleUpdateCollection}
+                      disabled={loading}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        background: '#007bff',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: loading ? 'not-allowed' : 'pointer',
+                        opacity: loading ? 0.6 : 1,
+                        flex: 1
+                      }}
+                    >
+                      {loading ? '更新中...' : 'コレクション更新'}
+                    </button>
+                    <button 
+                      onClick={handleCancelEdit}
+                      disabled={loading}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        background: '#6c757d',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: loading ? 'not-allowed' : 'pointer',
+                        opacity: loading ? 0.6 : 1,
+                        flex: 1
+                      }}
+                    >
+                      キャンセル
+                    </button>
+                  </>
+                ) : (
+                  <button 
+                    onClick={handleAddCollection}
+                    disabled={loading}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      background: '#28a745',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: loading ? 'not-allowed' : 'pointer',
+                      opacity: loading ? 0.6 : 1
+                    }}
+                  >
+                    {loading ? '追加中...' : 'コレクション追加'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Existing Collections List */}
+          <div>
+            <h3>既存コレクション一覧</h3>
+            {collections.map(collection => (
+              <div key={collection.id} style={{
+                border: '1px solid #ccc',
+                padding: '1rem',
+                margin: '0.5rem 0',
+                borderRadius: '8px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <div>
+                  <h4 style={{ margin: '0 0 0.5rem 0' }}>{collection.name}</h4>
+                  <p style={{ margin: '0.25rem 0', fontSize: '0.9rem' }}>
+                    <strong>Package ID:</strong> {collection.packageId}
+                  </p>
+                  <p style={{ margin: '0.25rem 0', fontSize: '0.9rem' }}>
+                    <strong>Role:</strong> {collection.roleName} ({collection.roleId})
+                  </p>
+                  <p style={{ margin: '0.25rem 0', fontSize: '0.9rem' }}>
+                    <strong>Status:</strong> {collection.isActive ? 'Active' : 'Inactive'}
+                  </p>
+                  {collection.description && (
+                    <p style={{ margin: '0.25rem 0', fontSize: '0.9rem', color: '#666' }}>
+                      {collection.description}
+                    </p>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    onClick={() => handleEditCollection(collection)}
+                    style={{
+                      padding: '0.25rem 0.5rem',
+                      background: '#007bff',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '0.8rem'
+                    }}
+                  >
+                    編集
+                  </button>
+                  <button
+                    onClick={() => handleDeleteCollection(collection.id)}
+                    style={{
+                      padding: '0.25rem 0.5rem',
+                      background: '#dc3545',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '0.8rem'
+                    }}
+                  >
+                    削除
+                  </button>
+                </div>
+              </div>
+            ))}
+            {collections.length === 0 && (
+              <p style={{ color: '#666', fontStyle: 'italic' }}>コレクションがありません</p>
+            )}
+          </div>
+        </>
+      )}
+
+      {activeTab === 'batch' && (
+        <div>
+          <h3>バッチ処理管理</h3>
+          
+          {/* バッチ処理設定 */}
+          <div style={{ 
+            marginBottom: '2rem', 
+            padding: '1rem', 
+            border: '1px solid #ccc',
+            borderRadius: '8px'
+          }}>
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              marginBottom: '1rem'
+            }}>
+              <h4>バッチ処理設定</h4>
+              {!batchConfigEditing && (
+                <button
+                  onClick={handleEditBatchConfig}
+                  disabled={batchLoading || !batchConfig}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    background: '#007bff',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: batchLoading || !batchConfig ? 'not-allowed' : 'pointer',
+                    opacity: batchLoading || !batchConfig ? 0.6 : 1,
+                    fontSize: '0.9rem'
+                  }}
+                >
+                  設定を編集
+                </button>
+              )}
+            </div>
+
+            {batchConfig && (
+              <div style={{ display: 'grid', gap: '1rem', maxWidth: '600px' }}>
+                {/* 現在の設定表示 */}
+                {!batchConfigEditing && (
+                  <div style={{ 
+                    background: '#f8f9fa', 
+                    padding: '1rem', 
+                    borderRadius: '8px',
+                    marginBottom: '1rem'
+                  }}>
+                    <h5 style={{ margin: '0 0 1rem 0', color: '#495057' }}>現在の設定</h5>
+                                         <div style={{ display: 'grid', gap: '0.5rem' }}>
+                    <div>
+                       <strong>バッチ処理:</strong> {batchConfig.enabled ? '有効' : '無効'}
+                     </div>
+                     <div>
+                       <strong>実行間隔:</strong> {batchConfig.interval}分
+                     </div>
+                     <div>
+                       <strong>監視対象:</strong> {
+                         batchConfig.collectionId 
+                           ? (collections.find(col => col.id === batchConfig.collectionId)?.name || `ID: ${batchConfig.collectionId}`)
+                           : '未設定 ⚠️'
+                       }
+                     </div>
+                       <div>
+                         <strong>バッチサイズ:</strong> {batchConfig.maxUsersPerBatch}ユーザー
+                       </div>
+                       <div>
+                         <strong>リトライ回数:</strong> {batchConfig.retryAttempts}回
+                       </div>
+                       <div>
+                         <strong>DM通知:</strong> {batchConfig.enableDmNotifications ? '有効' : '無効'}
+                       </div>
+                       <div>
+                         <strong>最終実行:</strong> {batchConfig.lastRun ? new Date(batchConfig.lastRun).toLocaleString('ja-JP') : '未実行'}
+                       </div>
+                       <div>
+                         <strong>次回実行予定:</strong> {batchConfig.nextRun ? new Date(batchConfig.nextRun).toLocaleString('ja-JP') : '未設定'}
+                       </div>
+                     </div>
+                  </div>
+                )}
+
+                {/* 編集フォーム */}
+                {batchConfigEditing && editingBatchConfig && (
+                  <div style={{ 
+                    background: '#fff3cd', 
+                    padding: '1rem', 
+                    borderRadius: '8px',
+                    border: '1px solid #ffeaa7',
+                    marginBottom: '1rem'
+                  }}>
+                    <h5 style={{ margin: '0 0 1rem 0', color: '#856404' }}>設定を編集</h5>
+                    <div style={{ display: 'grid', gap: '1rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={editingBatchConfig.enabled}
+                            onChange={(e) => setEditingBatchConfig({
+                              ...editingBatchConfig,
+                              enabled: e.target.checked
+                            })}
+                            disabled={batchLoading}
+                          />
+                          バッチ処理を有効にする
+                        </label>
+                      </div>
+                      
+                      <div>
+                        <label>実行間隔（分）:</label>
+                        <input
+                          type="number"
+                          value={editingBatchConfig.interval}
+                          onChange={(e) => setEditingBatchConfig({
+                            ...editingBatchConfig,
+                            interval: parseInt(e.target.value) || 0
+                          })}
+                          disabled={batchLoading}
+                          style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', marginLeft: '1rem', width: '100px' }}
+                        />
+                      </div>
+                      
+                      <div>
+                        <label>バッチサイズ（最大ユーザー数）:</label>
+                        <input
+                          type="number"
+                          value={editingBatchConfig.maxUsersPerBatch}
+                          onChange={(e) => setEditingBatchConfig({
+                            ...editingBatchConfig,
+                            maxUsersPerBatch: parseInt(e.target.value) || 0
+                          })}
+                          disabled={batchLoading}
+                          style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', marginLeft: '1rem', width: '100px' }}
+                        />
+                      </div>
+                      
+                                             <div>
+                         <label>リトライ回数:</label>
+                         <input
+                           type="number"
+                           value={editingBatchConfig.retryAttempts}
+                           onChange={(e) => setEditingBatchConfig({
+                             ...editingBatchConfig,
+                             retryAttempts: parseInt(e.target.value) || 0
+                           })}
+                           disabled={batchLoading}
+                           style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', marginLeft: '1rem', width: '100px' }}
+                         />
+                       </div>
+
+                       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                         <label>
+                           <input
+                             type="checkbox"
+                             checked={editingBatchConfig.enableDmNotifications}
+                             onChange={(e) => setEditingBatchConfig({
+                               ...editingBatchConfig,
+                               enableDmNotifications: e.target.checked
+                             })}
+                             disabled={batchLoading}
+                           />
+                           バッチ処理時のDM通知を有効にする
+                         </label>
+                       </div>
+
+                       <div>
+                         <label>監視対象コレクション:</label>
+                         <select
+                           value={editingBatchConfig.collectionId || ''}
+                           onChange={(e) => setEditingBatchConfig({
+                             ...editingBatchConfig,
+                             collectionId: e.target.value
+                           })}
+                           disabled={batchLoading}
+                           style={{ 
+                             padding: '0.5rem', 
+                             borderRadius: '4px', 
+                             border: '1px solid #ccc', 
+                             marginLeft: '1rem', 
+                             minWidth: '300px' 
+                           }}
+                         >
+                           <option value="">コレクションを選択してください</option>
+                           {collections.map(col => (
+                             <option key={col.id} value={col.id}>
+                               {col.name} ({col.roleName})
+                             </option>
+                           ))}
+                         </select>
+                         {(!editingBatchConfig.collectionId || editingBatchConfig.collectionId === '') && (
+                           <div style={{ color: '#dc3545', fontSize: '0.85rem', marginTop: '0.25rem' }}>
+                             ⚠️ コレクションを選択しないとバッチ処理が動作しません
+                           </div>
+                         )}
+                       </div>
+
+                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+                        <button
+                          onClick={handleSaveBatchConfig}
+                          disabled={batchLoading}
+                          style={{
+                            padding: '0.5rem 1rem',
+                            background: '#28a745',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: batchLoading ? 'not-allowed' : 'pointer',
+                            opacity: batchLoading ? 0.6 : 1
+                          }}
+                        >
+                          {batchLoading ? '保存中...' : '設定を保存'}
+                        </button>
+                        <button
+                          onClick={handleCancelBatchConfigEdit}
+                          disabled={batchLoading}
+                          style={{
+                            padding: '0.5rem 1rem',
+                            background: '#6c757d',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: batchLoading ? 'not-allowed' : 'pointer',
+                            opacity: batchLoading ? 0.6 : 1
+                          }}
+                        >
+                          キャンセル
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* バッチ処理実行 */}
+          <div style={{ 
+            marginBottom: '2rem', 
+            padding: '1rem', 
+            border: '1px solid #ccc',
+            borderRadius: '8px'
+          }}>
+            <h4>手動実行</h4>
+            <button
+              onClick={executeBatchProcess}
+              disabled={batchLoading}
+              style={{
+                padding: '0.5rem 1rem',
+                background: '#28a745',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: batchLoading ? 'not-allowed' : 'pointer',
+                opacity: batchLoading ? 0.6 : 1
+              }}
+            >
+              {batchLoading ? '実行中...' : 'バッチ処理を実行'}
+            </button>
+          </div>
+
+          {/* バッチ処理統計 */}
+          <div style={{ 
+            padding: '1rem', 
+            border: '1px solid #ccc',
+            borderRadius: '8px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h4 style={{ margin: 0 }}>バッチ処理統計</h4>
+              <button
+                onClick={() => {
+                  fetchBatchStats();
+                  setMessage('統計を更新しました');
+                }}
+                style={{
+                  padding: '0.25rem 0.75rem',
+                  background: '#007bff',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem'
+                }}
+              >
+                🔄 更新
+              </button>
+            </div>
+            {batchStats && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+                <div 
+                  style={{ 
+                    padding: '1rem', 
+                    background: '#f8f9fa', 
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    transition: 'background-color 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e9ecef'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f8f9fa'}
+                  onClick={handleTotalUsersClick}
+                >
+                  <h5>総ユーザー数</h5>
+                  <p style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>{batchStats.totalUsers}</p>
+                  <small style={{ color: '#6c757d' }}>クリックして詳細を表示</small>
+                </div>
+                <div style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '4px' }}>
+                  <h5>処理完了</h5>
+                  <p style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>{batchStats.processed}</p>
+                </div>
+                <div style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '4px' }}>
+                  <h5>ロール削除</h5>
+                  <p style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: 0, color: '#dc3545' }}>{batchStats.revoked}</p>
+                </div>
+                <div style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '4px' }}>
+                  <h5>エラー数</h5>
+                  <p style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: 0, color: '#ffc107' }}>{batchStats.errors}</p>
+                </div>
+                <div style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '4px' }}>
+                  <h5>処理時間</h5>
+                  <p style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>{batchStats.duration}ms</p>
+                </div>
+                <div style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '4px' }}>
+                  <h5>最終実行</h5>
+                  <p style={{ fontSize: '1rem', margin: 0 }}>{batchStats.lastRun ? new Date(batchStats.lastRun).toLocaleString('ja-JP') : '未実行'}</p>
+                  <small style={{ color: '#6c757d', fontSize: '0.75rem' }}>
+                    {batchStats.lastRun ? new Date(batchStats.lastRun).toISOString() : ''}
+                  </small>
+                </div>
+              </div>
+            )}
+          </div>
+
+        </div>
+      )}
+
+      {activeTab === 'events' && (
+        <div>
+          <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 style={{ margin: 0 }}>イベント管理</h3>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => setIsCreatingEvent(true)}
+                style={{ padding: '0.25rem 0.75rem', background: '#28a745', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem' }}
+              >
+                新規イベント作成
+              </button>
+            </div>
+          </div>
+
+          {/* コレクション作成（Move呼び出し） */}
+          <div style={{ marginBottom: '1.5rem', padding: '1rem', border: '1px solid #d1d5db', borderRadius: 8, background: '#f8fafc' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <h4 style={{ margin: 0 }}>コレクション作成</h4>
+              <small style={{ color: '#6b7280' }}>Walrus CIDがある場合は自動で使用</small>
+            </div>
+            <div style={{ display: 'grid', gap: '0.5rem', maxWidth: 720 }}>
+              <input
+                type="text"
+                placeholder={`コレクション名（例: ${(newEvent.name || 'Event Collection')}）`}
+                value={createColName}
+                onChange={(e) => setCreateColName(e.target.value)}
+                style={{ padding: '0.5rem', borderRadius: 6, border: '1px solid #d1d5db' }}
+              />
+              <input
+                type="text"
+                placeholder={`シンボル（例: ${proposeSymbol(newEvent.name)}）`}
+                value={createColSymbol}
+                onChange={(e) => setCreateColSymbol(e.target.value)}
+                style={{ padding: '0.5rem', borderRadius: 6, border: '1px solid #d1d5db' }}
+              />
+              <input
+                type="text"
+                placeholder={defaultTypePath ? `型パス（固定）: ${defaultTypePath}` : '型パスを読み込み中...'}
+                value={createColTypePath || defaultTypePath}
+                onChange={(e) => setCreateColTypePath(e.target.value)}
+                style={{ padding: '0.5rem', borderRadius: 6, border: '1px solid #d1d5db', background: '#f9fafb', fontFamily: 'monospace', fontSize: '0.9rem' }}
+                disabled
+              />
+              <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '-0.25rem' }}>
+                ※ このプロジェクトでは1つの型パスのみ使用します
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  onClick={handleCreateCollectionViaMove}
+                  disabled={creatingCollection}
+                  style={{ padding: '0.5rem 1rem', background: '#0ea5e9', color: 'white', border: 'none', borderRadius: 6, cursor: creatingCollection ? 'not-allowed' : 'pointer', opacity: creatingCollection ? 0.6 : 1 }}
+                >
+                  {creatingCollection ? '作成中...' : 'コレクション作成'}
+                </button>
+                {createColMessage && (
+                  <div style={{ alignSelf: 'center', color: '#374151' }}>{createColMessage}</div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* 作成結果モーダル */}
+          {createColResult && (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }} onClick={() => setCreateColResult(null)}>
+              <div style={{ background: 'white', borderRadius: 12, padding: '1rem', width: 'min(92vw, 720px)' }} onClick={(e) => e.stopPropagation()}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h4 style={{ margin: 0 }}>コレクション作成結果</h4>
+                  <button onClick={() => setCreateColResult(null)} style={{ background: 'transparent', border: 'none', fontSize: '1.25rem', cursor: 'pointer' }}>×</button>
+                </div>
+                <div style={{ marginTop: '0.75rem' }}>
+                  <div style={{ marginBottom: '0.5rem' }}>
+                    <strong>コレクション名:</strong>
+                    <div style={{ fontSize: '0.9rem' }}>{createColResult?.data?.collection?.name || '-'}</div>
+                  </div>
+                  <div style={{ marginBottom: '0.5rem' }}>
+                    <strong>Package ID:</strong>
+                    <div style={{ fontFamily: 'monospace', fontSize: '0.9rem', wordBreak: 'break-all' }}>{createColResult?.data?.collection?.packageId || '-'}</div>
+                  </div>
+                  <div style={{ marginBottom: '0.5rem' }}>
+                    <strong>Type Path:</strong>
+                    <div style={{ fontFamily: 'monospace', fontSize: '0.9rem', wordBreak: 'break-all' }}>{createColResult?.data?.collection?.typePath || '-'}</div>
+                  </div>
+                  <div style={{ marginBottom: '0.5rem' }}>
+                    <strong>作成日時:</strong>
+                    <div style={{ fontSize: '0.9rem' }}>{createColResult?.data?.collection?.createdAt ? new Date(createColResult.data.collection.createdAt).toLocaleString('ja-JP') : '-'}</div>
+                  </div>
+                  <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#f3f4f6', borderRadius: '6px', fontSize: '0.875rem', color: '#6b7280' }}>
+                    ✅ コレクションがKVストアに登録されました
+                  </div>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.75rem' }}>
+                  <button onClick={() => setCreateColResult(null)} style={{ padding: '0.5rem 1rem', background: '#10b981', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer' }}>閉じる</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 作成/編集フォームは新しいEventEditorに移行しました（旧フォーム削除済み） */}
+          {/* イベント一覧 */}
+          <div>
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center', 
+              marginBottom: '1.5rem',
+              paddingBottom: '1rem',
+              borderBottom: '2px solid #e5e7eb'
+            }}>
+              <div>
+                <h4 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: '#1f2937' }}>イベント管理</h4>
+                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem', color: '#6b7280' }}>{events.length}件のイベント</p>
+              </div>
+              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <label style={{ fontSize: '0.875rem', color: '#6b7280', fontWeight: 500 }}>並び順:</label>
+                  <select
+                    value={eventSortBy}
+                    onChange={(e) => setEventSortBy(e.target.value as any)}
+                    style={{ 
+                      padding: '0.5rem 0.75rem', 
+                      border: '1px solid #d1d5db', 
+                      borderRadius: '8px', 
+                      fontSize: '0.875rem',
+                      background: 'white',
+                      cursor: 'pointer',
+                      outline: 'none',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    <option value="date">開催日時</option>
+                    <option value="name">イベント名</option>
+                    <option value="collection">コレクション</option>
+                    <option value="mints">ミント数</option>
+                  </select>
+                  <button
+                    onClick={() => setEventSortOrder(eventSortOrder === 'asc' ? 'desc' : 'asc')}
+                    style={{ 
+                      padding: '0.5rem 0.75rem', 
+                      background: 'white', 
+                      border: '1px solid #d1d5db', 
+                      borderRadius: '8px', 
+                      cursor: 'pointer', 
+                      fontSize: '0.875rem',
+                      fontWeight: 600,
+                      color: '#374151',
+                      transition: 'all 0.2s'
+                    }}
+                    title={eventSortOrder === 'asc' ? '昇順' : '降順'}
+                  >
+                    {eventSortOrder === 'asc' ? '昇順 ↑' : '降順 ↓'}
+                  </button>
+                </div>
+                <button
+                  onClick={fetchEvents}
+                  style={{ 
+                    padding: '0.5rem 1rem', 
+                    background: '#3b82f6', 
+                    color: 'white', 
+                    border: 'none', 
+                    borderRadius: '8px', 
+                    cursor: 'pointer', 
+                    fontSize: '0.875rem',
+                    fontWeight: 600,
+                    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#2563eb'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = '#3b82f6'}
+                >
+                  更新
+                </button>
+              </div>
+            </div>
+            
+            {(() => {
+              // ソート処理
+              const sortedEvents = [...events].sort((a, b) => {
+                let compareValue = 0;
+                
+                if (eventSortBy === 'name') {
+                  compareValue = a.name.localeCompare(b.name);
+                } else if (eventSortBy === 'collection') {
+                  const collA = mintCollections.find(col => a.collectionId === col.id)?.name || '';
+                  const collB = mintCollections.find(col => b.collectionId === col.id)?.name || '';
+                  compareValue = collA.localeCompare(collB);
+                } else if (eventSortBy === 'date') {
+                  compareValue = new Date(a.startAt).getTime() - new Date(b.startAt).getTime();
+                } else if (eventSortBy === 'mints') {
+                  compareValue = (a.mintedCount || 0) - (b.mintedCount || 0);
+                }
+                
+                return eventSortOrder === 'asc' ? compareValue : -compareValue;
+              });
+
+              return sortedEvents.map(ev => {
+                // イベントのコレクションIDからコレクション名を取得
+                const eventCollection = mintCollections.find(col => ev.collectionId === col.id);
+                const collectionName = eventCollection?.name || 'コレクション未設定';
+                
+                const start = Date.parse(ev.startAt);
+                const end = Date.parse(ev.endAt);
+                const isUpcoming = nowTs < start;
+                const isActive = nowTs >= start && nowTs <= end;
+                const isEnded = nowTs > end;
+                
+                return (
+                  <div key={ev.id} style={{ 
+                    border: '1px solid #e5e7eb', 
+                    borderLeft: `3px solid ${isActive ? '#10b981' : isEnded ? '#9ca3af' : '#3b82f6'}`,
+                    padding: '1.25rem', 
+                    borderRadius: '12px', 
+                    marginBottom: '1rem',
+                    background: 'white',
+                    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.boxShadow = '0 4px 6px rgba(0, 0, 0, 0.1)';
+                    e.currentTarget.style.transform = 'translateY(-1px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                  }}
+                  >
+                    <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'flex-start' }}>
+                      {/* 画像サムネイル */}
+                      {ev.imageUrl && (
+                        <div style={{
+                          width: 80,
+                          height: 80,
+                          borderRadius: 8,
+                          overflow: 'hidden',
+                          flexShrink: 0,
+                          border: '1px solid #e5e7eb'
+                        }}>
+                          <img 
+                            src={getImageDisplayUrl((ev as any).imageCid, ev.imageUrl)} 
+                            alt={ev.name} 
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                          />
+                        </div>
+                      )}
+                      
+                      {/* メイン情報 */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                          <h3 style={{ margin: 0, fontWeight: 600, fontSize: '1.125rem', color: '#111827' }}>{ev.name}</h3>
+                          <span style={{ 
+                            fontSize: '0.75rem', 
+                            padding: '0.25rem 0.75rem', 
+                            background: isActive ? '#d1fae5' : isEnded ? '#f3f4f6' : '#dbeafe', 
+                            color: isActive ? '#047857' : isEnded ? '#6b7280' : '#1e40af',
+                            borderRadius: '6px',
+                            fontWeight: 600,
+                            letterSpacing: '0.025em',
+                            textTransform: 'uppercase'
+                          }}>
+                            {isActive ? 'Active' : isEnded ? 'Ended' : 'Upcoming'}
+                          </span>
+                        </div>
+                        
+                        <div style={{ 
+                          fontSize: '0.8125rem', 
+                          color: '#6b7280', 
+                          marginBottom: '0.75rem', 
+                          display: 'inline-block', 
+                          padding: '0.25rem 0.75rem', 
+                          background: '#f9fafb', 
+                          borderRadius: '6px',
+                          border: '1px solid #e5e7eb'
+                        }}>
+                          Collection: {collectionName}
+                        </div>
+                        
+                        {ev.description && (
+                          <p style={{ 
+                            fontSize: '0.875rem', 
+                            color: '#6b7280', 
+                            marginBottom: '0.75rem', 
+                            overflow: 'hidden', 
+                            textOverflow: 'ellipsis', 
+                            whiteSpace: 'nowrap',
+                            margin: '0 0 0.75rem 0'
+                          }}>
+                            {ev.description}
+                          </p>
+                        )}
+                        
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', fontSize: '0.8125rem', color: '#4b5563' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontWeight: 500, marginBottom: '0.125rem' }}>期間</span>
+                            <span style={{ fontWeight: 500 }}>
+                              {new Date(ev.startAt).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 
+                              {' ~ '}
+                              {new Date(ev.endAt).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontWeight: 500, marginBottom: '0.125rem' }}>ミント進捗</span>
+                            <span style={{ fontWeight: 600, color: '#111827' }}>
+                              {typeof ev.mintedCount === 'number' ? ev.mintedCount.toLocaleString() : 0}
+                              <span style={{ fontWeight: 400, color: '#6b7280' }}>
+                                {typeof ev.totalCap === 'number' ? ` / ${ev.totalCap.toLocaleString()}` : ' / 無制限'}
+                              </span>
+                            </span>
+                          </div>
+                          {(isActive || isUpcoming) && (
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontWeight: 500, marginBottom: '0.125rem' }}>
+                                {isActive ? '終了まで' : '開始まで'}
+                              </span>
+                              <span style={{ fontWeight: 600, color: isActive ? '#10b981' : '#3b82f6' }}>
+                                {(() => {
+                                  const targetTime = isActive ? end : start;
+                                  const rem = Math.max(0, targetTime - nowTs);
+                                  const h = Math.floor(rem / 3600000);
+                                  const m = Math.floor((rem % 3600000) / 60000);
+                                  return `${h}時間 ${m}分`;
+                                })()}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* アクションボタン */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flexShrink: 0 }}>
+                        <button
+                          onClick={async () => {
+                            const url = `${window.location.origin}/mint/${ev.id}`;
+                            try { await navigator.clipboard.writeText(url); setMessage('ミントURLをコピーしました'); } catch { setMessage(url); }
+                          }}
+                          style={{ 
+                            padding: '0.5rem 1rem', 
+                            background: '#10b981', 
+                            color: 'white', 
+                            border: 'none', 
+                            borderRadius: '6px', 
+                            cursor: 'pointer', 
+                            fontSize: '0.8125rem', 
+                            fontWeight: 600,
+                            whiteSpace: 'nowrap',
+                            transition: 'all 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = '#059669'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = '#10b981'}
+                        >
+                          URL コピー
+                        </button>
+                        <button 
+                          onClick={() => setEditingEventData(ev)} 
+                          style={{ 
+                            padding: '0.5rem 1rem', 
+                            background: '#3b82f6', 
+                            color: 'white', 
+                            border: 'none', 
+                            borderRadius: '6px', 
+                            cursor: 'pointer', 
+                            fontSize: '0.8125rem',
+                            fontWeight: 600,
+                            transition: 'all 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = '#2563eb'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = '#3b82f6'}
+                        >
+                          編集
+                        </button>
+                        <button
+                          onClick={async () => {
+                            try {
+                              const res = await fetch(`${API_BASE_URL}/api/admin/events/${ev.id}/toggle-active`, { method: 'POST', headers: getAuthHeaders() });
+                              const data = await res.json();
+                              if (data.success) { setMessage('状態を切り替えました'); fetchEvents(); } else { setMessage(data.error || '切り替えに失敗しました'); }
+                            } catch { setMessage('切り替えに失敗しました'); }
+                          }}
+                          style={{ 
+                            padding: '0.5rem 1rem', 
+                            background: ev.active ? '#f59e0b' : '#6b7280', 
+                            color: 'white', 
+                            border: 'none', 
+                            borderRadius: '6px', 
+                            cursor: 'pointer', 
+                            fontSize: '0.8125rem',
+                            fontWeight: 600,
+                            transition: 'all 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = ev.active ? '#d97706' : '#4b5563'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = ev.active ? '#f59e0b' : '#6b7280'}
+                        >
+                          {ev.active ? '無効化' : '有効化'}
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteEvent(ev.id)} 
+                          style={{ 
+                            padding: '0.5rem 1rem', 
+                            background: 'white',
+                            color: '#ef4444', 
+                            border: '1px solid #fecaca', 
+                            borderRadius: '6px', 
+                            cursor: 'pointer', 
+                            fontSize: '0.8125rem',
+                            fontWeight: 600,
+                            transition: 'all 0.2s'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = '#ef4444';
+                            e.currentTarget.style.color = 'white';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'white';
+                            e.currentTarget.style.color = '#ef4444';
+                          }}
+                        >
+                          削除
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              });
+            })()}
+            {events.length === 0 && <p style={{ color: '#666' }}>イベントがありません</p>}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'users' && (
+        <div>
+          <h3>認証済みユーザー一覧</h3>
+          
+          <div style={{ 
+            marginBottom: '1rem',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <p>総ユーザー数: {verifiedUsers.length}人</p>
+            <button
+              onClick={fetchVerifiedUsers}
+              disabled={usersLoading}
+              style={{
+                padding: '0.5rem 1rem',
+                background: '#007bff',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: usersLoading ? 'not-allowed' : 'pointer',
+                opacity: usersLoading ? 0.6 : 1
+              }}
+            >
+              {usersLoading ? '更新中...' : '更新'}
+            </button>
+          </div>
+
+          {usersLoading ? (
+            <div style={{ textAlign: 'center', padding: '2rem' }}>
+              <p>ユーザー一覧を読み込み中...</p>
+            </div>
+          ) : verifiedUsers.length > 0 ? (
+            <div style={{ 
+              maxHeight: '600px', 
+              overflowY: 'auto',
+              border: '1px solid #ccc',
+              borderRadius: '8px'
+            }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead style={{ position: 'sticky', top: 0, background: '#f8f9fa' }}>
+                  <tr>
+                    <th style={{ padding: '0.75rem', textAlign: 'left', borderBottom: '1px solid #ccc' }}>Discord ID</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'left', borderBottom: '1px solid #ccc' }}>ウォレットアドレス</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'left', borderBottom: '1px solid #ccc' }}>ロール名</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'left', borderBottom: '1px solid #ccc' }}>認証日時</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'left', borderBottom: '1px solid #ccc' }}>最終チェック</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {verifiedUsers.map((user, index) => (
+                    <tr key={index} style={{ borderBottom: '1px solid #eee' }}>
+                      <td style={{ padding: '0.75rem' }}>{user.discordId}</td>
+                      <td style={{ padding: '0.75rem', fontFamily: 'monospace', fontSize: '0.9rem' }}>
+                        {user.address.length > 20 ? `${user.address.slice(0, 10)}...${user.address.slice(-8)}` : user.address}
+                      </td>
+                      <td style={{ padding: '0.75rem' }}>
+                        <span style={{ 
+                          background: '#007bff', 
+                          color: 'white', 
+                          padding: '0.25rem 0.5rem', 
+                          borderRadius: '4px',
+                          fontSize: '0.8rem'
+                        }}>
+                          {user.roleName}
+                        </span>
+                      </td>
+                      <td style={{ padding: '0.75rem', fontSize: '0.9rem' }}>
+                        {new Date(user.verifiedAt).toLocaleString('ja-JP')}
+                      </td>
+                      <td style={{ padding: '0.75rem', fontSize: '0.9rem' }}>
+                        {user.lastChecked ? new Date(user.lastChecked).toLocaleString('ja-JP') : '未チェック'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div style={{ 
+              textAlign: 'center', 
+              padding: '2rem',
+              color: '#666',
+              fontStyle: 'italic'
+            }}>
+              <p>認証済みユーザーがいません</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'admins' && (
+        <div>
+          <h3>管理者管理</h3>
+          
+          {/* 管理者追加フォーム */}
+          <div style={{ 
+            marginBottom: '2rem', 
+            padding: '1rem', 
+            border: '1px solid #ccc',
+            borderRadius: '8px'
+          }}>
+            <h4>新しい管理者を追加</h4>
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', maxWidth: '600px' }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                  ウォレットアドレス
+                </label>
+                <input
+                  type="text"
+                  placeholder="0x..."
+                  value={newAdminAddress}
+                  onChange={(e) => setNewAdminAddress(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    border: '1px solid #ccc',
+                    borderRadius: '4px',
+                    fontSize: '0.9rem',
+                    fontFamily: 'monospace'
+                  }}
+                />
+              </div>
+              <button
+                onClick={handleAddAdminAddress}
+                disabled={adminLoading || !newAdminAddress.trim()}
+                style={{
+                  padding: '0.75rem 1.5rem',
+                  background: '#28a745',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: adminLoading || !newAdminAddress.trim() ? 'not-allowed' : 'pointer',
+                  opacity: adminLoading || !newAdminAddress.trim() ? 0.6 : 1,
+                  fontWeight: '500'
+                }}
+              >
+                {adminLoading ? '追加中...' : '管理者追加'}
+              </button>
+            </div>
+          </div>
+
+          {/* 現在の管理者一覧 */}
+          <div style={{ 
+            padding: '1rem', 
+            border: '1px solid #ccc',
+            borderRadius: '8px'
+          }}>
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              marginBottom: '1rem'
+            }}>
+              <h4>現在の管理者一覧</h4>
+              <button
+                onClick={fetchAdminAddresses}
+                disabled={adminLoading}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: '#007bff',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: adminLoading ? 'not-allowed' : 'pointer',
+                  opacity: adminLoading ? 0.6 : 1,
+                  fontSize: '0.9rem'
+                }}
+              >
+                {adminLoading ? '更新中...' : '更新'}
+              </button>
+            </div>
+
+            {adminLoading ? (
+              <div style={{ textAlign: 'center', padding: '2rem' }}>
+                <p>管理者一覧を読み込み中...</p>
+              </div>
+            ) : adminAddresses.length > 0 ? (
+              <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                {adminAddresses.map((address, index) => (
+                  <div key={index} style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '1rem',
+                    background: '#f8f9fa',
+                    borderRadius: '8px',
+                    marginBottom: '0.75rem',
+                    border: '1px solid #e9ecef'
+                  }}>
+                    <div>
+                      <span style={{
+                        fontSize: '0.9rem',
+                        fontFamily: 'monospace',
+                        color: '#495057',
+                        wordBreak: 'break-all'
+                      }}>
+                        {address}
+                      </span>
+                      {index === 0 && (
+                        <span style={{
+                          background: '#28a745',
+                          color: 'white',
+                          padding: '0.25rem 0.5rem',
+                          borderRadius: '4px',
+                          fontSize: '0.7rem',
+                          marginLeft: '0.5rem'
+                        }}>
+                          メイン管理者
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => handleRemoveAdminAddress(address)}
+                      disabled={adminAddresses.length <= 1}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        background: adminAddresses.length <= 1 ? '#6c757d' : '#dc3545',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: adminAddresses.length <= 1 ? 'not-allowed' : 'pointer',
+                        opacity: adminAddresses.length <= 1 ? 0.6 : 1,
+                        fontSize: '0.8rem'
+                      }}
+                      title={adminAddresses.length <= 1 ? '最低1つの管理者が必要です' : '管理者を削除'}
+                    >
+                      削除
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ 
+                textAlign: 'center', 
+                padding: '2rem',
+                color: '#666',
+                fontStyle: 'italic'
+              }}>
+                <p>管理者が登録されていません</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'dm-settings' && (
+        <div>
+          <h3>DM通知設定</h3>
+          
+          {dmSettings ? (
+            <div>
+              {/* 現在の設定表示 */}
+              {!dmEditing ? (
+                <div style={{ 
+                  marginBottom: '2rem', 
+                  padding: '1rem', 
+                  border: '1px solid #ccc',
+                  borderRadius: '8px'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    <h4>現在の設定</h4>
+                    <button
+                      onClick={() => {
+                        setEditingDm({ ...dmSettings });
+                        setDmEditing(true);
+                      }}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        background: '#007bff',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      編集
+                    </button>
+                  </div>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                    <div>
+                      <strong>通常認証時のDM通知モード:</strong> {
+                        dmSettings.mode === 'all' ? '全ての通知' :
+                        dmSettings.mode === 'new_and_revoke' ? '新規認証とロール削除のみ' :
+                        dmSettings.mode === 'update_and_revoke' ? '認証更新とロール削除のみ' :
+                        dmSettings.mode === 'revoke_only' ? 'ロール削除のみ' :
+                        '通知なし'
+                      }
+                    </div>
+                    <div>
+                      <strong>バッチ処理時のDM通知モード:</strong> {
+                        dmSettings.batchMode === 'all' ? '全ての通知' :
+                        dmSettings.batchMode === 'new_and_revoke' ? '新規認証とロール削除のみ' :
+                        dmSettings.batchMode === 'update_and_revoke' ? '認証更新とロール削除のみ' :
+                        dmSettings.batchMode === 'revoke_only' ? 'ロール削除のみ' :
+                        '通知なし'
+                      }
+                    </div>
+                  </div>
+                  
+                  <div style={{ display: 'grid', gap: '1rem' }}>
+                    <h4 style={{ marginBottom: '0.5rem' }}>📱 DMテンプレート</h4>
+                    <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
+                      <h5>🎉 新規認証</h5>
+                      <div><strong>タイトル:</strong> {dmSettings.templates.successNew.title}</div>
+                      <div>
+                        <strong>内容:</strong>
+                        <div style={{ whiteSpace: 'pre-wrap' }}>
+                          {(dmSettings.templates.successNew.description || '').replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
+                      <h5>🔄 認証更新</h5>
+                      <div><strong>タイトル:</strong> {dmSettings.templates.successUpdate.title}</div>
+                      <div>
+                        <strong>内容:</strong>
+                        <div style={{ whiteSpace: 'pre-wrap' }}>
+                          {(dmSettings.templates.successUpdate.description || '').replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
+                      <h5>❌ 認証失敗</h5>
+                      <div><strong>タイトル:</strong> {dmSettings.templates.failed.title}</div>
+                      <div>
+                        <strong>内容:</strong>
+                        <div style={{ whiteSpace: 'pre-wrap' }}>
+                          {(dmSettings.templates.failed.description || '').replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
+                      <h5>🚫 ロール削除</h5>
+                      <div><strong>タイトル:</strong> {dmSettings.templates.revoked.title}</div>
+                      <div>
+                        <strong>内容:</strong>
+                        <div style={{ whiteSpace: 'pre-wrap' }}>
+                          {(dmSettings.templates.revoked.description || '').replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <h4 style={{ marginBottom: '0.5rem', marginTop: '1rem' }}>📺 チャンネルテンプレート</h4>
+                    <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
+                      <h5>🎫 認証チャンネル</h5>
+                      <div><strong>タイトル:</strong> {dmSettings.channelTemplates?.verificationChannel?.title || 'Not set'}</div>
+                      <div>
+                        <strong>内容:</strong>
+                        <div style={{ whiteSpace: 'pre-wrap' }}>
+                          {(dmSettings.channelTemplates?.verificationChannel?.description || 'Not set').replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
+                      <h5>▶️ 認証開始</h5>
+                      <div><strong>タイトル:</strong> {dmSettings.channelTemplates?.verificationStart?.title || 'Not set'}</div>
+                      <div>
+                        <strong>内容:</strong>
+                        <div style={{ whiteSpace: 'pre-wrap' }}>
+                          {(dmSettings.channelTemplates?.verificationStart?.description || 'Not set').replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
+                      <h5>🔗 認証URL</h5>
+                      <div><strong>ベースURL:</strong> {dmSettings.channelTemplates?.verificationUrl || 'Not set'}</div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* 編集モード */
+                <div style={{ 
+                  marginBottom: '2rem', 
+                  padding: '1rem', 
+                  border: '1px solid #ccc',
+                  borderRadius: '8px'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    <h4>設定を編集</h4>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button
+                        onClick={saveDmSettings}
+                        style={{
+                          padding: '0.5rem 1rem',
+                          background: '#28a745',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        保存
+                      </button>
+                      <button
+                        onClick={() => {
+                          setDmEditing(false);
+                          setEditingDm(null);
+                        }}
+                        style={{
+                          padding: '0.5rem 1rem',
+                          background: '#6c757d',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        キャンセル
+                      </button>
+                    </div>
+                  </div>
+                  
+                  {editingDm && (
+                    <div style={{ display: 'grid', gap: '1rem' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                            通常認証時のDM通知モード
+                          </label>
+                          <select
+                            value={editingDm.mode}
+                            onChange={(e) => setEditingDm({ ...editingDm, mode: e.target.value as DmMode })}
+                            style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', width: '100%' }}
+                          >
+                            <option value="all">全ての通知</option>
+                            <option value="new_and_revoke">新規認証とロール削除のみ</option>
+                            <option value="update_and_revoke">認証更新とロール削除のみ</option>
+                            <option value="revoke_only">ロール削除のみ</option>
+                            <option value="none">通知なし</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                            バッチ処理時のDM通知モード
+                          </label>
+                          <select
+                            value={editingDm.batchMode}
+                            onChange={(e) => setEditingDm({ ...editingDm, batchMode: e.target.value as DmMode })}
+                            style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', width: '100%' }}
+                          >
+                            <option value="all">全ての通知</option>
+                            <option value="new_and_revoke">新規認証とロール削除のみ</option>
+                            <option value="update_and_revoke">認証更新とロール削除のみ</option>
+                            <option value="revoke_only">ロール削除のみ</option>
+                            <option value="none">通知なし</option>
+                          </select>
+                        </div>
+                      </div>
+                      
+                      <div style={{ display: 'grid', gap: '1rem' }}>
+                        <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
+                          <h5>🎉 新規認証</h5>
+                          <input
+                            type="text"
+                            placeholder="タイトル"
+                            value={editingDm.templates.successNew.title}
+                            onChange={(e) => setEditingDm({
+                              ...editingDm,
+                              templates: {
+                                ...editingDm.templates,
+                                successNew: { ...editingDm.templates.successNew, title: e.target.value }
+                              }
+                            })}
+                            style={{ width: '100%', padding: '0.5rem', marginBottom: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                          />
+                          <textarea
+                            placeholder="内容"
+                            value={editingDm.templates.successNew.description}
+                            onChange={(e) => setEditingDm({
+                              ...editingDm,
+                              templates: {
+                                ...editingDm.templates,
+                                successNew: { ...editingDm.templates.successNew, description: e.target.value }
+                              }
+                            })}
+                            style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', minHeight: '100px' }}
+                          />
+                        </div>
+                        
+                        <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
+                          <h5>🔄 認証更新</h5>
+                          <input
+                            type="text"
+                            placeholder="タイトル"
+                            value={editingDm.templates.successUpdate.title}
+                            onChange={(e) => setEditingDm({
+                              ...editingDm,
+                              templates: {
+                                ...editingDm.templates,
+                                successUpdate: { ...editingDm.templates.successUpdate, title: e.target.value }
+                              }
+                            })}
+                            style={{ width: '100%', padding: '0.5rem', marginBottom: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                          />
+                          <textarea
+                            placeholder="内容"
+                            value={editingDm.templates.successUpdate.description}
+                            onChange={(e) => setEditingDm({
+                              ...editingDm,
+                              templates: {
+                                ...editingDm.templates,
+                                successUpdate: { ...editingDm.templates.successUpdate, description: e.target.value }
+                              }
+                            })}
+                            style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', minHeight: '100px' }}
+                          />
+                        </div>
+                        
+                        <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
+                          <h5>❌ 認証失敗</h5>
+                          <input
+                            type="text"
+                            placeholder="タイトル"
+                            value={editingDm.templates.failed.title}
+                            onChange={(e) => setEditingDm({
+                              ...editingDm,
+                              templates: {
+                                ...editingDm.templates,
+                                failed: { ...editingDm.templates.failed, title: e.target.value }
+                              }
+                            })}
+                            style={{ width: '100%', padding: '0.5rem', marginBottom: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                          />
+                          <textarea
+                            placeholder="内容"
+                            value={editingDm.templates.failed.description}
+                            onChange={(e) => setEditingDm({
+                              ...editingDm,
+                              templates: {
+                                ...editingDm.templates,
+                                failed: { ...editingDm.templates.failed, description: e.target.value }
+                              }
+                            })}
+                            style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', minHeight: '100px' }}
+                          />
+                        </div>
+                        
+                        <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
+                          <h5>🚫 ロール削除</h5>
+                          <input
+                            type="text"
+                            placeholder="タイトル"
+                            value={editingDm.templates.revoked.title}
+                            onChange={(e) => setEditingDm({
+                              ...editingDm,
+                              templates: {
+                                ...editingDm.templates,
+                                revoked: { ...editingDm.templates.revoked, title: e.target.value }
+                              }
+                            })}
+                            style={{ width: '100%', padding: '0.5rem', marginBottom: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                          />
+                          <textarea
+                            placeholder="内容"
+                            value={editingDm.templates.revoked.description}
+                            onChange={(e) => setEditingDm({
+                              ...editingDm,
+                              templates: {
+                                ...editingDm.templates,
+                                revoked: { ...editingDm.templates.revoked, description: e.target.value }
+                              }
+                            })}
+                            style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', minHeight: '100px' }}
+                          />
+                        </div>
+                        
+                        <h4 style={{ marginTop: '1rem', marginBottom: '0.5rem' }}>📺 チャンネルテンプレート</h4>
+                        
+                        <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
+                          <h5>🎫 認証チャンネル</h5>
+                          <input
+                            type="text"
+                            placeholder="タイトル"
+                            value={editingDm.channelTemplates?.verificationChannel?.title || ''}
+                            onChange={(e) => setEditingDm({
+                              ...editingDm,
+                              channelTemplates: {
+                                ...editingDm.channelTemplates,
+                                verificationChannel: { 
+                                  ...editingDm.channelTemplates?.verificationChannel, 
+                                  title: e.target.value 
+                                }
+                              }
+                            })}
+                            style={{ width: '100%', padding: '0.5rem', marginBottom: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                          />
+                          <textarea
+                            placeholder="内容"
+                            value={editingDm.channelTemplates?.verificationChannel?.description || ''}
+                            onChange={(e) => setEditingDm({
+                              ...editingDm,
+                              channelTemplates: {
+                                ...editingDm.channelTemplates,
+                                verificationChannel: { 
+                                  ...editingDm.channelTemplates?.verificationChannel, 
+                                  description: e.target.value 
+                                }
+                              }
+                            })}
+                            style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', minHeight: '100px' }}
+                          />
+                        </div>
+                        
+                        <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
+                          <h5>▶️ 認証開始</h5>
+                          <input
+                            type="text"
+                            placeholder="タイトル"
+                            value={editingDm.channelTemplates?.verificationStart?.title || ''}
+                            onChange={(e) => setEditingDm({
+                              ...editingDm,
+                              channelTemplates: {
+                                ...editingDm.channelTemplates,
+                                verificationStart: { 
+                                  ...editingDm.channelTemplates?.verificationStart, 
+                                  title: e.target.value 
+                                }
+                              }
+                            })}
+                            style={{ width: '100%', padding: '0.5rem', marginBottom: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                          />
+                          <textarea
+                            placeholder="内容"
+                            value={editingDm.channelTemplates?.verificationStart?.description || ''}
+                            onChange={(e) => setEditingDm({
+                              ...editingDm,
+                              channelTemplates: {
+                                ...editingDm.channelTemplates,
+                                verificationStart: { 
+                                  ...editingDm.channelTemplates?.verificationStart, 
+                                  description: e.target.value 
+                                }
+                              }
+                            })}
+                            style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', minHeight: '100px' }}
+                          />
+                        </div>
+                        
+                        <div style={{ padding: '1rem', border: '1px solid #e9ecef', borderRadius: '4px' }}>
+                          <h5>🔗 認証URL</h5>
+                          <input
+                            type="text"
+                            placeholder="ベースURL (例: https://syndicatextokyo.app)"
+                            value={editingDm.channelTemplates?.verificationUrl || ''}
+                            onChange={(e) => setEditingDm({
+                              ...editingDm,
+                              channelTemplates: {
+                                ...editingDm.channelTemplates,
+                                verificationUrl: e.target.value
+                              }
+                            })}
+                            style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc' }}
+                          />
+                          <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.5rem' }}>
+                            実際のURLは「ベースURL?discord_id=ユーザーID」の形式で生成されます<br/>
+                            ユーザーにはクリック可能なリンクとコピー用のコードブロックで表示されます
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '2rem' }}>
+              <p>DM設定を読み込み中...</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'history' && (
+        <div style={{ display: 'grid', gap: '1.5rem' }}>
+          {/* コレクション管理セクション */}
+          <div style={{ 
+            background: '#f9fafb', 
+            padding: '1.5rem', 
+            borderRadius: '8px',
+            border: '1px solid #e5e7eb'
+          }}>
+            <h3 style={{ marginTop: 0, marginBottom: '1rem', color: '#111827' }}>🗂️ コレクション管理</h3>
+            <div style={{ display: 'grid', gap: '0.75rem' }}>
+              {mintCollections.length === 0 ? (
+                <p style={{ color: '#6b7280', margin: 0 }}>登録されたコレクションがありません</p>
+              ) : (
+                mintCollections.map(col => (
+                  <div key={col.id} style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '1rem',
+                    background: 'white',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '6px'
+                  }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: '600', color: '#111827', marginBottom: '0.25rem' }}>
+                        {col.name}
+                      </div>
+                      <div style={{ fontSize: '0.875rem', color: '#6b7280', fontFamily: 'monospace' }}>
+                        Package ID: {col.packageId || 'N/A'}
+                      </div>
+                      {(col as any).typePath && (
+                        <div style={{ fontSize: '0.75rem', color: '#9ca3af', fontFamily: 'monospace', marginTop: '0.25rem' }}>
+                          Type Path: {(col as any).typePath}
+                        </div>
+                      )}
+                      <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.25rem' }}>
+                        作成日時: {new Date(Number(col.id)).toLocaleString('ja-JP')}
+                      </div>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        if (!confirm(`本当に「${col.name}」を削除しますか？\n\nこの操作は取り消せません。`)) {
+                          return;
+                        }
+                        try {
+                          setLoading(true);
+                          setMessage('🗑️ 削除中...');
+                          const res = await fetch(`${API_BASE_URL}/api/mint-collections/${col.id}`, {
+                            method: 'DELETE',
+                            headers: {
+                              'Content-Type': 'application/json',
+                              'X-Admin-Address': account?.address || localStorage.getItem('currentWalletAddress') || '',
+                              'X-Wallet-Connected': 'true'
+                            }
+                          });
+                          const data = await res.json();
+                          if (data.success) {
+                            setMessage('✅ コレクションを削除しました');
+                            // リストから削除
+                            setMintCollections(prev => prev.filter(c => c.id !== col.id));
+                            setTimeout(() => setMessage(''), 3000);
+                          } else {
+                            setMessage(`❌ 削除失敗: ${data.error}`);
+                            setTimeout(() => setMessage(''), 5000);
+                          }
+                        } catch (err: any) {
+                          console.error('Collection delete error:', err);
+                          setMessage(`❌ エラー: ${err.message}`);
+                          setTimeout(() => setMessage(''), 5000);
+                        } finally {
+                          setLoading(false);
+                        }
+                      }}
+                      disabled={loading}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        background: '#ef4444',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: loading ? 'not-allowed' : 'pointer',
+                        opacity: loading ? 0.6 : 1,
+                        fontWeight: '500',
+                        fontSize: '0.875rem',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseOver={(e) => !loading && (e.currentTarget.style.background = '#dc2626')}
+                      onMouseOut={(e) => !loading && (e.currentTarget.style.background = '#ef4444')}
+                    >
+                      🗑️ 削除
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* ミント履歴セクション */}
+          <div style={{ 
+            background: '#f9fafb', 
+            padding: '1.5rem', 
+            borderRadius: '8px',
+            border: '1px solid #e5e7eb'
+          }}>
+            <h3 style={{ marginTop: 0, marginBottom: '1rem', color: '#111827' }}>📜 ミント履歴</h3>
+          <div style={{ display: 'grid', gap: '0.5rem' }}>
+            <label style={{ fontSize: '0.9rem', color: '#374151' }}>コレクションを選択</label>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <select
+                value={historyCollection}
+                onChange={(e) => setHistoryCollection(e.target.value)}
+                style={{ padding: '0.5rem', borderRadius: 4, border: '1px solid #ccc', minWidth: 280 }}
+              >
+                <option value="">選択してください</option>
+                {mintCollections.map(col => (
+                  <option key={col.id} value={(col as any).typePath || col.packageId}>
+                    {col.name} ({(col.packageId || '').slice(0, 10)}...)
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => historyCollection && fetchCollectionHistory(historyCollection)}
+                disabled={!historyCollection || historyLoading}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: historyLoading ? '#6c757d' : '#007bff',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: 4,
+                  cursor: !historyCollection || historyLoading ? 'not-allowed' : 'pointer',
+                  opacity: !historyCollection || historyLoading ? 0.6 : 1,
+                  fontWeight: 500
+                }}
+                title={!historyCollection ? 'コレクションを選んでください' : ''}
+              >
+                {historyLoading ? '読み込み中...' : '履歴取得'}
+              </button>
+            </div>
+          </div>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb', padding: '0.75rem', fontWeight: '600', color: '#111827' }}>日時</th>
+                  <th style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb', padding: '0.75rem', fontWeight: '600', color: '#111827' }}>イベント名</th>
+                  <th style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb', padding: '0.75rem', fontWeight: '600', color: '#111827' }}>保有者アドレス</th>
+                  <th style={{ textAlign: 'center', borderBottom: '1px solid #e5e7eb', padding: '0.75rem', fontWeight: '600', color: '#111827' }}>アクション</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historyItems.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} style={{ padding: '2rem', textAlign: 'center', color: '#6b7280' }}>
+                      <div>📋 ミント履歴がありません</div>
+                      <div style={{ fontSize: '0.875rem', marginTop: '0.5rem' }}>このコレクションでNFTをミントすると、ここに履歴が表示されます</div>
+                    </td>
+                  </tr>
+                ) : (
+                  historyItems.map((it, idx) => {
+                    const evName = events.find(e => e.id === it.eventId)?.name || it.eventId || '-';
+                    return (
+                      <tr key={idx} style={{ background: idx % 2 === 0 ? 'white' : '#f9fafb' }}>
+                        <td style={{ padding: '0.75rem', borderBottom: '1px solid #f3f4f6', whiteSpace: 'nowrap', color: '#374151' }}>
+                          {it.at ? new Date(it.at).toLocaleString('ja-JP') : '-'}
+                        </td>
+                        <td style={{ padding: '0.75rem', borderBottom: '1px solid #f3f4f6', color: '#111827', fontWeight: '500' }}>
+                          {evName}
+                        </td>
+                        <td style={{ padding: '0.75rem', borderBottom: '1px solid #f3f4f6' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <span style={{ fontFamily: 'monospace', fontSize: '0.875rem', color: '#374151' }}>
+                              {it.recipient ? `${it.recipient.slice(0, 6)}...${it.recipient.slice(-4)}` : '-'}
+                            </span>
+                            {it.recipient && (
+                              <button
+                                onClick={() => {
+                                  if (it.recipient) {
+                                    navigator.clipboard.writeText(it.recipient);
+                                    setMessage('アドレスをコピーしました');
+                                    setTimeout(() => setMessage(''), 2000);
+                                  }
+                                }}
+                                style={{
+                                  padding: '0.25rem 0.5rem',
+                                  background: '#e5e7eb',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer',
+                                  fontSize: '0.75rem',
+                                  color: '#374151'
+                                }}
+                                title="アドレスをコピー"
+                              >
+                                📋
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                        <td style={{ padding: '0.75rem', borderBottom: '1px solid #f3f4f6', textAlign: 'center' }}>
+                          {it.txDigest && (
+                            <a 
+                              href={`https://suivision.xyz/txblock/${it.txDigest}`} 
+                              target="_blank" 
+                              rel="noreferrer"
+                              style={{
+                                display: 'inline-block',
+                                padding: '0.375rem 0.75rem',
+                                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                color: 'white',
+                                borderRadius: '6px',
+                                textDecoration: 'none',
+                                fontSize: '0.875rem',
+                                fontWeight: '500',
+                                transition: 'opacity 0.2s'
+                              }}
+                              onMouseOver={(e) => e.currentTarget.style.opacity = '0.9'}
+                              onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
+                            >
+                              🔍 詳細を見る
+                            </a>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+          </div>
+        </div>
+      )}
+
+      {message && (
+        <div style={{
+          position: 'fixed',
+          top: '1rem',
+          right: '1rem',
+          padding: '1rem',
+          background: message.includes('成功') ? '#d4edda' : '#f8d7da',
+          color: message.includes('成功') ? '#155724' : '#721c24',
+          border: '1px solid',
+          borderColor: message.includes('成功') ? '#c3e6cb' : '#f5c6cb',
+          borderRadius: '4px',
+          zIndex: 1000
+        }}>
+          {message}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default AdminPanel; 

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout';
 import { Breadcrumb } from '../../components/admin/Breadcrumb';
 import { PageHeader } from '../../components/admin/PageHeader';
+import { useResponsive } from '../../hooks/useResponsive';
 import type { NFTCollection, DiscordRole, BatchConfig, BatchStats, VerifiedUser, DmSettings } from '../../types';
 import { useWalletWithErrorHandling } from '../../hooks/useWallet';
 
@@ -10,6 +11,12 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verificat
 export default function RolesManagement() {
   useWalletWithErrorHandling();
   const [activeTab, setActiveTab] = useState<'collections' | 'users' | 'batch' | 'dm-settings'>('collections');
+  
+  // レスポンシブ対応
+  try {
+    useResponsive();
+  } catch (error) {
+  }
   
   // States
   const [collections, setCollections] = useState<NFTCollection[]>([]);
@@ -47,7 +54,6 @@ export default function RolesManagement() {
       const data = await res.json();
       if (data.success) setCollections(data.data || []);
     } catch (e) {
-      console.error('Failed to fetch collections', e);
     }
   }, []);
 
@@ -59,7 +65,6 @@ export default function RolesManagement() {
       const data = await res.json();
       if (data.success) setDiscordRoles(data.data || []);
     } catch (e) {
-      console.error('Failed to fetch discord roles', e);
     }
   }, []);
 
@@ -72,7 +77,6 @@ export default function RolesManagement() {
       const data = await res.json();
       if (data.success) setVerifiedUsers(data.data || []);
     } catch (e) {
-      console.error('Failed to fetch verified users', e);
     } finally {
       setUsersLoading(false);
     }
@@ -86,7 +90,6 @@ export default function RolesManagement() {
       const data = await res.json();
       if (data.success) setBatchConfig(data.data);
     } catch (e) {
-      console.error('Failed to fetch batch config', e);
     }
   }, []);
 
@@ -99,7 +102,6 @@ export default function RolesManagement() {
       const data = await res.json();
       if (data.success) setBatchStats(data.data);
     } catch (e) {
-      console.error('Failed to fetch batch stats', e);
     } finally {
       setBatchLoading(false);
     }
@@ -107,20 +109,15 @@ export default function RolesManagement() {
 
   const fetchDmSettings = useCallback(async () => {
     try {
-      console.log('Fetching DM settings...');
       const res = await fetch(`${API_BASE_URL}/api/admin/dm-settings`, { 
         headers: getAuthHeaders() 
       });
       const data = await res.json();
-      console.log('DM settings response:', data);
       if (data.success) {
         setDmSettings(data.data);
-        console.log('DM settings set:', data.data);
       } else {
-        console.error('DM settings fetch failed:', data.error);
       }
     } catch (e) {
-      console.error('Failed to fetch DM settings', e);
     }
   }, []);
 

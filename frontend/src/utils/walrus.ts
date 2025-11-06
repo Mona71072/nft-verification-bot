@@ -62,7 +62,6 @@ export const getWalrusConfig = async (): Promise<{
       throw new Error(data.error || 'Failed to get Walrus config');
     }
   } catch (error) {
-    console.error('Failed to get Walrus config:', error);
     return { uploadEnabled: false };
   }
 };
@@ -126,7 +125,6 @@ export const uploadToWalrus = async (
       };
     }
   } catch (error) {
-    console.error('Walrus upload error:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Upload failed'

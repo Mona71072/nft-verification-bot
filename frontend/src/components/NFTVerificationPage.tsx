@@ -17,14 +17,11 @@ export const NFTVerificationPage: React.FC = () => {
   
   // エラーハンドリング付きでuseResponsiveフックを使用
   let deviceType: 'mobile' | 'tablet' | 'desktop' = 'desktop';
-  let isMobile = false;
   
   try {
     const responsive = useResponsive();
     deviceType = responsive.deviceType;
-    isMobile = responsive.isMobile;
   } catch (error) {
-    console.error('useResponsive error:', error);
     // フォールバック値を使用
   }
   
@@ -45,19 +42,15 @@ export const NFTVerificationPage: React.FC = () => {
   // エラーハンドリング付きでコンポーネントをレンダリング
   try {
     return (
+      <>
       <div style={{
       minHeight: '100vh',
-      background: `
-        radial-gradient(circle at 20% 20%, rgba(102, 126, 234, 0.8) 0%, transparent 50%),
-        radial-gradient(circle at 80% 80%, rgba(118, 75, 162, 0.6) 0%, transparent 50%),
-        radial-gradient(circle at 40% 60%, rgba(240, 147, 251, 0.4) 0%, transparent 50%),
-        linear-gradient(135deg, #0f0f23 0%, #1a1a2e 25%, #16213e 50%, #0f3460 75%, #533483 100%)
-      `,
+      background: 'linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 25%, #16213e 50%, #0f3460 75%, #1e3a8a 100%)',
       position: 'relative',
       overflow: 'hidden',
       fontFamily: 'system-ui, -apple-system, sans-serif'
     }}>
-      {/* Background Pattern */}
+      {/* Subtle grid pattern */}
       <div style={{
         position: 'absolute',
         top: 0,
@@ -65,48 +58,58 @@ export const NFTVerificationPage: React.FC = () => {
         right: 0,
         bottom: 0,
         background: `
-          radial-gradient(circle at 20% 80%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
-          radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.1) 0%, transparent 50%),
-          radial-gradient(circle at 40% 40%, rgba(120, 119, 198, 0.2) 0%, transparent 50%)
+          linear-gradient(rgba(59, 130, 246, 0.03) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(59, 130, 246, 0.03) 1px, transparent 1px)
         `,
+        backgroundSize: '40px 40px',
         pointerEvents: 'none'
       }} />
       
-      {/* Floating Elements - Hidden on mobile for performance */}
-      {!isMobile && (
-        <>
-          <div style={{
-            position: 'absolute',
-            top: '10%',
-            left: '10%',
-            width: '60px',
-            height: '60px',
-            background: 'rgba(255, 255, 255, 0.1)',
-            borderRadius: '50%',
-            animation: 'float 6s ease-in-out infinite'
-          }} />
-          <div style={{
-            position: 'absolute',
-            top: '20%',
-            right: '15%',
-            width: '40px',
-            height: '40px',
-            background: 'rgba(255, 255, 255, 0.08)',
-            borderRadius: '50%',
-            animation: 'float 8s ease-in-out infinite reverse'
-          }} />
-          <div style={{
-            position: 'absolute',
-            bottom: '20%',
-            left: '20%',
-            width: '80px',
-            height: '80px',
-            background: 'rgba(255, 255, 255, 0.05)',
-            borderRadius: '50%',
-            animation: 'float 10s ease-in-out infinite'
-          }} />
-        </>
-      )}
+      {/* Floating particles */}
+      <div style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        pointerEvents: 'none',
+        overflow: 'hidden'
+      }}>
+        {[...Array(6)].map((_, i) => (
+          <div
+            key={i}
+            style={{
+              position: 'absolute',
+              width: getResponsiveValue('4px', '6px', '8px', deviceType),
+              height: getResponsiveValue('4px', '6px', '8px', deviceType),
+              background: `rgba(59, 130, 246, ${0.3 + i * 0.1})`,
+              borderRadius: '50%',
+              left: `${20 + i * 15}%`,
+              top: `${30 + i * 10}%`,
+              animation: `floatParticle ${8 + i * 2}s ease-in-out infinite`,
+              animationDelay: `${i * 1.5}s`,
+              boxShadow: `0 0 ${getResponsiveValue('10px', '15px', '20px', deviceType)} rgba(59, 130, 246, 0.4)`
+            }}
+          />
+        ))}
+      </div>
+      
+      {/* Animated gradient overlay */}
+      <div style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: `
+          radial-gradient(circle at 20% 20%, rgba(59, 130, 246, 0.08) 0%, transparent 60%),
+          radial-gradient(circle at 80% 80%, rgba(147, 51, 234, 0.06) 0%, transparent 60%),
+          radial-gradient(circle at 40% 60%, rgba(16, 185, 129, 0.04) 0%, transparent 60%)
+        `,
+        pointerEvents: 'none',
+        animation: 'gradientShift 30s ease-in-out infinite'
+      }} />
+      
 
       <div style={{
         display: 'flex',
@@ -118,154 +121,73 @@ export const NFTVerificationPage: React.FC = () => {
         zIndex: 1
       }}>
         <div style={{
-          background: `
-            linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%),
-            linear-gradient(45deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)
-          `,
-          backdropFilter: 'blur(30px)',
-          borderRadius: '32px',
-          padding: getResponsiveValue('1.5rem', '2rem', '3rem', deviceType),
+          background: 'rgba(10, 10, 15, 0.9)',
+          backdropFilter: 'blur(28px)',
+          borderRadius: getResponsiveValue('20px', '24px', '28px', deviceType),
+          padding: getResponsiveValue('1.5rem', '2rem', '2.5rem', deviceType),
           maxWidth: getResponsiveValue('100%', '90%', '600px', deviceType),
           width: '100%',
-          boxShadow: `
-            0 40px 80px rgba(0, 0, 0, 0.3),
-            0 0 0 1px rgba(255, 255, 255, 0.1),
-            inset 0 1px 0 rgba(255, 255, 255, 0.2)
-          `,
-          border: '1px solid rgba(255, 255, 255, 0.1)',
+          boxShadow: '0 40px 80px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(59, 130, 246, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.15), inset 0 -1px 0 rgba(0, 0, 0, 0.2)',
+          border: '1px solid rgba(59, 130, 246, 0.4)',
           position: 'relative',
           overflow: 'hidden'
         }}>
-          {/* Glass Effect Overlay */}
-          <div style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            height: '1px',
-            background: 'linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.8), transparent)'
-          }} />
 
-          <div style={{ textAlign: 'center', marginBottom: getResponsiveValue('2rem', '2.5rem', '3rem', deviceType) }}>
-            {/* Modern Header with Tech Aesthetics */}
-            <div style={{
-              position: 'relative',
-              marginBottom: getResponsiveValue('2rem', '2.5rem', '3rem', deviceType)
-            }}>
-              {/* Animated Tech Grid Background */}
-              <div style={{
-                position: 'absolute',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                width: getResponsiveValue('200px', '250px', '300px', deviceType),
-                height: getResponsiveValue('200px', '250px', '300px', deviceType),
-                background: `
-                  linear-gradient(45deg, transparent 48%, rgba(102, 126, 234, 0.1) 49%, rgba(102, 126, 234, 0.1) 51%, transparent 52%),
-                  linear-gradient(-45deg, transparent 48%, rgba(118, 75, 162, 0.1) 49%, rgba(118, 75, 162, 0.1) 51%, transparent 52%)
-                `,
-                backgroundSize: '20px 20px',
-                animation: 'techGrid 20s linear infinite',
-                opacity: 0.6,
-                zIndex: 0
-              }} />
-              
-              {/* Central Tech Circle */}
-              <div style={{
-                position: 'relative',
-                width: getResponsiveValue('120px', '140px', '160px', deviceType),
-                height: getResponsiveValue('120px', '140px', '160px', deviceType),
-                margin: '0 auto',
-                background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)',
-                borderRadius: '50%',
-                border: '2px solid rgba(102, 126, 234, 0.3)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                zIndex: 1,
-                overflow: 'hidden'
-              }}>
-                {/* Inner Tech Pattern */}
-                <div style={{
-                  width: '80%',
-                  height: '80%',
-                  background: 'linear-gradient(45deg, transparent 30%, rgba(102, 126, 234, 0.2) 50%, transparent 70%)',
-                  borderRadius: '50%',
-                  position: 'relative',
-                  animation: 'techPulse 3s ease-in-out infinite'
-                }}>
-                  {/* Central Dot */}
-                  <div style={{
-                    position: 'absolute',
-                    top: '50%',
-                    left: '50%',
-                    transform: 'translate(-50%, -50%)',
-                    width: '8px',
-                    height: '8px',
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    borderRadius: '50%',
-                    boxShadow: '0 0 20px rgba(102, 126, 234, 0.6)'
-                  }} />
-                </div>
-              </div>
-            </div>
+          <div style={{ textAlign: 'center', marginBottom: getResponsiveValue('1.5rem', '2rem', '2.5rem', deviceType) }}>
 
-            <h1 style={{
-              fontSize: getResponsiveValue('1.75rem', '2rem', '2.5rem', deviceType),
-              fontWeight: '900',
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
-              marginBottom: '1rem',
-              letterSpacing: '-0.03em',
-              textShadow: '0 0 30px rgba(102, 126, 234, 0.3)',
-              position: 'relative'
-            }}>
-              NFT Verification Portal
-            </h1>
-            
             <div style={{
-              position: 'relative',
-              marginBottom: '1rem'
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              marginBottom: getResponsiveValue('0.75rem', '1rem', '1.25rem', deviceType)
             }}>
               <div style={{
-                display: 'inline-block',
-                padding: getResponsiveValue('0.5rem 1rem', '0.625rem 1.25rem', '0.75rem 1.5rem', deviceType),
-                background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)',
-                border: '1px solid rgba(102, 126, 234, 0.2)',
-                borderRadius: '50px',
-                fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType),
+                fontSize: getResponsiveValue('0.75rem', '0.875rem', '1rem', deviceType),
                 fontWeight: '600',
-                color: '#667eea',
-                textTransform: 'uppercase',
+                color: '#8b5cf6',
+                marginBottom: getResponsiveValue('0.25rem', '0.375rem', '0.5rem', deviceType),
                 letterSpacing: '0.05em',
-                backdropFilter: 'blur(10px)',
-                boxShadow: '0 4px 20px rgba(102, 126, 234, 0.1)'
+                textShadow: '0 0 15px rgba(139, 92, 246, 0.4)',
+                opacity: 0.9
               }}>
-                Advanced Blockchain Technology
+                SyndicateXTokyo
               </div>
+              <h1 style={{
+                fontSize: getResponsiveValue('1.25rem', '1.5rem', '1.875rem', deviceType),
+                fontWeight: '800',
+                background: 'linear-gradient(135deg, #ffffff 0%, #f0f9ff 25%, #e0e7ff 50%, #c7d2fe 75%, #a5b4fc 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+                letterSpacing: '-0.03em',
+                textShadow: '0 0 30px rgba(59, 130, 246, 0.3)',
+                position: 'relative',
+                margin: 0
+              }}>
+                NFT Verification
+              </h1>
             </div>
             
             <p style={{
-              color: '#64748b',
-              fontSize: getResponsiveValue('0.875rem', '1rem', '1.125rem', deviceType),
-              lineHeight: '1.6',
-              maxWidth: '500px',
+              color: '#c7d2fe',
+              fontSize: getResponsiveValue('0.75rem', '0.875rem', '1rem', deviceType),
+              lineHeight: '1.5',
+              maxWidth: getResponsiveValue('280px', '400px', '500px', deviceType),
               margin: '0 auto',
-              fontWeight: '500'
+              fontWeight: '500',
+              textShadow: '0 0 20px rgba(167, 180, 252, 0.3)'
             }}>
-              Verify your NFT collection ownership and automatically receive your Discord role with cutting-edge blockchain verification technology.
+              Connect your wallet and verify NFT ownership to receive Discord roles.
             </p>
           </div>
 
           {/* Wallet Connection */}
-          <div style={{ marginBottom: '2rem' }}>
+          <div style={{ marginBottom: getResponsiveValue('1rem', '1.25rem', '1.5rem', deviceType) }}>
             <WalletConnection />
           </div>
 
           {/* Collection Selection */}
-          <div style={{ marginBottom: '2rem' }}>
+          <div style={{ marginBottom: getResponsiveValue('1rem', '1.25rem', '1.5rem', deviceType) }}>
             <CollectionSelector
               collections={collections}
               selectedCollections={selectedCollections}
@@ -287,46 +209,55 @@ export const NFTVerificationPage: React.FC = () => {
         </div>
       </div>
 
-      {/* CSS Animations */}
-      <style>{`
-        @keyframes float {
-          0%, 100% { transform: translateY(0px) rotate(0deg); }
-          50% { transform: translateY(-20px) rotate(180deg); }
-        }
-        
-        @keyframes techGrid {
-          0% { transform: translate(-50%, -50%) rotate(0deg); }
-          100% { transform: translate(-50%, -50%) rotate(360deg); }
-        }
-        
-        @keyframes techPulse {
-          0%, 100% { 
-            transform: scale(1);
-            opacity: 0.8;
-          }
-          50% { 
-            transform: scale(1.1);
-            opacity: 1;
-          }
-        }
-        
-        @keyframes techGlow {
-          0%, 100% { 
-            box-shadow: 0 0 20px rgba(102, 126, 234, 0.6);
-          }
-          50% { 
-            box-shadow: 0 0 40px rgba(102, 126, 234, 0.8), 0 0 60px rgba(118, 75, 162, 0.4);
-          }
-        }
-      `}</style>
     </div>
-  );
+    
+    {/* CSS Animations */}
+    <style>{`
+      @keyframes gradientShift {
+        0%, 100% { 
+          transform: translateX(0) translateY(0) scale(1) rotate(0deg);
+          opacity: 0.6;
+        }
+        25% { 
+          transform: translateX(20px) translateY(-15px) scale(1.05) rotate(2deg);
+          opacity: 0.4;
+        }
+        50% { 
+          transform: translateX(-15px) translateY(20px) scale(0.95) rotate(-1deg);
+          opacity: 0.3;
+        }
+        75% { 
+          transform: translateX(10px) translateY(-10px) scale(1.02) rotate(1deg);
+          opacity: 0.5;
+        }
+      }
+      
+      @keyframes floatParticle {
+        0%, 100% { 
+          transform: translateY(0) translateX(0) scale(1);
+          opacity: 0.3;
+        }
+        25% { 
+          transform: translateY(-30px) translateX(15px) scale(1.2);
+          opacity: 0.8;
+        }
+        50% { 
+          transform: translateY(-60px) translateX(-10px) scale(0.8);
+          opacity: 0.6;
+        }
+        75% { 
+          transform: translateY(-40px) translateX(20px) scale(1.1);
+          opacity: 0.9;
+        }
+      }
+    `}</style>
+      </>
+    );
   } catch (error) {
-    console.error('NFTVerificationPage render error:', error);
     return (
       <div style={{
         minHeight: '100vh',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        background: 'linear-gradient(135deg, #111827 0%, #1f2937 100%)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -336,13 +267,15 @@ export const NFTVerificationPage: React.FC = () => {
         <div style={{
           textAlign: 'center',
           padding: '2rem',
-          background: 'rgba(255, 255, 255, 0.1)',
-          borderRadius: '16px',
-          backdropFilter: 'blur(10px)'
+          background: 'rgba(31, 41, 55, 0.8)',
+          borderRadius: '20px',
+          border: '1px solid rgba(55, 65, 81, 0.4)',
+          backdropFilter: 'blur(20px)',
+          boxShadow: '0 25px 50px rgba(0, 0, 0, 0.4)'
         }}>
-          <h1 style={{ marginBottom: '1rem' }}>NFT Verification Portal</h1>
-          <p style={{ marginBottom: '1rem' }}>Loading verification system...</p>
-          <p style={{ fontSize: '0.875rem', opacity: 0.8 }}>
+          <h1 style={{ marginBottom: '1rem', color: '#f9fafb', fontWeight: '700' }}>NFT Verification</h1>
+          <p style={{ marginBottom: '1rem', color: '#d1d5db' }}>Loading verification system...</p>
+          <p style={{ fontSize: '0.875rem', color: '#9ca3af' }}>
             If this message persists, please refresh the page.
           </p>
         </div>

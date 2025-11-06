@@ -35,8 +35,7 @@ const client = new Client({
 // Bot準備完了時
 client.once(Events.ClientReady, async (readyClient) => {
   if (!validateConfig()) {
-    console.error('Configuration validation failed');
-    return;
+  return;
   }
   
   try {
@@ -48,11 +47,9 @@ client.once(Events.ClientReady, async (readyClient) => {
       const missingPermissions = requiredPermissions.filter(perm => !botMember.permissions.has(perm as any));
       
       if (missingPermissions.length > 0) {
-        console.error('Missing required permissions:', missingPermissions);
       }
     }
   } catch (error) {
-    console.error('Error checking bot permissions:', error);
   }
   
   startApiServer();
@@ -76,7 +73,6 @@ async function getChannelTemplates() {
       return data.fallback || getDefaultChannelTemplates();
     }
   } catch (error) {
-    console.error('Error fetching channel templates:', error);
     return getDefaultChannelTemplates();
   }
 }
@@ -102,20 +98,17 @@ async function setupVerificationChannel() {
   try {
     const guild = await client.guilds.fetch(config.DISCORD_GUILD_ID);
     if (!guild) {
-      console.error('Guild not found');
       return;
     }
 
     const verificationChannel = await guild.channels.fetch(config.VERIFICATION_CHANNEL_ID) as TextChannel;
     
     if (!verificationChannel) {
-      console.error('Verification channel not found');
       return;
     }
 
     const botPermissions = verificationChannel.permissionsFor(client.user!);
     if (botPermissions && !botPermissions.has('SendMessages')) {
-      console.error('Bot cannot send messages in this channel');
       return;
     }
 
@@ -162,9 +155,8 @@ async function setupVerificationChannel() {
       embeds: [verificationEmbed],
       components: [actionRow]
     });
-
+    
   } catch (error) {
-    console.error('Error setting up verification channel:', error);
   }
 }
 
@@ -183,17 +175,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     if (customId === 'verify_nft') {
       await handleVerifyNFT(interaction);
-    } else {
+              } else {
       if (!interaction.replied && !interaction.deferred) {
         await interaction.reply({
           content: 'Unknown button interaction.',
           flags: MessageFlags.Ephemeral
         });
-      }
-    }
-  } catch (error) {
-    console.error('Error handling interaction:', error);
-    
+          }
+        }
+      } catch (error) {
     if (error && typeof error === 'object' && 'code' in error) {
       const errorCode = (error as any).code;
       
@@ -210,7 +200,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
     } catch (replyError) {
-      console.error('Error sending error reply:', replyError);
     }
   }
 });
@@ -219,7 +208,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 async function handleVerifyNFT(interaction: ButtonInteraction) {
   try {
     if (!config.VERIFICATION_URL) {
-      console.error('VERIFICATION_URL is not set');
       if (!interaction.replied && !interaction.deferred) {
         await interaction.reply({
           content: '設定エラー: VERIFICATION_URLが設定されていません。',
@@ -270,15 +258,13 @@ async function handleVerifyNFT(interaction: ButtonInteraction) {
             return;
           }
           await interaction.deleteReply();
-        } catch (error) {
+  } catch (error) {
           // メッセージが既に削除されている場合
         }
       }, 5 * 60 * 1000);
     }
 
   } catch (error) {
-    console.error('Error in handleVerifyNFT:', error);
-    
     if (error && typeof error === 'object' && 'code' in error) {
       const errorCode = (error as any).code;
       
@@ -296,13 +282,11 @@ export async function grantRoleToUser(discordId: string, collectionId?: string, 
   try {
     const guild = await client.guilds.fetch(config.DISCORD_GUILD_ID);
     if (!guild) {
-      console.error('Guild not found');
       return false;
     }
 
     const member = await guild.members.fetch(discordId);
     if (!member) {
-      console.error('Member not found:', discordId);
       return false;
     }
 
@@ -314,14 +298,12 @@ export async function grantRoleToUser(discordId: string, collectionId?: string, 
         if (collectionRoleId) {
           roleId = collectionRoleId;
         }
-      } catch (error) {
-        console.error('Error fetching collection role ID:', error);
+  } catch (error) {
       }
     }
 
     const role = await guild.roles.fetch(roleId);
     if (!role) {
-      console.error('Role not found');
       return false;
     }
 
@@ -348,18 +330,16 @@ export async function grantRoleToUser(discordId: string, collectionId?: string, 
         setTimeout(async () => {
           try {
             await message.delete();
-          } catch (error) {
+      } catch (error) {
             // メッセージが既に削除されている場合
-          }
+        }
         }, 5 * 60 * 1000);
       }
     } catch (dmError) {
-      console.error('Could not send DM to user:', dmError);
     }
-
+    
     return true;
   } catch (error) {
-    console.error('Error granting role:', error);
     return false;
   }
 }
@@ -377,7 +357,6 @@ async function getRoleIdForCollection(collectionId: string): Promise<string | nu
       }
     }
   } catch (error) {
-    console.error('Error fetching collection config:', error);
   }
   return null;
 }
@@ -387,13 +366,11 @@ export async function sendVerificationFailureMessage(discordId: string, verifica
   try {
     const guild = await client.guilds.fetch(config.DISCORD_GUILD_ID);
     if (!guild) {
-      console.error('Guild not found');
       return false;
     }
 
     const user = await client.users.fetch(discordId);
     if (!user) {
-      console.error('User not found');
       return false;
     }
 
@@ -416,10 +393,7 @@ export async function sendVerificationFailureMessage(discordId: string, verifica
     const cm = verificationData?.custom_message || {};
     
     if (template) {
-      console.log('Failed template description BEFORE replace:', template.description);
       const description = template.description.replace(/\\n/g, '\n');
-      console.log('Failed template description AFTER replace:', description);
-      
       const failureEmbed = new EmbedBuilder()
         .setTitle(template.title)
         .setDescription(description)
@@ -434,7 +408,7 @@ export async function sendVerificationFailureMessage(discordId: string, verifica
       setTimeout(async () => {
         try {
           await message.delete();
-        } catch (error) {
+  } catch (error) {
           // メッセージが既に削除されている場合
         }
       }, 5 * 60 * 1000);
@@ -457,7 +431,7 @@ export async function sendVerificationFailureMessage(discordId: string, verifica
       setTimeout(async () => {
         try {
           await message.delete();
-        } catch (error) {
+  } catch (error) {
           // メッセージが既に削除されている場合
         }
       }, 5 * 60 * 1000);
@@ -466,7 +440,6 @@ export async function sendVerificationFailureMessage(discordId: string, verifica
     }
     return false;
   } catch (error) {
-    console.error('Error sending verification failure message:', error);
     return false;
   }
 }
@@ -479,7 +452,6 @@ export async function revokeRoleFromUser(discordId: string, customMessage?: { ti
     const role = await guild.roles.fetch(config.DISCORD_ROLE_ID);
 
     if (!role) {
-      console.error('Role not found');
       return false;
     }
 
@@ -504,12 +476,9 @@ export async function revokeRoleFromUser(discordId: string, customMessage?: { ti
 
       if (template) {
         const roleName = role.name || 'NFT Holder';
-        console.log('Revoked template description BEFORE replace:', template.description);
         const description = template.description
           .replace(/{roles}/g, roleName)
           .replace(/\\n/g, '\n');
-        console.log('Revoked template description AFTER replace:', description);
-        
         const revokeEmbed = new EmbedBuilder()
           .setTitle(template.title)
           .setDescription(description)
@@ -524,7 +493,7 @@ export async function revokeRoleFromUser(discordId: string, customMessage?: { ti
         setTimeout(async () => {
           try {
             await message.delete();
-          } catch (error) {
+  } catch (error) {
             // メッセージが既に削除されている場合
           }
         }, 5 * 60 * 1000);
@@ -545,42 +514,34 @@ export async function revokeRoleFromUser(discordId: string, customMessage?: { ti
         setTimeout(async () => {
           try {
             await message.delete();
-          } catch (error) {
+  } catch (error) {
             // メッセージが既に削除されている場合
           }
         }, 5 * 60 * 1000);
       }
     } catch (dmError) {
-      console.error('Could not send DM to user:', dmError);
     }
 
     return true;
   } catch (error) {
-    console.error('Error revoking role:', error);
     return false;
   }
 }
 
 // Botログイン
 client.login(config.DISCORD_TOKEN).catch((error) => {
-  console.error('Failed to login:', error);
   process.exit(1);
 });
 
 // エラーハンドリング
 client.on('error', (error) => {
-  console.error('Discord client error:', error);
 });
 
 process.on('unhandledRejection', (error) => {
-  console.error('Unhandled promise rejection:', error);
 });
 
 process.on('uncaughtException', (error) => {
-  console.error('Uncaught exception:', error);
   process.exit(1);
 });
-
-console.log('Discord Bot starting...');
 
 export { client };

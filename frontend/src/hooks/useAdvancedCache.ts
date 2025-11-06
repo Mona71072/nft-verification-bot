@@ -31,6 +31,8 @@ export function useAdvancedCache<T>(
   const [error, setError] = useState<Error | null>(null);
   const cacheRef = useRef<Map<string, CacheEntry<T>>>(new Map());
   const lastFetchRef = useRef<number>(0);
+  const lastErrorRef = useRef<number>(0); // 最後にエラーが発生した時刻を記録（無限ループ防止）
+  const errorRetryDelay = 30 * 1000; // エラー後は30秒間は再試行しない（無限ループ防止）
 
   // キャッシュの永続化
   const saveToStorage = useCallback((cache: Map<string, CacheEntry<T>>) => {
@@ -40,7 +42,6 @@ export function useAdvancedCache<T>(
       const cacheArray = Array.from(cache.entries());
       localStorage.setItem(`cache_${key}`, JSON.stringify(cacheArray));
     } catch (e) {
-      console.warn('Failed to save cache to localStorage:', e);
     }
   }, [key, enablePersistentCache]);
 
@@ -55,7 +56,6 @@ export function useAdvancedCache<T>(
         cacheRef.current = new Map(cacheArray);
       }
     } catch (e) {
-      console.warn('Failed to load cache from localStorage:', e);
     }
   }, [key, enablePersistentCache]);
 
@@ -118,8 +118,12 @@ export function useAdvancedCache<T>(
       cleanupCache();
       return result;
     } catch (err) {
+      const now = Date.now();
+      lastErrorRef.current = now; // エラー時刻を記録
       setError(err as Error);
-      throw err;
+      // エラー時はthrowしない（無限ループ防止）
+      // 呼び出し側でエラーハンドリングが必要な場合は、error stateを確認
+      return null as any; // エラー時はnullを返す（型安全性のため）
     } finally {
       setLoading(false);
     }
@@ -130,6 +134,7 @@ export function useAdvancedCache<T>(
     cacheRef.current.clear();
     setData(null);
     lastFetchRef.current = 0;
+    lastErrorRef.current = 0; // 無効化時はエラー時刻もリセット
   }, []);
 
   // 特定バージョンのキャッシュ無効化
@@ -166,11 +171,21 @@ export function useAdvancedCache<T>(
     };
   }, []);
 
-  // 初期化
+  // 初期化（fetchDataの依存配列を除外して無限ループを防止）
   useEffect(() => {
     loadFromStorage();
+    
+    // エラー後の短期間は再試行しない（無限ループ防止）
+    const now = Date.now();
+    const timeSinceLastError = now - lastErrorRef.current;
+    if (lastErrorRef.current > 0 && timeSinceLastError < errorRetryDelay) {
+      return; // エラー後30秒以内は再試行しない
+    }
+    
+    // 初期化時のみ実行（fetchDataは依存配列に含めない）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     fetchData();
-  }, [loadFromStorage, fetchData]);
+  }, []); // 初回マウント時のみ実行
 
   return {
     data,

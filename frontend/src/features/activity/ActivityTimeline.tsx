@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Palette, ArrowUpRight, CheckCircle, FileText, TrendingUp, Clock } from 'lucide-react';
+import { Palette, ArrowUpRight, CheckCircle, FileText, TrendingUp, Clock, Download } from 'lucide-react';
 
 interface Activity {
   id: string;
@@ -33,6 +33,10 @@ interface ActivityTimelineProps {
   activities: Activity[];
   loading?: boolean;
   onActivityClick?: (activity: Activity) => void;
+  // 新しく追加されたプロパティ
+  showStats?: boolean;
+  showFilters?: boolean;
+  onExport?: () => void;
 }
 
 // Convert IPFS URLs to HTTP gateway
@@ -120,12 +124,19 @@ const getActivityTitle = (activity: Activity): string => {
   }
 };
 
-export function ActivityTimeline({ activities, loading, onActivityClick }: ActivityTimelineProps) {
+export function ActivityTimeline({ 
+  activities, 
+  loading, 
+  onActivityClick,
+  showStats = false,
+  showFilters = true,
+  onExport
+}: ActivityTimelineProps) {
   const [filter, setFilter] = useState<Activity['type'] | 'all'>('all');
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024);
   
   // Responsive monitoring
-  useMemo(() => {
+  React.useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
@@ -152,7 +163,7 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
             <div style={{ 
               height: '1rem', 
               width: '6rem', 
-              background: 'linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%)',
+              background: 'linear-gradient(90deg, rgba(30, 27, 75, 0.6) 25%, rgba(79, 70, 229, 0.3) 50%, rgba(30, 27, 75, 0.6) 75%)',
               backgroundSize: '200% 100%',
               animation: 'shimmer 1.5s infinite',
               borderRadius: '0.25rem',
@@ -160,7 +171,7 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
             }} />
             <div style={{
               height: '5rem',
-              background: 'linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%)',
+              background: 'linear-gradient(90deg, rgba(30, 27, 75, 0.6) 25%, rgba(79, 70, 229, 0.3) 50%, rgba(30, 27, 75, 0.6) 75%)',
               backgroundSize: '200% 100%',
               animation: 'shimmer 1.5s infinite',
               borderRadius: '0.75rem'
@@ -184,26 +195,26 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: isMobile ? '3rem 1rem' : '5rem 2rem',
+        padding: isMobile ? '2rem 1rem' : '3rem 1.5rem',
         textAlign: 'center'
       }}>
         <div style={{ 
-          marginBottom: isMobile ? '1rem' : '1.5rem',
+          marginBottom: isMobile ? '0.75rem' : '1rem',
           opacity: 0.4
         }}>
-          <TrendingUp className="w-16 h-16" style={{ color: '#9ca3af' }} />
+          <TrendingUp size={isMobile ? 48 : 56} style={{ color: '#a5b4fc' }} />
         </div>
         <h3 style={{
-          fontSize: isMobile ? '1.25rem' : '1.5rem',
+          fontSize: isMobile ? '1rem' : '1.125rem',
           fontWeight: '700',
-          color: '#1f2937',
-          marginBottom: '0.5rem'
+          color: '#e0e7ff',
+          marginBottom: isMobile ? '0.375rem' : '0.5rem'
         }}>
           No Activity Yet
         </h3>
         <p style={{
-          fontSize: isMobile ? '0.875rem' : '1rem',
-          color: '#6b7280',
+          fontSize: isMobile ? '0.6875rem' : '0.75rem',
+          color: '#a5b4fc',
           maxWidth: '28rem'
         }}>
           Your NFT mint history will appear here
@@ -218,12 +229,12 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
       <div style={{ 
         marginBottom: isMobile ? '1.5rem' : '2rem',
         paddingBottom: '1rem',
-        borderBottom: '1px solid #f1f5f9'
+        borderBottom: '1px solid rgba(79, 70, 229, 0.3)'
       }}>
         <h2 style={{
           fontSize: isMobile ? '1.125rem' : '1.25rem',
           fontWeight: '700',
-          color: '#1e293b',
+          color: '#e0e7ff',
           marginBottom: '0.375rem',
           letterSpacing: '-0.01em'
         }}>
@@ -231,25 +242,76 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
         </h2>
         <p style={{
           fontSize: isMobile ? '0.8125rem' : '0.875rem',
-          color: '#64748b'
+              color: '#a5b4fc'
         }}>
           {filteredActivities.length} {filteredActivities.length === 1 ? 'activity' : 'activities'}
         </p>
       </div>
 
-      {/* Filter */}
+      {/* Stats Summary */}
+      {showStats && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+          gap: isMobile ? '0.75rem' : '1rem',
+          marginBottom: isMobile ? '1.25rem' : '1.5rem',
+          padding: isMobile ? '1rem' : '1.25rem',
+          background: 'rgba(30, 27, 75, 0.5)',
+          backdropFilter: 'blur(10px)',
+          border: '1px solid rgba(79, 70, 229, 0.3)',
+          borderRadius: '12px'
+        }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: isMobile ? '1.5rem' : '1.75rem', fontWeight: '700', color: '#e0e7ff' }}>
+              {filteredActivities.length}
+            </div>
+            <div style={{ fontSize: isMobile ? '0.75rem' : '0.8125rem', color: '#a5b4fc', fontWeight: '500' }}>
+              Total Activities
+            </div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: isMobile ? '1.5rem' : '1.75rem', fontWeight: '700', color: '#059669' }}>
+              {filteredActivities.filter(a => a.type === 'mint').length}
+            </div>
+            <div style={{ fontSize: isMobile ? '0.75rem' : '0.8125rem', color: '#a5b4fc', fontWeight: '500' }}>
+              Mints
+            </div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: isMobile ? '1.5rem' : '1.75rem', fontWeight: '700', color: '#dc2626' }}>
+              {filteredActivities.filter(a => a.type === 'transfer').length}
+            </div>
+            <div style={{ fontSize: isMobile ? '0.75rem' : '0.8125rem', color: '#a5b4fc', fontWeight: '500' }}>
+              Transfers
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Filter and Export */}
       <div style={{
         display: 'flex',
-        gap: isMobile ? '0.375rem' : '0.5rem',
-        overflowX: 'auto',
-        paddingBottom: '0.25rem',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        gap: isMobile ? '0.5rem' : '1rem',
         marginBottom: isMobile ? '1.25rem' : '1.5rem',
-        WebkitOverflowScrolling: 'touch'
+        flexWrap: 'wrap'
       }}>
-        {[
-          { value: 'all', label: 'All', icon: <FileText className="w-4 h-4" /> },
-          { value: 'mint', label: 'Mints', icon: <Palette className="w-4 h-4" /> },
-        ].map(({ value, label, icon }) => (
+        {showFilters && (
+          <div style={{
+            display: 'flex',
+            gap: isMobile ? '0.375rem' : '0.5rem',
+            overflowX: 'auto',
+            paddingBottom: '0.25rem',
+            WebkitOverflowScrolling: 'touch',
+            flex: 1
+          }}>
+            {[
+              { value: 'all', label: 'All', icon: <FileText className="w-4 h-4" /> },
+              { value: 'mint', label: 'Mints', icon: <Palette className="w-4 h-4" /> },
+              { value: 'transfer', label: 'Transfers', icon: <ArrowUpRight className="w-4 h-4" /> },
+              { value: 'verification', label: 'Verifications', icon: <CheckCircle className="w-4 h-4" /> },
+            ].map(({ value, label, icon }) => (
           <button
             key={value}
             onClick={() => setFilter(value as Activity['type'] | 'all')}
@@ -266,23 +328,23 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
               transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
               background: filter === value 
                 ? 'linear-gradient(135deg, #1e293b 0%, #334155 100%)'
-                : '#f8fafc',
-              color: filter === value ? 'white' : '#64748b',
+                : 'rgba(30, 27, 75, 0.6)',
+              color: filter === value ? 'white' : '#c7d2fe',
               boxShadow: filter === value 
                 ? '0 2px 8px rgba(30, 41, 59, 0.25)'
                 : 'none',
-              border: filter === value ? 'none' : '1px solid #e2e8f0'
+              border: filter === value ? 'none' : '1px solid rgba(79, 70, 229, 0.3)'
             }}
             onMouseEnter={(e) => {
               if (filter !== value && !isMobile) {
-                e.currentTarget.style.background = '#f1f5f9';
-                e.currentTarget.style.borderColor = '#cbd5e1';
+                e.currentTarget.style.background = 'rgba(79, 70, 229, 0.3)';
+                e.currentTarget.style.borderColor = 'rgba(79, 70, 229, 0.5)';
               }
             }}
             onMouseLeave={(e) => {
               if (filter !== value && !isMobile) {
-                e.currentTarget.style.background = '#f8fafc';
-                e.currentTarget.style.borderColor = '#e2e8f0';
+                e.currentTarget.style.background = 'rgba(30, 27, 75, 0.6)';
+                e.currentTarget.style.borderColor = 'rgba(79, 70, 229, 0.3)';
               }
             }}
           >
@@ -290,6 +352,44 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
             <span>{label}</span>
           </button>
         ))}
+        </div>
+        )}
+        
+        {onExport && (
+          <button
+            onClick={onExport}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              padding: isMobile ? '0.5rem 0.75rem' : '0.625rem 1rem',
+              background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              fontSize: isMobile ? '0.75rem' : '0.8125rem',
+              fontWeight: '600',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              boxShadow: '0 2px 4px rgba(59, 130, 246, 0.3)'
+            }}
+            onMouseEnter={(e) => {
+              if (!isMobile) {
+                e.currentTarget.style.transform = 'translateY(-1px)';
+                e.currentTarget.style.boxShadow = '0 4px 8px rgba(59, 130, 246, 0.4)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isMobile) {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 2px 4px rgba(59, 130, 246, 0.3)';
+              }
+            }}
+          >
+            <Download className="w-4 h-4" />
+            <span>Export CSV</span>
+          </button>
+        )}
       </div>
       
       {/* Timeline */}
@@ -306,7 +406,7 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
               <h3 style={{
                 fontSize: isMobile ? '0.75rem' : '0.8125rem',
                 fontWeight: '700',
-                color: '#94a3b8',
+                color: '#a5b4fc',
                 textTransform: 'uppercase',
                 letterSpacing: '0.05em'
               }}>
@@ -315,7 +415,7 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
               <div style={{
                 flex: 1,
                 height: '1px',
-                background: 'linear-gradient(90deg, #e2e8f0 0%, transparent 100%)'
+                background: 'linear-gradient(90deg, rgba(79, 70, 229, 0.3) 0%, transparent 100%)'
               }} />
             </div>
             
@@ -333,7 +433,7 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
                 top: 0,
                 bottom: 0,
                 width: '2px',
-                background: 'linear-gradient(180deg, #e2e8f0 0%, transparent 100%)'
+                background: 'linear-gradient(180deg, rgba(79, 70, 229, 0.3) 0%, transparent 100%)'
               }} />
               
               {dateActivities.map((activity) => (
@@ -347,8 +447,9 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
                     padding: isMobile ? '0.875rem' : '1rem',
                     paddingLeft: isMobile ? '3.25rem' : '3.75rem',
                     borderRadius: '12px',
-                    background: 'white',
-                    border: '1px solid #e5e7eb',
+                    background: 'rgba(30, 27, 75, 0.6)',
+                    backdropFilter: 'blur(10px)',
+                    border: '1px solid rgba(79, 70, 229, 0.3)',
                     cursor: 'pointer',
                     transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
                     boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)'
@@ -357,16 +458,16 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
                     if (!isMobile) {
                       e.currentTarget.style.transform = 'translateX(4px)';
                       e.currentTarget.style.boxShadow = '0 4px 16px rgba(0, 0, 0, 0.08)';
-                      e.currentTarget.style.borderColor = '#cbd5e1';
-                      e.currentTarget.style.background = '#f8fafc';
+                      e.currentTarget.style.borderColor = 'rgba(79, 70, 229, 0.5)';
+                      e.currentTarget.style.background = 'rgba(79, 70, 229, 0.3)';
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (!isMobile) {
                       e.currentTarget.style.transform = 'translateX(0)';
                       e.currentTarget.style.boxShadow = '0 1px 2px rgba(0, 0, 0, 0.04)';
-                      e.currentTarget.style.borderColor = '#e5e7eb';
-                      e.currentTarget.style.background = 'white';
+                      e.currentTarget.style.borderColor = 'rgba(79, 70, 229, 0.3)';
+                      e.currentTarget.style.background = 'rgba(30, 27, 75, 0.6)';
                     }
                   }}
                 >
@@ -379,8 +480,8 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
                     height: isMobile ? '0.625rem' : '0.75rem',
                     borderRadius: '50%',
                     background: '#1e293b',
-                    border: '2px solid white',
-                    boxShadow: '0 0 0 1px #e2e8f0',
+                    border: '2px solid rgba(79, 70, 229, 0.5)',
+                    boxShadow: '0 0 0 1px rgba(79, 70, 229, 0.3)',
                     zIndex: 1
                   }} />
                   
@@ -396,7 +497,7 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
                             height: isMobile ? '3.5rem' : '4rem',
                             borderRadius: '0.75rem',
                             objectFit: 'cover',
-                            border: '2px solid #f3f4f6'
+                            border: '2px solid rgba(79, 70, 229, 0.3)'
                           }}
                           loading="lazy"
                         />
@@ -418,7 +519,7 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
                         <h4 style={{
                           fontSize: isMobile ? '0.875rem' : '0.9375rem',
                           fontWeight: '600',
-                          color: '#1e293b',
+                          color: '#e0e7ff',
                           margin: 0
                         }}>
                           {getActivityTitle(activity)}
@@ -439,10 +540,10 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
                             alignItems: 'center',
                             gap: '0.375rem',
                             padding: '0.25rem 0.625rem',
-                            background: '#f1f5f9',
+                            background: 'rgba(79, 70, 229, 0.2)',
                             borderRadius: '6px',
                             fontSize: isMobile ? '0.6875rem' : '0.75rem',
-                            color: '#475569',
+                            color: '#c7d2fe',
                             fontWeight: '600'
                           }}>
                             <Clock className="w-3 h-3" />
@@ -460,7 +561,7 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
                         {activity.timestamp && !isNaN(new Date(activity.timestamp).getTime()) && (
                           <span style={{
                             fontSize: isMobile ? '0.6875rem' : '0.75rem',
-                            color: '#94a3b8'
+                            color: '#a5b4fc'
                           }}>
                             {getRelativeTime(activity.timestamp)}
                           </span>
@@ -471,7 +572,7 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
                       {activity.type === 'mint' && activity.mint?.eventName && (
                         <div style={{
                           fontSize: isMobile ? '0.8125rem' : '0.875rem',
-                          color: '#6b7280',
+                          color: '#a5b4fc',
                           marginBottom: '0.5rem'
                         }}>
                           {activity.mint.eventName}
@@ -495,15 +596,15 @@ export function ActivityTimeline({ activities, loading, onActivityClick }: Activ
                             textDecoration: 'none',
                             padding: '0.25rem 0.5rem',
                             borderRadius: '0.375rem',
-                            background: '#f0f4ff',
+                            background: 'rgba(102, 126, 234, 0.2)',
                             transition: 'all 0.2s'
                           }}
                           onMouseEnter={(e) => {
-                            e.currentTarget.style.background = '#e0e7ff';
-                            e.currentTarget.style.color = '#5a67d8';
+                            e.currentTarget.style.background = 'rgba(102, 126, 234, 0.3)';
+                            e.currentTarget.style.color = '#a5b4fc';
                           }}
                           onMouseLeave={(e) => {
-                            e.currentTarget.style.background = '#f0f4ff';
+                            e.currentTarget.style.background = 'rgba(102, 126, 234, 0.2)';
                             e.currentTarget.style.color = '#667eea';
                           }}
                         >

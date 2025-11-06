@@ -153,7 +153,6 @@ async function migrateEvent(
       result.success = true;
     } else {
       // 再アップロードが必要
-      console.log(`Re-uploading image for event ${event.id}: ${event.imageUrl}`);
       const uploadResult = await reuploadImageToWalrus(event.imageUrl, config);
       
       if (uploadResult.blobId) {
@@ -176,7 +175,6 @@ async function migrateEvent(
  * メイン移行処理
  */
 async function main() {
-  console.log('🔄 Starting Walrus.pdf migration...');
   
   try {
     // 設定の検証
@@ -189,40 +187,28 @@ async function main() {
       throw new Error('WALRUS_PUBLISHER_BASE and WALRUS_AGGREGATOR_BASE must be set');
     }
     
-    console.log('📋 Configuration:');
-    console.log(`  Publisher: ${walrusConfig.WALRUS_PUBLISHER_BASE}`);
-    console.log(`  Aggregator: ${walrusConfig.WALRUS_AGGREGATOR_BASE}`);
     
     // イベントデータの取得（実際のAPI呼び出しに置き換える）
-    console.log('📥 Fetching events...');
     // 実際のAPIからイベントを取得
     const apiResponse = await fetch('https://nft-verification-production.mona-syndicatextokyo.workers.dev/api/events');
     const apiData = await apiResponse.json() as any;
     const events: EventData[] = apiData.success ? apiData.data || [] : [];
     
     if (events.length === 0) {
-      console.log('ℹ️  No events to migrate');
       return;
     }
     
-    console.log(`📊 Found ${events.length} events to process`);
     
     const results: MigrationResult[] = [];
     
     // 各イベントを移行
     for (const event of events) {
-      console.log(`🔄 Migrating event: ${event.name} (${event.id})`);
       
       const result = await migrateEvent(event, walrusConfig);
       results.push(result);
       
       if (result.success) {
-        console.log(`✅ Success: ${event.name}`);
-        console.log(`   Old URL: ${result.oldImageUrl}`);
-        console.log(`   New CID: ${result.newImageCid}`);
-        console.log(`   New URL: ${result.newImageUrl}`);
       } else {
-        console.log(`❌ Failed: ${event.name} - ${result.error}`);
       }
       
       // レート制限対策
@@ -233,15 +219,9 @@ async function main() {
     const successCount = results.filter(r => r.success).length;
     const failureCount = results.filter(r => !r.success).length;
     
-    console.log('\n📊 Migration Summary:');
-    console.log(`  Total events: ${results.length}`);
-    console.log(`  Successful: ${successCount}`);
-    console.log(`  Failed: ${failureCount}`);
     
     if (failureCount > 0) {
-      console.log('\n❌ Failed migrations:');
       results.filter(r => !r.success).forEach(r => {
-        console.log(`  - ${r.eventName} (${r.eventId}): ${r.error}`);
       });
     }
     
@@ -255,18 +235,15 @@ async function main() {
           JSON.stringify(successResults, null, 2)
         );
       }
-      console.log('\n💾 Migration results saved to migration-results.json');
     }
     
   } catch (error) {
-    console.error('❌ Migration failed:', error);
     (process as any).exit(1);
   }
 }
 
 // スクリプト実行
 if ((require as any).main === module) {
-  main().catch(console.error);
 }
 
 export { migrateEvent, extractBlobIdFromUrl };

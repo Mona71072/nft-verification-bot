@@ -37,11 +37,9 @@ export function useRenderOptimization(options: RenderOptimizationOptions = {}) {
       }
       
       if (renderTime > maxRenderTime) {
-        console.warn(`Slow render detected in ${componentName}: ${renderTime.toFixed(2)}ms`);
       }
       
       if (enableRenderTracking) {
-        console.log(`${componentName} render #${renderCountRef.current}: ${renderTime.toFixed(2)}ms`);
       }
     };
   }, [enableRenderTracking, maxRenderTime]);
@@ -55,7 +53,6 @@ export function useRenderOptimization(options: RenderOptimizationOptions = {}) {
         if (entry.entryType === 'measure' && entry.name.includes('render')) {
           const duration = entry.duration;
           if (duration > maxRenderTime) {
-            console.warn(`Render blocking detected: ${duration.toFixed(2)}ms`);
           }
         }
       }

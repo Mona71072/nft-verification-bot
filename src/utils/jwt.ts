@@ -27,10 +27,10 @@ export async function signHS256(payload: Record<string, any>, secret: string): P
 
   // JWTヘッダー
   const header = { alg: 'HS256', typ: 'JWT' };
-  const encodedHeader = base64url(enc.encode(JSON.stringify(header)));
+  const encodedHeader = base64url(enc.encode(JSON.stringify(header)).buffer);
   
   // JWTペイロード
-  const encodedPayload = base64url(enc.encode(JSON.stringify(payload)));
+  const encodedPayload = base64url(enc.encode(JSON.stringify(payload)).buffer);
   
   // 署名対象データ
   const data = `${encodedHeader}.${encodedPayload}`;

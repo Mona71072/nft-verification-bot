@@ -18,22 +18,26 @@ interface Event {
   imageMimeType?: string;
   moveCall?: any;
   collectionId?: string;
+  imageUrl?: string;
+  active?: boolean;
   startAt?: string;
   endAt?: string;
   eventDate?: string;
   totalCap?: number;
   status?: 'draft' | 'published';
+  detailUrl?: string;
 }
 
 interface EventEditorProps {
   event?: Event;
+  collections?: MintCollection[];
   onSave: (event: Event) => Promise<void>;
   onCancel: () => void;
 }
 
-function EventEditorInner({ event, onSave, onCancel }: EventEditorProps) {
+function EventEditorInner({ event, collections, onSave, onCancel }: EventEditorProps) {
   const { showToast } = useToast();
-  const [mintCollections, setMintCollections] = React.useState<MintCollection[]>([]);
+  const [mintCollections, setMintCollections] = React.useState<MintCollection[]>(collections || []);
   const [loadingCollections, setLoadingCollections] = React.useState(false);
   
   const [formData, setFormData] = React.useState<Event>(event || {
@@ -47,7 +51,8 @@ function EventEditorInner({ event, onSave, onCancel }: EventEditorProps) {
     endAt: '',
     eventDate: '',
     totalCap: undefined,
-    status: 'draft'
+    status: 'draft',
+    detailUrl: ''
   });
 
   const [originalData] = React.useState<Event>(event || {
@@ -61,7 +66,8 @@ function EventEditorInner({ event, onSave, onCancel }: EventEditorProps) {
     endAt: '',
     eventDate: '',
     totalCap: undefined,
-    status: 'draft'
+    status: 'draft',
+    detailUrl: ''
   });
 
   const [isSaving, setIsSaving] = React.useState(false);
@@ -145,7 +151,6 @@ function EventEditorInner({ event, onSave, onCancel }: EventEditorProps) {
           showToast('ミントコレクションの取得に失敗しました', 'error');
         }
       } catch (error) {
-        console.error('Failed to fetch mint collections:', error);
         showToast('ミントコレクションの取得に失敗しました', 'error');
       } finally {
         setLoadingCollections(false);
@@ -398,6 +403,46 @@ function EventEditorInner({ event, onSave, onCancel }: EventEditorProps) {
                 )}
               </div>
 
+              {/* 詳細URL */}
+              <div>
+                <label style={{ 
+                  display: 'block', 
+                  marginBottom: '0.5rem', 
+                  fontWeight: 600, 
+                  fontSize: '0.875rem',
+                  color: '#374151'
+                }}>
+                  詳細URL
+                </label>
+                <input
+                  type="url"
+                  value={formData.detailUrl || ''}
+                  onChange={(e) => {
+                    setFormData(prev => ({ ...prev, detailUrl: e.target.value }));
+                    if (errors.detailUrl) setErrors(prev => ({ ...prev, detailUrl: '' }));
+                  }}
+                  onBlur={validateForm}
+                  placeholder="https://example.com/event-details"
+                  style={{
+                    width: '100%', 
+                    padding: '0.75rem 1rem', 
+                    borderRadius: '8px', 
+                    border: `1px solid ${errors.detailUrl ? '#ef4444' : '#d1d5db'}`,
+                    fontSize: '0.875rem',
+                    outline: 'none',
+                    transition: 'all 0.2s'
+                  }}
+                />
+                {errors.detailUrl && (
+                  <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.75rem', color: '#ef4444' }}>
+                    {errors.detailUrl}
+                  </p>
+                )}
+                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.75rem', color: '#6b7280' }}>
+                  イベントの詳細ページのURLを入力してください（オプション）
+                </p>
+              </div>
+
               {/* 画像アップロード */}
               <WalrusImageUpload
                 imageCid={formData.imageCid}
@@ -445,9 +490,12 @@ function EventEditorInner({ event, onSave, onCancel }: EventEditorProps) {
                 >
                   <option value="">コレクションを選択</option>
                   {mintCollections.map((collection) => {
-                    const defaultMoveTarget = import.meta.env.VITE_DEFAULT_MOVE_TARGET || '0x3d7e20efbd6e4e2ee6369bcf1e9ec8029637c47890d975e74956b4b405cb5f3f::sxt_nft::mint_to';
-                    const autoTypePath = defaultMoveTarget.replace('::mint_to', '::EventNFT');
-                    const typePath = (collection as any).typePath || autoTypePath;
+                    // collection.typePathが存在する場合はそれを使用、なければエラー
+                    const typePath = (collection as any).typePath;
+                    if (!typePath) {
+                      console.error('Collection typePath is missing:', collection);
+                      return null;
+                    }
                     
                     return (
                       <option key={collection.id} value={typePath}>

@@ -29,9 +29,9 @@ export function GridSkeleton({
         className
       )}
       style={{
-        gridTemplateColumns: window.innerWidth < 640 
+        gridTemplateColumns: typeof window !== 'undefined' && window.innerWidth < 640 
           ? `repeat(${columns.mobile || 1}, 1fr)`
-          : window.innerWidth < 1024
+          : typeof window !== 'undefined' && window.innerWidth < 1024
           ? `repeat(${columns.tablet || 2}, 1fr)`
           : `repeat(${columns.desktop || 3}, 1fr)`
       }}

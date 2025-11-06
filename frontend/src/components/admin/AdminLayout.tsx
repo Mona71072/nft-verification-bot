@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ChevronDown, ChevronRight, Menu, X } from 'lucide-react';
 import { queryClient } from '../../lib/query-client';
+import { useResponsive, getResponsiveValue } from '../../hooks/useResponsive';
 
 interface MenuItem {
   label: string;
@@ -15,67 +16,73 @@ interface AdminLayoutProps {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
 
-function getAuthHeaders(): HeadersInit {
-  const addr = typeof window !== 'undefined' 
-    ? localStorage.getItem('currentWalletAddress') || (window as any).currentWalletAddress 
-    : undefined;
-  return {
-    'Content-Type': 'application/json',
-    ...(addr ? { 'X-Admin-Address': addr } : {})
-  };
-}
-
 export function AdminLayout({ children, currentPath }: AdminLayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['roles', 'mint']));
+  
+  // レスポンシブ対応
+  let deviceType: 'mobile' | 'tablet' | 'desktop' = 'desktop';
+  try {
+    const responsive = useResponsive();
+    deviceType = responsive.deviceType;
+  } catch (error) {
+  }
 
-  // 主要データの事前フェッチ
+  // 主要データの事前フェッチ（キャッシュが存在する場合はスキップ）
   useEffect(() => {
     const prefetchData = async () => {
       try {
-        // コレクションデータの事前フェッチ
-        await queryClient.prefetchQuery({
-          queryKey: ['collections'],
-          queryFn: async () => {
-            const res = await fetch(`${API_BASE_URL}/api/collections`);
-            const data = await res.json();
-            return data.success ? data.data || [] : [];
-          },
-          staleTime: 5 * 60 * 1000, // 5分間キャッシュ
-        });
+        // コレクションデータの事前フェッチ（キャッシュチェック付き）
+        const collectionsCache = queryClient.getQueryData(['collections']);
+        if (!collectionsCache) {
+          await queryClient.prefetchQuery({
+            queryKey: ['collections'],
+            queryFn: async () => {
+              const res = await fetch(`${API_BASE_URL}/api/collections`);
+              const data = await res.json();
+              return data.success ? data.data || [] : [];
+            },
+            staleTime: 15 * 60 * 1000, // リクエスト削減のため延長（5分→15分）
+          });
+        }
 
-        // イベントデータの事前フェッチ
-        await queryClient.prefetchQuery({
-          queryKey: ['events'],
-          queryFn: async () => {
-            const res = await fetch(`${API_BASE_URL}/api/events`);
-            const data = await res.json();
-            return data.success ? data.data || [] : [];
-          },
-          staleTime: 5 * 60 * 1000,
-        });
+        // イベントデータの事前フェッチ（キャッシュチェック付き）
+        const eventsCache = queryClient.getQueryData(['events']);
+        if (!eventsCache) {
+          await queryClient.prefetchQuery({
+            queryKey: ['events'],
+            queryFn: async () => {
+              const res = await fetch(`${API_BASE_URL}/api/events`);
+              const data = await res.json();
+              return data.success ? data.data || [] : [];
+            },
+            staleTime: 15 * 60 * 1000, // リクエスト削減のため延長
+          });
+        }
 
-        // ミントコレクションデータの事前フェッチ
-        await queryClient.prefetchQuery({
-          queryKey: ['mint-collections'],
-          queryFn: async () => {
-            const res = await fetch(`${API_BASE_URL}/api/mint-collections`);
-            const data = await res.json();
-            return data.success ? data.data || [] : [];
-          },
-          staleTime: 5 * 60 * 1000,
-        });
+        // ミントコレクションデータの事前フェッチ（キャッシュチェック付き）
+        const mintCollectionsCache = queryClient.getQueryData(['mint-collections']);
+        if (!mintCollectionsCache) {
+          await queryClient.prefetchQuery({
+            queryKey: ['mint-collections'],
+            queryFn: async () => {
+              const res = await fetch(`${API_BASE_URL}/api/mint-collections`);
+              const data = await res.json();
+              return data.success ? data.data || [] : [];
+            },
+            staleTime: 20 * 60 * 1000, // リクエスト削減のため延長（5分→20分）
+          });
+        }
       } catch (error) {
-        console.warn('Failed to prefetch admin data:', error);
       }
     };
 
-    // アイドル時に実行
+    // アイドル時に実行（遅延を増やす）
     if ('requestIdleCallback' in window) {
-      requestIdleCallback(prefetchData, { timeout: 2000 });
+      requestIdleCallback(prefetchData, { timeout: 5000 }); // タイムアウトを延長
     } else {
-      setTimeout(prefetchData, 100);
+      setTimeout(prefetchData, 2000); // 遅延を増やす（100ms→2000ms）
     }
   }, []);
 
@@ -135,7 +142,11 @@ export function AdminLayout({ children, currentPath }: AdminLayoutProps) {
       background: 'white',
       borderRight: '1px solid #e5e7eb'
     }}>
-      <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
+      <div style={{ 
+        flex: 1, 
+        overflowY: 'auto', 
+        padding: getResponsiveValue('0.75rem', '1rem', '1rem', deviceType)
+      }}>
         <nav>
           {menuItems.map((item) => (
             <div key={item.label}>
@@ -148,21 +159,25 @@ export function AdminLayout({ children, currentPath }: AdminLayoutProps) {
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      padding: '0.75rem',
+                      padding: getResponsiveValue('0.5rem', '0.625rem', '0.75rem', deviceType),
                       background: 'transparent',
                       border: 'none',
-                      borderRadius: '8px',
+                      borderRadius: getResponsiveValue('6px', '7px', '8px', deviceType),
                       cursor: 'pointer',
-                      fontSize: '0.875rem',
+                      fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType),
                       fontWeight: 600,
                       color: '#374151',
                       transition: 'all 0.2s',
-                      marginBottom: '0.25rem'
+                      marginBottom: getResponsiveValue('0.125rem', '0.1875rem', '0.25rem', deviceType)
                     }}
                     onMouseEnter={(e) => !collapsed && (e.currentTarget.style.background = '#f9fafb')}
                     onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: getResponsiveValue('0.5rem', '0.625rem', '0.75rem', deviceType)
+                    }}>
                       {!collapsed && <span>{item.label}</span>}
                     </div>
                     {!collapsed && (
@@ -172,7 +187,10 @@ export function AdminLayout({ children, currentPath }: AdminLayoutProps) {
                     )}
                   </button>
                   {expandedSections.has(item.label) && !collapsed && (
-                    <div style={{ marginLeft: '1rem', marginBottom: '0.5rem' }}>
+                    <div style={{ 
+                      marginLeft: getResponsiveValue('0.75rem', '0.875rem', '1rem', deviceType), 
+                      marginBottom: getResponsiveValue('0.375rem', '0.4375rem', '0.5rem', deviceType)
+                    }}>
                       {item.children.map((child) => (
                         <button
                           key={child.href}
@@ -181,13 +199,13 @@ export function AdminLayout({ children, currentPath }: AdminLayoutProps) {
                             width: '100%',
                             display: 'flex',
                             alignItems: 'center',
-                            padding: '0.625rem 0.75rem',
+                            padding: getResponsiveValue('0.5rem 0.625rem', '0.5625rem 0.6875rem', '0.625rem 0.75rem', deviceType),
                             background: isActive(child.href) ? '#eff6ff' : 'transparent',
                             border: 'none',
                             borderLeft: isActive(child.href) ? '3px solid #3b82f6' : '3px solid transparent',
-                            borderRadius: '6px',
+                            borderRadius: getResponsiveValue('4px', '5px', '6px', deviceType),
                             cursor: 'pointer',
-                            fontSize: '0.8125rem',
+                            fontSize: getResponsiveValue('0.6875rem', '0.75rem', '0.8125rem', deviceType),
                             fontWeight: isActive(child.href) ? 600 : 500,
                             color: isActive(child.href) ? '#1e40af' : '#6b7280',
                             transition: 'all 0.2s',
@@ -236,7 +254,7 @@ export function AdminLayout({ children, currentPath }: AdminLayoutProps) {
 
       {/* 折りたたみボタン（デスクトップのみ） */}
       <div style={{ 
-        padding: '1rem',
+        padding: getResponsiveValue('0.75rem', '0.875rem', '1rem', deviceType),
         borderTop: '1px solid #e5e7eb',
         display: window.innerWidth < 768 ? 'none' : 'block'
       }}>
@@ -244,12 +262,12 @@ export function AdminLayout({ children, currentPath }: AdminLayoutProps) {
           onClick={() => setCollapsed(!collapsed)}
           style={{
             width: '100%',
-            padding: '0.5rem',
+            padding: getResponsiveValue('0.375rem', '0.4375rem', '0.5rem', deviceType),
             background: '#f9fafb',
             border: '1px solid #e5e7eb',
-            borderRadius: '6px',
+            borderRadius: getResponsiveValue('4px', '5px', '6px', deviceType),
             cursor: 'pointer',
-            fontSize: '0.875rem',
+            fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType),
             fontWeight: 500,
             color: '#6b7280',
             transition: 'all 0.2s'
@@ -279,7 +297,7 @@ export function AdminLayout({ children, currentPath }: AdminLayoutProps) {
 
       {/* サイドバー（デスクトップ） */}
       <aside style={{
-        width: collapsed ? '80px' : '280px',
+        width: collapsed ? getResponsiveValue('60px', '70px', '80px', deviceType) : getResponsiveValue('240px', '260px', '280px', deviceType),
         flexShrink: 0,
         transition: 'width 0.3s ease',
         height: '100vh',
@@ -295,7 +313,7 @@ export function AdminLayout({ children, currentPath }: AdminLayoutProps) {
         position: 'fixed',
         left: mobileMenuOpen ? 0 : '-100%',
         top: 0,
-        width: '280px',
+        width: getResponsiveValue('240px', '260px', '280px', deviceType),
         height: '100vh',
         zIndex: 1000,
         transition: 'left 0.3s ease',
@@ -311,14 +329,19 @@ export function AdminLayout({ children, currentPath }: AdminLayoutProps) {
           display: window.innerWidth >= 768 ? 'none' : 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '1rem',
+          padding: getResponsiveValue('0.75rem', '0.875rem', '1rem', deviceType),
           background: 'white',
           borderBottom: '1px solid #e5e7eb',
           position: 'sticky',
           top: 0,
           zIndex: 998
         }}>
-          <h2 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 700, color: '#111827' }}>
+          <h2 style={{ 
+            margin: 0, 
+            fontSize: getResponsiveValue('1rem', '1.0625rem', '1.125rem', deviceType), 
+            fontWeight: 700, 
+            color: '#111827' 
+          }}>
             管理パネル
           </h2>
           <button

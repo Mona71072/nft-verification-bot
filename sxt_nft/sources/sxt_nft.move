@@ -17,6 +17,7 @@ module sxt_nft::sxt_nft {
     public struct EventNFT has key, store {
         id: UID,
         name: String,
+        description: String,
         image_cid: String,
         image_mime: String,
         event_date: String,
@@ -39,7 +40,7 @@ module sxt_nft::sxt_nft {
         let mut display = display::new<EventNFT>(&publisher, ctx);
         display.add(string::utf8(b"name"), string::utf8(b"{name}"));
         display.add(string::utf8(b"image_url"), string::utf8(b"https://wal-aggregator-mainnet.staketab.org/v1/blobs/{image_cid}"));
-        display.add(string::utf8(b"description"), string::utf8(b"SXT Event NFT"));
+        display.add(string::utf8(b"description"), string::utf8(b"{description}"));
         display.add(string::utf8(b"event_date"), string::utf8(b"{event_date}"));
         display.update_version();
         
@@ -51,6 +52,7 @@ module sxt_nft::sxt_nft {
     public entry fun mint_to(
         recipient: address,
         name: String,
+        description: String,
         image_cid: String,
         image_mime: String,
         event_date: String,
@@ -59,6 +61,7 @@ module sxt_nft::sxt_nft {
         let nft = EventNFT {
             id: object::new(ctx),
             name,
+            description,
             image_cid,
             image_mime,
             event_date,

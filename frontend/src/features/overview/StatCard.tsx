@@ -10,6 +10,10 @@ interface StatCardProps {
   loading?: boolean;
   onClick?: () => void;
   className?: string;
+  // 新しく追加されたプロパティ
+  subtitle?: string;
+  showTrend?: boolean;
+  trendData?: Array<{ date: string; count: number; label?: string }>;
 }
 
 /**
@@ -26,6 +30,9 @@ export function StatCard({
   loading,
   onClick,
   className,
+  subtitle,
+  showTrend = true,
+  trendData,
 }: StatCardProps) {
   const [isHovered, setIsHovered] = React.useState(false);
   const [isMobile, setIsMobile] = React.useState(false);
@@ -44,25 +51,46 @@ export function StatCard({
       onMouseEnter={() => !isMobile && setIsHovered(true)}
       onMouseLeave={() => !isMobile && setIsHovered(false)}
       className={cn(
-        "group relative w-full rounded-2xl border border-border/20 bg-gradient-to-br from-card/80 to-card/40 p-6 shadow-lg backdrop-blur-sm transition-all duration-300",
-        onClick && !loading && "cursor-pointer hover:-translate-y-1 hover:shadow-xl hover:border-primary/20",
+        "group relative w-full rounded-3xl border border-white/10 bg-gradient-to-br from-white/5 to-white/10 p-6 shadow-2xl backdrop-blur-xl transition-all duration-500 ease-out",
+        onClick && !loading && "cursor-pointer hover:-translate-y-2 hover:shadow-3xl hover:border-white/20 hover:scale-[1.02]",
         !onClick && "cursor-default",
         loading && "pointer-events-none opacity-70",
         className
       )}
       style={{
-        minHeight: isMobile ? 'auto' : '140px',
+        minHeight: isMobile ? 'auto' : '120px',
+        background: isHovered 
+          ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(147, 51, 234, 0.1) 50%, rgba(6, 182, 212, 0.1) 100%)'
+          : 'linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.1) 100%)',
+        boxShadow: isHovered 
+          ? '0 20px 40px rgba(59, 130, 246, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
+          : '0 6px 24px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
       }}
     >
       {/* Top Row: Label + Delta */}
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
           {icon && (
-            <div className="text-2xl opacity-80 group-hover:scale-110 transition-transform duration-200">
+            <div 
+              className="text-2xl opacity-90 group-hover:scale-110 transition-all duration-300 group-hover:rotate-2"
+              style={{
+                background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 50%, #06b6d4 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+                filter: 'drop-shadow(0 0 8px rgba(59, 130, 246, 0.3))'
+              }}
+            >
               {icon}
             </div>
           )}
-          <span className="text-sm text-muted-foreground font-medium tracking-wide">
+          <span 
+            className="text-sm font-semibold tracking-wider uppercase"
+            style={{
+              color: '#a5b4fc',
+              textShadow: '0 0 10px rgba(165, 180, 252, 0.3)'
+            }}
+          >
             {label}
           </span>
         </div>
@@ -81,23 +109,43 @@ export function StatCard({
       </div>
 
       {/* Value */}
-      <div className="mt-1">
+      <div className="mt-2">
         {loading ? (
-          <div className="h-10 w-32 bg-muted/50 rounded animate-pulse" />
+          <div 
+            className="h-12 w-40 rounded-lg animate-pulse"
+            style={{
+              background: 'linear-gradient(90deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.2) 50%, rgba(255, 255, 255, 0.1) 100%)'
+            }}
+          />
         ) : (
-          <div
-            className={cn(
-              "text-3xl md:text-4xl font-bold tracking-tight text-foreground",
-              "transition-colors duration-300 group-hover:text-primary"
+          <div>
+            <div
+              className={cn(
+                "text-3xl md:text-4xl font-black tracking-tight",
+                "transition-all duration-500 group-hover:scale-105"
+              )}
+              style={{
+                background: 'linear-gradient(135deg, #ffffff 0%, #e0e7ff 25%, #c7d2fe 50%, #a5b4fc 75%, #8b5cf6 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+                textShadow: isHovered ? '0 0 30px rgba(59, 130, 246, 0.5)' : '0 0 20px rgba(59, 130, 246, 0.3)',
+                filter: isHovered ? 'drop-shadow(0 0 15px rgba(59, 130, 246, 0.4))' : 'none'
+              }}
+            >
+              {value}
+            </div>
+            {subtitle && (
+              <div className="text-sm text-gray-400 mt-1 opacity-80">
+                {subtitle}
+              </div>
             )}
-          >
-            {value}
           </div>
         )}
       </div>
 
       {/* Sparkline Trend */}
-      {trend && trend.length > 0 && !loading && (
+      {showTrend && (trend && trend.length > 0 || trendData && trendData.length > 0) && !loading && (
         <div className="mt-3 h-10 overflow-hidden opacity-70 group-hover:opacity-100 transition-opacity">
           <svg
             className="w-full h-full"
@@ -114,11 +162,27 @@ export function StatCard({
             {/* Area under line */}
             <path
               fill={`url(#gradient-${label})`}
-              d={`M 0,40 ${trend.map((v, i) => {
-                const x = (i / (trend.length - 1)) * 100;
-                const y = 40 - (v * 40);
-                return `L ${x},${y}`;
-              }).join(' ')} L 100,40 Z`}
+              d={(() => {
+                const data = trend || trendData?.map(d => d.count) || [];
+                if (data.length === 0) return "M 0,40 L 100,40 Z";
+                
+                // データを正規化（0-1の範囲に）
+                const maxValue = Math.max(...data);
+                const minValue = Math.min(...data);
+                const range = maxValue - minValue;
+                const normalizedData = range > 0 ? data.map(v => (v - minValue) / range) : data.map(() => 0.5);
+                
+                if (data.length === 1) {
+                  const y = 40 - (normalizedData[0] * 35 + 2.5); // 2.5-37.5の範囲で描画
+                  return `M 0,40 L 50,${y} L 100,40 Z`;
+                }
+                
+                return `M 0,40 ${normalizedData.map((v, i, arr) => {
+                  const x = (i / (arr.length - 1)) * 100;
+                  const y = 40 - (v * 35 + 2.5); // 2.5-37.5の範囲で描画
+                  return `L ${x},${y}`;
+                }).join(' ')} L 100,40 Z`;
+              })()}
             />
             {/* Line */}
             <polyline
@@ -127,13 +191,27 @@ export function StatCard({
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
-              points={trend
-                .map((v, i) => {
-                  const x = (i / (trend.length - 1)) * 100;
-                  const y = 40 - (v * 40);
+              points={(() => {
+                const data = trend || trendData?.map(d => d.count) || [];
+                if (data.length === 0) return "0,40 100,40";
+                
+                // データを正規化（0-1の範囲に）
+                const maxValue = Math.max(...data);
+                const minValue = Math.min(...data);
+                const range = maxValue - minValue;
+                const normalizedData = range > 0 ? data.map(v => (v - minValue) / range) : data.map(() => 0.5);
+                
+                if (data.length === 1) {
+                  const y = 40 - (normalizedData[0] * 35 + 2.5); // 2.5-37.5の範囲で描画
+                  return `50,${y}`;
+                }
+                
+                return normalizedData.map((v, i, arr) => {
+                  const x = (i / (arr.length - 1)) * 100;
+                  const y = 40 - (v * 35 + 2.5); // 2.5-37.5の範囲で描画
                   return `${x},${y}`;
-                })
-                .join(' ')}
+                }).join(' ');
+              })()}
             />
           </svg>
         </div>
@@ -141,10 +219,32 @@ export function StatCard({
 
       {/* Click indicator */}
       {onClick && !loading && isHovered && (
-        <div className="absolute bottom-2 right-2 text-xs text-muted-foreground opacity-50">
-          ▸
+        <div 
+          className="absolute bottom-4 right-4 text-lg font-bold opacity-80 animate-pulse"
+          style={{
+            background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+            filter: 'drop-shadow(0 0 8px rgba(59, 130, 246, 0.5))'
+          }}
+        >
+          →
         </div>
       )}
+      
+      {/* Subtle background pattern */}
+      <div 
+        className="absolute inset-0 rounded-3xl opacity-5 group-hover:opacity-10 transition-opacity duration-500"
+        style={{
+          background: `
+            radial-gradient(circle at 20% 20%, rgba(59, 130, 246, 0.3) 0%, transparent 50%),
+            radial-gradient(circle at 80% 80%, rgba(147, 51, 234, 0.2) 0%, transparent 50%),
+            linear-gradient(45deg, rgba(6, 182, 212, 0.1) 0%, transparent 50%)
+          `,
+          pointerEvents: 'none'
+        }}
+      />
     </button>
   );
 }

@@ -153,7 +153,6 @@ app.get('/api/events/:id/public', async (c) => {
 
     return c.json({ success: true, data: { ...ev, active } });
   } catch (error) {
-    console.error('Failed to get public event', error);
     return c.json({ success: false, error: 'Failed to load event' }, 500);
   }
 });
@@ -162,7 +161,6 @@ app.get('/api/events/:id/public', async (c) => {
 async function resolveFinalOwner(owner: any, fullnode: string, depth = 0): Promise<string | null> {
   // 無限ループ防止
   if (depth > 5) {
-    console.warn('Max depth reached for owner resolution');
     return null;
   }
 
@@ -176,8 +174,6 @@ async function resolveFinalOwner(owner: any, fullnode: string, depth = 0): Promi
   // ObjectOwner（Kioskなど） → contentフィールドのownerを確認
   if (owner.ObjectOwner) {
     const kioskId = owner.ObjectOwner;
-    console.log(`Resolving Kiosk/ObjectOwner: ${kioskId} (depth: ${depth})`);
-    
     try {
       const response = await fetch(fullnode, {
         method: 'POST',
@@ -203,7 +199,6 @@ async function resolveFinalOwner(owner: any, fullnode: string, depth = 0): Promi
         // Kioskのcontent.fields.ownerをチェック（実質的な所有者）
         if (result.result.data.content?.fields?.owner) {
           const kioskOwner = result.result.data.content.fields.owner;
-          console.log(`Kiosk content owner found: ${kioskOwner}`);
           return kioskOwner;
         }
         
@@ -213,7 +208,6 @@ async function resolveFinalOwner(owner: any, fullnode: string, depth = 0): Promi
         }
       }
     } catch (error) {
-      console.error(`Failed to resolve Kiosk owner for ${kioskId}:`, error);
     }
     
     return null;
@@ -245,8 +239,6 @@ app.get('/api/collection-onchain-count/:collectionId', async (c) => {
       : suiNet === 'devnet'
         ? 'https://fullnode.devnet.sui.io:443'
         : 'https://fullnode.mainnet.sui.io:443';
-
-    console.log(`Searching for NFTs of type: ${collectionId}`);
 
     // GraphQL query to find all objects of this type
     const query = `
@@ -298,7 +290,6 @@ app.get('/api/collection-onchain-count/:collectionId', async (c) => {
       const graphqlResult = await graphqlResponse.json() as any;
       
       if (graphqlResult.errors) {
-        console.error('GraphQL errors:', graphqlResult.errors);
         return c.json({
           success: false,
           error: 'GraphQL query failed',
@@ -310,8 +301,6 @@ app.get('/api/collection-onchain-count/:collectionId', async (c) => {
       let activeCount = 0;
       let kioskCount = 0;
       const uniqueOwners = new Set<string>();
-
-      console.log(`Found ${objects.length} objects of type ${collectionId}`);
 
       for (const obj of objects) {
         if (obj.owner) {
@@ -335,8 +324,6 @@ app.get('/api/collection-onchain-count/:collectionId', async (c) => {
         }
       }
 
-      console.log(`Collection ${collectionId}: ${activeCount} active (${kioskCount} in Kiosk), ${uniqueOwners.size} unique owners`);
-
       return c.json({
         success: true,
         count: activeCount,
@@ -348,10 +335,7 @@ app.get('/api/collection-onchain-count/:collectionId', async (c) => {
       });
 
     } catch (graphqlError) {
-      console.error('GraphQL request failed:', graphqlError);
-      
       // フォールバック: 既知のアドレスがあれば suix_getOwnedObjects を使用
-      console.log('Falling back to RPC method...');
       return c.json({
         success: true,
         count: 0,
@@ -365,7 +349,6 @@ app.get('/api/collection-onchain-count/:collectionId', async (c) => {
     }
     
   } catch (error) {
-    console.error('Failed to get onchain collection count', error);
     return c.json({ success: false, error: 'Failed to get onchain count' }, 500);
   }
 });
@@ -397,10 +380,40 @@ async function resolveFinalOwnerByObjectId(objectId: string, fullnode: string): 
       return await resolveFinalOwner(result.result.data.owner, fullnode);
     }
   } catch (error) {
-    console.error(`Failed to resolve owner for ${objectId}:`, error);
   }
   
   return null;
+}
+
+// Displayテンプレート文字列をcontent.fieldsの実際の値で置換する関数
+function resolveDisplayTemplates(displayData: any, contentFields: any): any {
+  if (!displayData || !contentFields) return displayData;
+  
+  const resolved = { ...displayData };
+  
+  // descriptionのテンプレートを置換
+  if (resolved.description === '{description}' && contentFields.description) {
+    resolved.description = contentFields.description;
+  }
+  
+  // nameのテンプレートを置換
+  if (resolved.name === '{name}' && contentFields.name) {
+    resolved.name = contentFields.name;
+  }
+  
+  // event_dateのテンプレートを置換（{event_date}と{eventDate}の両方をチェック）
+  if (contentFields.event_date) {
+    if (resolved.event_date === '{event_date}' || resolved.event_date === '{eventDate}') {
+      resolved.event_date = contentFields.event_date;
+    }
+  }
+  
+  // image_url内の{image_cid}テンプレートを置換（既に完全なURLの場合は置換しない）
+  if (resolved.image_url && typeof resolved.image_url === 'string' && resolved.image_url.includes('{image_cid}') && contentFields.image_cid) {
+    resolved.image_url = resolved.image_url.replace('{image_cid}', contentFields.image_cid);
+  }
+  
+  return resolved;
 }
 
 // ユーザーが保有しているNFTを取得（Kiosk対応・event_date補完）
@@ -436,7 +449,6 @@ app.get('/api/owned-nfts/:address', async (c) => {
         const listStr = await eventStore.get('events');
         events = listStr ? JSON.parse(listStr) : [];
       } catch (e) {
-        console.error('Failed to load events for fallback:', e);
       }
     }
 
@@ -458,7 +470,8 @@ app.get('/api/owned-nfts/:address', async (c) => {
               options: {
                 showType: true,
                 showDisplay: true,
-                showContent: true
+                showContent: true,
+                showPreviousTransaction: true
               }
             },
             null,
@@ -470,9 +483,18 @@ app.get('/api/owned-nfts/:address', async (c) => {
       const rpcResult = await rpcResponse.json() as any;
       
       if (rpcResult.result?.data) {
+        // トランザクションデータをバッチで取得するためのマップ
+        const txDigestToNFTs = new Map<string, any[]>();
+        
         for (const obj of rpcResult.result.data) {
           if (obj.data?.display?.data) {
-            const displayData = obj.data.display.data;
+            let displayData = obj.data.display.data;
+            
+            // content.fieldsから実際の値を取得してテンプレート文字列を置換
+            const contentFields = obj.data.content?.fields;
+            if (contentFields) {
+              displayData = resolveDisplayTemplates(displayData, contentFields);
+            }
             
             // event_date補完: display.event_dateがなければまたは{eventDate}テンプレートの場合、イベント名から検索
             if ((!displayData.event_date || displayData.event_date === '{eventDate}') && displayData.name) {
@@ -482,17 +504,70 @@ app.get('/api/owned-nfts/:address', async (c) => {
               }
             }
             
-            ownedNFTs.push({
+            const nftData: any = {
               objectId: obj.data.objectId,
               type: obj.data.type,
               display: displayData,
               owner: obj.data.owner
-            });
+            };
+            
+            // previousTransactionがあれば、timestamp取得用にマップに追加
+            if (obj.data.previousTransaction) {
+              const txDigest = obj.data.previousTransaction;
+              if (!txDigestToNFTs.has(txDigest)) {
+                txDigestToNFTs.set(txDigest, []);
+              }
+              nftData.previousTransaction = txDigest;
+              txDigestToNFTs.get(txDigest)!.push(nftData);
+            }
+            
+            ownedNFTs.push(nftData);
           }
         }
+        
+        // トランザクションのtimestampをバッチで取得（最大10個まで同時実行）
+        const timestampPromises: Promise<void>[] = [];
+        const uniqueTxDigests = Array.from(txDigestToNFTs.keys());
+        
+        for (let i = 0; i < uniqueTxDigests.length; i += 10) {
+          const batch = uniqueTxDigests.slice(i, i + 10);
+          const batchPromise = Promise.all(batch.map(async (txDigest) => {
+            try {
+              const txResponse = await fetch(fullnode, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  jsonrpc: '2.0',
+                  id: 1,
+                  method: 'suix_getTransactionBlock',
+                  params: [txDigest, {
+                    showEffects: false,
+                    showInput: false,
+                    showEvents: false,
+                    showObjectChanges: false,
+                    showBalanceChanges: false
+                  }]
+                })
+              });
+              
+              const txResult = await txResponse.json() as any;
+              const timestamp = txResult.result?.timestampMs ? Number(txResult.result.timestampMs) : null;
+              
+              // 該当するNFTにtimestampを追加
+              const nfts = txDigestToNFTs.get(txDigest) || [];
+              nfts.forEach(nft => {
+                nft.timestamp = timestamp;
+              });
+            } catch (error) {
+            }
+          }));
+          timestampPromises.push(batchPromise as any);
+        }
+        
+        // すべてのtimestamp取得が完了するまで待つ
+        await Promise.all(timestampPromises);
       }
     } catch (rpcError) {
-      console.error('RPC owned objects failed:', rpcError);
     }
 
     // 次にGraphQLで全NFTを検索してKiosk内も確認
@@ -544,21 +619,22 @@ app.get('/api/owned-nfts/:address', async (c) => {
             if (node.owner?.owner?.address?.toLowerCase() === userAddress.toLowerCase()) {
               isOwned = true;
             }
-            // Kiosk経由の所有
+            // Kiosk経由の所有（Parent形式）
             else if (node.owner?.parent?.address) {
               const kioskId = node.owner.parent.address;
-              console.log(`Resolving owner for NFT ${node.address} (Kiosk: ${kioskId})`);
               
-              // GraphQLのParent形式をRPCのObjectOwner形式に変換
-              const rpcOwnerFormat = { ObjectOwner: kioskId };
-              const finalOwner = await resolveFinalOwner(rpcOwnerFormat, fullnode);
-              console.log(`Final owner resolved: ${finalOwner}`);
-              
-              if (finalOwner?.toLowerCase() === userAddress.toLowerCase()) {
+              // Kiosk IDが直接ユーザーアドレスと一致する場合（ObjectOwner形式）
+              if (kioskId.toLowerCase() === userAddress.toLowerCase()) {
                 isOwned = true;
-                console.log(`✅ NFT ${node.address} is owned by user (via Kiosk)`);
               } else {
-                console.log(`❌ NFT ${node.address} final owner ${finalOwner} != user ${userAddress}`);
+                // 実際のKiosk経由の場合、最終所有者を解決
+                // GraphQLのParent形式をRPCのObjectOwner形式に変換
+                const rpcOwnerFormat = { ObjectOwner: kioskId };
+                const finalOwner = await resolveFinalOwner(rpcOwnerFormat, fullnode);
+                if (finalOwner?.toLowerCase() === userAddress.toLowerCase()) {
+                  isOwned = true;
+                } else {
+                }
               }
             }
             
@@ -579,18 +655,91 @@ app.get('/api/owned-nfts/:address', async (c) => {
                 }
               }
 
+              // GraphQLからはpreviousTransactionが取得できないため、
+              // 後でsui_getObjectで取得する必要がある
               ownedNFTs.push({
                 objectId: node.address,
                 type: collectionId,
                 display: displayData,
-                owner: node.owner
+                owner: node.owner,
+                previousTransaction: undefined // GraphQL経由では取得できない
               });
             }
           }
         }
       } catch (error) {
-        console.error(`Failed to fetch NFTs for collection ${collectionId}:`, error);
       }
+    }
+
+    // GraphQL経由で取得したNFTのpreviousTransactionとtimestampを取得、またcontent.fieldsからテンプレートを置換
+    const graphQLNFTs = ownedNFTs.filter(nft => !nft.previousTransaction && nft.objectId);
+    if (graphQLNFTs.length > 0) {
+      const graphQLTimestampPromises: Promise<void>[] = [];
+      
+      for (let i = 0; i < graphQLNFTs.length; i += 10) {
+        const batch = graphQLNFTs.slice(i, i + 10);
+        const batchPromise = Promise.all(batch.map(async (nft) => {
+          try {
+            // previousTransactionとcontentを取得
+            const objResponse = await fetch(fullnode, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                jsonrpc: '2.0',
+                id: 1,
+                method: 'sui_getObject',
+                params: [
+                  nft.objectId,
+                  {
+                    showPreviousTransaction: true,
+                    showContent: true
+                  }
+                ]
+              })
+            });
+            
+            const objResult = await objResponse.json() as any;
+            const prevTx = objResult.result?.data?.previousTransaction;
+            
+            // content.fieldsから実際の値を取得してテンプレート文字列を置換
+            const contentFields = objResult.result?.data?.content?.fields;
+            if (contentFields && nft.display) {
+              nft.display = resolveDisplayTemplates(nft.display, contentFields);
+            }
+            
+            if (prevTx) {
+              nft.previousTransaction = prevTx;
+              
+              // timestampを取得
+              const txResponse = await fetch(fullnode, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  jsonrpc: '2.0',
+                  id: 1,
+                  method: 'sui_getTransactionBlock',
+                  params: [prevTx, {
+                    showEffects: false,
+                    showInput: false,
+                    showEvents: false,
+                    showObjectChanges: false,
+                    showBalanceChanges: false
+                  }]
+                })
+              });
+              
+              const txResult = await txResponse.json() as any;
+              const timestamp = txResult.result?.timestampMs ? Number(txResult.result.timestampMs) : null;
+              nft.timestamp = timestamp;
+            }
+          } catch (error) {
+          }
+        }));
+        graphQLTimestampPromises.push(batchPromise as any);
+      }
+      
+      // すべてのtimestamp取得が完了するまで待つ
+      await Promise.all(graphQLTimestampPromises);
     }
 
     // 重複を削除（objectIdでユニーク化）
@@ -605,7 +754,6 @@ app.get('/api/owned-nfts/:address', async (c) => {
     });
 
   } catch (error) {
-    console.error('Failed to get owned NFTs', error);
     return c.json({ success: false, error: 'Failed to get owned NFTs' }, 500);
   }
 });
@@ -642,7 +790,6 @@ async function isAdmin(c: any, address: string): Promise<boolean> {
     
     return false;
   } catch (error) {
-    console.error('isAdmin check error:', error);
     return false;
   }
 }
@@ -801,6 +948,223 @@ app.delete('/api/admin/addresses/:address', async (c) => {
   }
 });
 
+// 表示設定取得API（パブリック、一般ユーザーもアクセス可能）
+app.get('/api/display-settings', async (c) => {
+  try {
+    const store = c.env.COLLECTION_STORE as KVNamespace | undefined;
+    if (!store) {
+      return c.json({ success: false, error: 'Collection store not available' }, 500);
+    }
+
+    const settingsData = await store.get('display_settings');
+    let settings;
+    try {
+      settings = settingsData ? JSON.parse(settingsData) : {
+        enabledCollections: [],
+        enabledEvents: [],
+        customNFTTypes: [],
+        includeKiosk: true,
+        collectionDisplayNames: {},
+        collectionImageUrls: {},
+        collectionDetailUrls: {},
+        collectionLayouts: [],
+        collectionInfo: {}
+      };
+      // バリデーション: 配列であることを確認
+      if (!Array.isArray(settings.enabledCollections) || 
+          !Array.isArray(settings.enabledEvents) || 
+          !Array.isArray(settings.customNFTTypes)) {
+        settings = {
+          enabledCollections: [],
+          enabledEvents: [],
+          customNFTTypes: [],
+          includeKiosk: true,
+          collectionDisplayNames: {},
+          collectionImageUrls: {},
+          collectionDetailUrls: {},
+          collectionLayouts: [],
+          collectionInfo: {}
+        };
+      }
+      if (typeof settings.includeKiosk !== 'boolean') {
+        settings.includeKiosk = true;
+      }
+      if (typeof settings.collectionDisplayNames !== 'object' || settings.collectionDisplayNames === null) {
+        settings.collectionDisplayNames = {};
+      }
+      if (typeof settings.collectionImageUrls !== 'object' || settings.collectionImageUrls === null) {
+        settings.collectionImageUrls = {};
+      }
+      if (typeof settings.collectionDetailUrls !== 'object' || settings.collectionDetailUrls === null) {
+        settings.collectionDetailUrls = {};
+      }
+      if (!Array.isArray(settings.collectionLayouts)) {
+        settings.collectionLayouts = [];
+      }
+      if (typeof settings.collectionInfo !== 'object' || settings.collectionInfo === null) {
+        settings.collectionInfo = {};
+      }
+    } catch (parseError) {
+      settings = {
+        enabledCollections: [],
+        enabledEvents: [],
+        customNFTTypes: [],
+        includeKiosk: true,
+        collectionDisplayNames: {},
+        collectionImageUrls: {},
+        collectionDetailUrls: {},
+        collectionLayouts: [],
+        collectionInfo: {}
+      };
+    }
+
+    return c.json({ success: true, data: settings });
+  } catch (error) {
+    return c.json({ success: false, error: 'Failed to get display settings' }, 500);
+  }
+});
+
+// 表示設定取得API（管理者用）
+app.get('/api/admin/display-settings', async (c) => {
+  try {
+    const admin = c.req.header('X-Admin-Address');
+    if (!admin || !(await isAdmin(c, admin))) {
+      return c.json({ success: false, error: 'forbidden' }, 403);
+    }
+
+    const store = c.env.COLLECTION_STORE as KVNamespace | undefined;
+    if (!store) {
+      return c.json({ success: false, error: 'Collection store not available' }, 500);
+    }
+
+    const settingsData = await store.get('display_settings');
+    let settings;
+    try {
+      settings = settingsData ? JSON.parse(settingsData) : {
+        enabledCollections: [],
+        enabledEvents: [],
+        customNFTTypes: [],
+        includeKiosk: true,
+        collectionDisplayNames: {},
+        collectionImageUrls: {},
+        collectionDetailUrls: {},
+        collectionLayouts: [],
+        collectionInfo: {}
+      };
+      // バリデーション: 配列であることを確認
+      if (!Array.isArray(settings.enabledCollections) || 
+          !Array.isArray(settings.enabledEvents) || 
+          !Array.isArray(settings.customNFTTypes)) {
+        settings = {
+          enabledCollections: [],
+          enabledEvents: [],
+          customNFTTypes: [],
+          includeKiosk: true,
+          collectionDisplayNames: {},
+          collectionImageUrls: {},
+          collectionDetailUrls: {},
+          collectionLayouts: [],
+          collectionInfo: {}
+        };
+      }
+      if (typeof settings.includeKiosk !== 'boolean') {
+        settings.includeKiosk = true;
+      }
+      if (typeof settings.collectionDisplayNames !== 'object' || settings.collectionDisplayNames === null) {
+        settings.collectionDisplayNames = {};
+      }
+      if (typeof settings.collectionImageUrls !== 'object' || settings.collectionImageUrls === null) {
+        settings.collectionImageUrls = {};
+      }
+      if (typeof settings.collectionDetailUrls !== 'object' || settings.collectionDetailUrls === null) {
+        settings.collectionDetailUrls = {};
+      }
+      if (!Array.isArray(settings.collectionLayouts)) {
+        settings.collectionLayouts = [];
+      }
+      if (typeof settings.collectionInfo !== 'object' || settings.collectionInfo === null) {
+        settings.collectionInfo = {};
+      }
+    } catch (parseError) {
+      settings = {
+        enabledCollections: [],
+        enabledEvents: [],
+        customNFTTypes: [],
+        includeKiosk: true,
+        collectionDisplayNames: {},
+        collectionImageUrls: {},
+        collectionDetailUrls: {},
+        collectionLayouts: [],
+        collectionInfo: {}
+      };
+    }
+
+    return c.json({ success: true, data: settings });
+  } catch (error) {
+    return c.json({ success: false, error: 'Failed to get display settings' }, 500);
+  }
+});
+
+// 表示設定保存API
+app.put('/api/admin/display-settings', async (c) => {
+  try {
+    const admin = c.req.header('X-Admin-Address');
+    if (!admin || !(await isAdmin(c, admin))) {
+      return c.json({ success: false, error: 'forbidden' }, 403);
+    }
+
+    const { enabledCollections, enabledEvents, customNFTTypes, includeKiosk, collectionDisplayNames, collectionImageUrls, collectionDetailUrls, collectionLayouts, collectionInfo } = await c.req.json();
+
+    // デバッグログ
+    console.log('[PUT /api/admin/display-settings] Received:', {
+      enabledCollections: Array.isArray(enabledCollections) ? enabledCollections.length : 'not array',
+      imageUrlsKeys: collectionImageUrls && typeof collectionImageUrls === 'object' ? Object.keys(collectionImageUrls) : 'invalid',
+      imageUrls: collectionImageUrls,
+      detailUrlsKeys: collectionDetailUrls && typeof collectionDetailUrls === 'object' ? Object.keys(collectionDetailUrls) : 'invalid',
+      detailUrls: collectionDetailUrls,
+    });
+
+    // バリデーション
+    if (!Array.isArray(enabledCollections) || !Array.isArray(enabledEvents) || !Array.isArray(customNFTTypes)) {
+      return c.json({ success: false, error: 'Invalid data format' }, 400);
+    }
+    if (typeof includeKiosk !== 'undefined' && typeof includeKiosk !== 'boolean') {
+      return c.json({ success: false, error: 'includeKiosk must be a boolean' }, 400);
+    }
+
+    const store = c.env.COLLECTION_STORE as KVNamespace | undefined;
+    if (!store) {
+      return c.json({ success: false, error: 'Collection store not available' }, 500);
+    }
+
+    const settings = {
+      enabledCollections: Array.isArray(enabledCollections) ? enabledCollections : [],
+      enabledEvents: Array.isArray(enabledEvents) ? enabledEvents : [],
+      customNFTTypes: Array.isArray(customNFTTypes) ? customNFTTypes : [],
+      includeKiosk: typeof includeKiosk === 'boolean' ? includeKiosk : true,
+      collectionDisplayNames: typeof collectionDisplayNames === 'object' && collectionDisplayNames !== null ? collectionDisplayNames : {},
+      collectionImageUrls: typeof collectionImageUrls === 'object' && collectionImageUrls !== null ? collectionImageUrls : {},
+      collectionDetailUrls: typeof collectionDetailUrls === 'object' && collectionDetailUrls !== null ? collectionDetailUrls : {},
+      collectionLayouts: Array.isArray(collectionLayouts) ? collectionLayouts : [],
+      collectionInfo: typeof collectionInfo === 'object' && collectionInfo !== null ? collectionInfo : {}
+    };
+
+    console.log('[PUT /api/admin/display-settings] Saving to KV:', {
+      imageUrlsKeys: Object.keys(settings.collectionImageUrls),
+      imageUrls: settings.collectionImageUrls,
+      detailUrlsKeys: Object.keys(settings.collectionDetailUrls),
+      detailUrls: settings.collectionDetailUrls,
+    });
+
+    await store.put('display_settings', JSON.stringify(settings));
+    
+    console.log('[PUT /api/admin/display-settings] Saved successfully');
+    return c.json({ success: true, data: settings });
+  } catch (error) {
+    return c.json({ success: false, error: 'Failed to save display settings' }, 500);
+  }
+});
+
 // Discord ロール管理API
 app.post('/api/discord-action', async (c) => {
   try {
@@ -829,7 +1193,6 @@ app.post('/api/discord-action', async (c) => {
     return c.json(result);
 
   } catch (error) {
-    console.error('Discord action API error:', error);
     return c.json({ success: false, error: 'Failed to process discord action' }, 500);
   }
 });
@@ -863,7 +1226,6 @@ app.post('/api/notify-discord', async (c) => {
     return c.json(result);
 
   } catch (error) {
-    console.error('Discord notification API error:', error);
     return c.json({ success: false, error: 'Failed to notify discord' }, 500);
   }
 });
@@ -1025,7 +1387,6 @@ app.post('/api/batch-process', async (c) => {
             await store.put('batch_config', JSON.stringify(config));
         }
       } catch (error) {
-          console.error('Failed to update batch config lastRun:', error);
         }
       }
     }
@@ -1033,7 +1394,6 @@ app.post('/api/batch-process', async (c) => {
     return c.json(result);
 
   } catch (error) {
-    console.error('Batch process API error:', error);
     return c.json({ success: false, error: 'Failed to execute batch process' }, 500);
   }
 });
@@ -1056,19 +1416,16 @@ app.get('/api/discord/roles', async (c) => {
       });
 
       if (!response.ok) {
-        console.error('Discord Bot API not available:', response.status, response.statusText);
         return c.json({ success: true, data: [], message: 'Discord Bot API is currently unavailable' });
       }
 
       const result = await response.json();
       return c.json(result);
     } catch (fetchError) {
-      console.error('Discord Bot API connection failed:', fetchError);
       return c.json({ success: true, data: [], message: 'Discord Bot API is currently unavailable' });
     }
 
   } catch (error) {
-    console.error('Discord roles API error:', error);
     return c.json({ success: false, error: 'Failed to fetch Discord roles' }, 500);
   }
 });
@@ -1178,7 +1535,7 @@ app.post('/api/admin/events', async (c) => {
     }
 
     const body = await c.req.json();
-    const { name, description, startAt, endAt, eventDate, active = false, imageUrl, imageCid, imageMimeType, imageStorageEpochs, imageStorageExpiry, maxMints, mintPrice, collectionId, roleId, roleName, moveCall, totalCap } = body;
+    const { name, description, startAt, endAt, eventDate, active = false, imageUrl, imageCid, imageMimeType, imageStorageEpochs, imageStorageExpiry, maxMints, mintPrice, collectionId, roleId, roleName, moveCall, totalCap, detailUrl } = body;
 
     // 必須フィールドの検証
     if (!name || !description || !startAt || !endAt) {
@@ -1196,6 +1553,7 @@ app.post('/api/admin/events', async (c) => {
       description,
       startAt,
       endAt,
+      eventDate: eventDate || null,
       active: Boolean(active),
       imageUrl: imageUrl || '',
       imageCid: imageCid || '',
@@ -1209,6 +1567,7 @@ app.post('/api/admin/events', async (c) => {
       roleName: roleName || '',
       moveCall: moveCall || null,
       totalCap: totalCap || null,
+      detailUrl: detailUrl || '',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -1217,11 +1576,27 @@ app.post('/api/admin/events', async (c) => {
     list.push(newEvent);
 
     // 更新されたリストを保存
-    await store.put('events', JSON.stringify(list));
+    const listJson = JSON.stringify(list);
+    await store.put('events', listJson);
+
+    // 保存確認：保存されたイベントを再度取得して確認
+    const verifyStr = await store.get('events');
+    const verifyList = verifyStr ? JSON.parse(verifyStr) : [];
+    const savedEvent = verifyList.find((e: any) => e.id === newEvent.id);
+    
+    if (!savedEvent) {
+      console.error('Event was not saved to KV store:', newEvent.id);
+      return c.json({ success: false, error: 'Event was not saved to KV store' }, 500);
+    }
 
     return c.json({ success: true, data: newEvent });
-  } catch (error) {
-    return c.json({ success: false, error: 'Failed to create event' }, 500);
+  } catch (error: any) {
+    console.error('Failed to create event:', error);
+    return c.json({ 
+      success: false, 
+      error: error?.message || 'Failed to create event',
+      details: error?.stack 
+    }, 500);
   }
 });
 
@@ -1249,7 +1624,7 @@ app.put('/api/admin/events/:id', async (c) => {
     }
 
     const body = await c.req.json();
-    const { name, description, startAt, endAt, eventDate, active, imageUrl, imageCid, imageMimeType, imageStorageEpochs, imageStorageExpiry, maxMints, mintPrice, collectionId, roleId, roleName, moveCall, totalCap } = body;
+    const { name, description, startAt, endAt, eventDate, active, imageUrl, imageCid, imageMimeType, imageStorageEpochs, imageStorageExpiry, maxMints, mintPrice, collectionId, roleId, roleName, moveCall, totalCap, detailUrl } = body;
 
     // イベントリストを取得
     const listStr = await store.get('events');
@@ -1282,6 +1657,7 @@ app.put('/api/admin/events/:id', async (c) => {
       ...(roleName !== undefined && { roleName }),
       ...(moveCall !== undefined && { moveCall }),
       ...(totalCap !== undefined && { totalCap }),
+      ...(detailUrl !== undefined && { detailUrl }),
       updatedAt: new Date().toISOString()
     };
 
@@ -1491,7 +1867,6 @@ app.get('/api/collections', async (c) => {
     }
     return c.json({ success: true, data: collections });
   } catch (e) {
-    console.error('collections get failed', e);
     return c.json({ success: true, data: [] });
   }
 });
@@ -1523,7 +1898,6 @@ app.post('/api/collections', async (c) => {
     await c.env.COLLECTION_STORE.put('collections', JSON.stringify(list));
     return c.json({ success: true, data: item });
   } catch (e) {
-    console.error('collections post failed', e);
     return c.json({ success: false, error: 'failed' }, 500);
   }
 });
@@ -1543,7 +1917,6 @@ app.put('/api/collections/:id', async (c) => {
     await c.env.COLLECTION_STORE.put('collections', JSON.stringify(list));
     return c.json({ success: true, data: list[idx] });
   } catch (e) {
-    console.error('collections put failed', e);
     return c.json({ success: false, error: 'failed' }, 500);
   }
 });
@@ -1560,7 +1933,6 @@ app.delete('/api/collections/:id', async (c) => {
     await c.env.COLLECTION_STORE.put('collections', JSON.stringify(next));
     return c.json({ success: true });
   } catch (e) {
-    console.error('collections delete failed', e);
     return c.json({ success: false, error: 'failed' }, 500);
   }
 });
@@ -1575,7 +1947,6 @@ app.get('/api/mint-collections', async (c) => {
     }
     return c.json({ success: true, data: collections });
   } catch (e) {
-    console.error('mint-collections get failed', e);
     return c.json({ success: true, data: [] });
   }
 });
@@ -1583,16 +1954,16 @@ app.get('/api/mint-collections', async (c) => {
 // ミント用コレクション削除API
 app.delete('/api/mint-collections/:id', async (c) => {
   try {
-    // 管理者チェック
-    const adminAddresses = (c.env.ADMIN_ADDRESSES || '').split(',').map(a => a.trim().toLowerCase());
-    const walletAddr = c.req.header('X-Admin-Address')?.toLowerCase();
+    const admin = c.req.header('X-Admin-Address');
     const walletConnected = c.req.header('X-Wallet-Connected');
     
+    // ウォレット接続状態をチェック
     if (!walletConnected || walletConnected !== 'true') {
       return c.json({ success: false, error: 'Wallet not connected' }, 401);
     }
     
-    if (!walletAddr || !adminAddresses.includes(walletAddr)) {
+    // 管理者チェック（環境変数とKVストアの両方をチェック）
+    if (!admin || !(await isAdmin(c, admin))) {
       return c.json({ success: false, error: 'Unauthorized: Admin only' }, 403);
     }
 
@@ -1625,7 +1996,6 @@ app.delete('/api/mint-collections/:id', async (c) => {
       deletedId: collectionId
     });
   } catch (e: any) {
-    console.error('mint-collection delete failed', e);
     return c.json({ success: false, error: e?.message || 'Failed to delete collection' }, 500);
   }
 });
@@ -1642,24 +2012,16 @@ app.get('/api/mint-collections/:typePath/mints', async (c) => {
 
     // イベントIDが指定されている場合はイベント別インデックスを使用
     const idxKey = eventId ? `mint_index:${typePath}:${eventId}` : `mint_index:${typePath}`;
-    console.log(`[Mint History] Looking for key: ${idxKey}`);
-    
     const idxStr = await mintedStore.get(idxKey);
-    console.log(`[Mint History] Found data:`, idxStr ? `${idxStr.length} bytes` : 'null');
-    
     const txs: string[] = idxStr ? JSON.parse(idxStr) : [];
-    console.log(`[Mint History] Transaction count: ${txs.length}`);
-    
     const slice = txs.slice(0, limit);
     const items = await Promise.all(slice.map(async (tx) => {
       const rec = await mintedStore.get(`mint_tx:${tx}`);
       return rec ? JSON.parse(rec) : { txDigest: tx };
     }));
     
-    console.log(`[Mint History] Returning ${items.length} items`);
     return c.json({ success: true, data: items });
   } catch (error) {
-    console.error('Get collection mints failed', error);
     return c.json({ success: false, error: 'Failed to get collection mints' }, 500);
   }
 });
@@ -1691,7 +2053,6 @@ app.post('/api/mint-collections', async (c) => {
     await c.env.COLLECTION_STORE.put('mint_collections', JSON.stringify(list));
     return c.json({ success: true, data: item });
   } catch (e) {
-    console.error('mint-collections post failed', e);
     return c.json({ success: false, error: 'failed' }, 500);
   }
 });
@@ -1710,23 +2071,6 @@ app.put('/api/mint-collections/:id', async (c) => {
     await c.env.COLLECTION_STORE.put('mint_collections', JSON.stringify(list));
     return c.json({ success: true, data: list[idx] });
   } catch (e) {
-    console.error('mint-collections put failed', e);
-    return c.json({ success: false, error: 'failed' }, 500);
-  }
-});
-
-app.delete('/api/mint-collections/:id', async (c) => {
-  try {
-    const admin = c.req.header('X-Admin-Address');
-    if (!admin || !(await isAdmin(c, admin))) return c.json({ success: false, error: 'forbidden' }, 403);
-    const id = c.req.param('id');
-    const s = await c.env.COLLECTION_STORE.get('mint_collections');
-    const list = s ? JSON.parse(s) : [];
-    const next = list.filter((x: any) => x.id !== id);
-    await c.env.COLLECTION_STORE.put('mint_collections', JSON.stringify(next));
-    return c.json({ success: true });
-  } catch (e) {
-    console.error('mint-collections delete failed', e);
     return c.json({ success: false, error: 'failed' }, 500);
   }
 });
@@ -1769,7 +2113,6 @@ app.post('/api/nonce', async (c) => {
     });
 
   } catch (error) {
-    console.error('Nonce generation error:', error);
     return c.json({ success: false, error: 'Failed to generate nonce' }, 500);
   }
 });
@@ -1878,7 +2221,6 @@ app.post('/api/verify', async (c) => {
         })
       });
     } catch (botError) {
-      console.error('Discord notification failed:', botError);
       // 通知失敗は認証成功を妨げない
     }
     
@@ -1892,7 +2234,6 @@ app.post('/api/verify', async (c) => {
     });
 
   } catch (error) {
-    console.error('Verification API error:', error);
     return c.json({ success: false, error: 'Verification failed' }, 500);
   }
 });
@@ -1923,7 +2264,6 @@ app.post('/api/admin/update-batch-stats', async (c) => {
 
     return c.json({ success: true, message: 'Batch statistics updated successfully' });
   } catch (error) {
-    console.error('Update batch stats error:', error);
     return c.json({ success: false, error: 'Failed to update batch statistics' }, 500);
   }
 });
@@ -1990,7 +2330,6 @@ app.post('/api/admin/check-nft-ownership', async (c) => {
         hasNFT = true;
       }
   } catch (error) {
-      console.error('NFT ownership check failed:', error);
       // チェック失敗時は既存の状態を維持
       hasNFT = true; // デフォルトで保有していると仮定
     }
@@ -2013,8 +2352,43 @@ app.post('/api/admin/check-nft-ownership', async (c) => {
     });
 
   } catch (error) {
-    console.error('Check NFT ownership error:', error);
     return c.json({ success: false, error: 'Failed to check NFT ownership' }, 500);
+  }
+});
+
+// テスト用：特定イベントをKVストアから削除（管理者専用）
+app.delete('/api/admin/clear-test-event/:id', async (c) => {
+  try {
+    const admin = c.req.header('X-Admin-Address');
+    if (!admin || !(await isAdmin(c, admin))) return c.json({ success: false, error: 'forbidden' }, 403);
+
+    const eventId = c.req.param('id');
+    if (!eventId) {
+      return c.json({ success: false, error: 'Event ID is required' }, 400);
+    }
+
+    const store = c.env.EVENT_STORE as KVNamespace | undefined;
+    if (!store) {
+      return c.json({ success: false, error: 'EVENT_STORE is not available' }, 500);
+    }
+
+    // イベントリストを取得
+    const listStr = await store.get('events');
+    const list = listStr ? JSON.parse(listStr) : [];
+    
+    // 指定されたIDのイベントを除外
+    const filteredList = list.filter((e: any) => e.id !== eventId);
+    
+    // 更新されたリストを保存
+    await store.put('events', JSON.stringify(filteredList));
+
+    return c.json({ 
+      success: true, 
+      message: 'Event deleted successfully',
+      deletedCount: list.length - filteredList.length
+    });
+  } catch (error) {
+    return c.json({ success: false, error: 'Failed to delete event' }, 500);
   }
 });
 
@@ -2040,7 +2414,6 @@ app.delete('/api/admin/delete-test-user', async (c) => {
 
     return c.json({ success: true, message: 'Test user deleted successfully' });
     } catch (error) {
-    console.error('Delete test user error:', error);
     return c.json({ success: false, error: 'Failed to delete test user' }, 500);
   }
 });
@@ -2076,7 +2449,6 @@ app.post('/api/admin/set-test-user', async (c) => {
 
     return c.json({ success: true, message: 'Test user added successfully', data: userData });
       } catch (error) {
-    console.error('Set test user error:', error);
     return c.json({ success: false, error: 'Failed to add test user' }, 500);
   }
 });
@@ -2120,26 +2492,21 @@ app.patch('/api/admin/verified-users/:discordId/collections', async (c) => {
 
     return c.json({ success: true, message: 'User collections updated successfully', data: userData });
   } catch (error) {
-    console.error('Update user collections error:', error);
     return c.json({ success: false, error: 'Failed to update user collections' }, 500);
   }
 });
 
 // Cloudflare Workers用のスケジュール関数
 export async function scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-  console.log('Scheduled event triggered:', controller.cron, controller.scheduledTime);
-  
   try {
     // バッチ処理設定をチェック
     const store = env.COLLECTION_STORE as KVNamespace | undefined;
     if (!store) {
-      console.log('Collection store not available');
       return;
     }
 
     const configStr = await store.get('batch_config');
     if (!configStr) {
-      console.log('No batch config found');
       return;
     }
 
@@ -2147,13 +2514,11 @@ export async function scheduled(controller: ScheduledController, env: Env, ctx: 
     try {
       config = JSON.parse(configStr);
     } catch (parseError) {
-      console.error('Failed to parse batch config:', parseError);
       return;
     }
     
     // バッチ処理が有効でない場合はスキップ
     if (!config.enabled) {
-      console.log('Batch processing is disabled');
       return;
     }
 
@@ -2165,22 +2530,17 @@ export async function scheduled(controller: ScheduledController, env: Env, ctx: 
       try {
         nextRun = new Date(config.nextRun);
         if (isNaN(nextRun.getTime())) {
-          console.error('Invalid nextRun date:', config.nextRun);
           nextRun = null;
         }
       } catch (dateError) {
-        console.error('Failed to parse nextRun date:', dateError);
         nextRun = null;
       }
     }
     
     if (nextRun && now < nextRun) {
-      console.log('Not time to run batch processing yet');
       return;
     }
 
-    console.log('Starting batch processing...');
-    
     // バッチ処理を実行（Discord Bot APIに委譲）
     const botApiUrl = env.DISCORD_BOT_API_URL || 'https://nft-verification-bot.onrender.com';
     
@@ -2188,7 +2548,6 @@ export async function scheduled(controller: ScheduledController, env: Env, ctx: 
       // タイムアウト付きでバッチ処理を実行
       const abortController = new AbortController();
       const timeoutId = setTimeout(() => {
-        console.log('Batch processing timeout reached, aborting...');
         abortController.abort();
       }, 30000); // 30秒タイムアウト
       
@@ -2215,8 +2574,6 @@ export async function scheduled(controller: ScheduledController, env: Env, ctx: 
 
       if (response.ok) {
         const result = await response.json();
-        console.log('Batch processing completed:', result);
-        
         // 実行時刻を更新
         config.lastRun = new Date().toISOString();
         if (config.interval && config.interval > 0) {
@@ -2228,28 +2585,22 @@ export async function scheduled(controller: ScheduledController, env: Env, ctx: 
         // 設定更新を非同期で実行（waitUntilで適切に管理）
         const updatePromise = store.put('batch_config', JSON.stringify(config))
           .catch((storeError: any) => {
-            console.error('Failed to update batch config:', storeError);
+            console.error('[scheduled] Failed to update batch_config:', storeError);
           });
         
         ctx.waitUntil(updatePromise);
       } else {
-        console.error('Batch processing failed:', response.status, response.statusText);
       }
     } catch (error) {
-      console.error('Batch processing error:', error);
-      
       // エラー時は再試行を無効化（noRetry）
       if (error instanceof Error && error.name === 'AbortError') {
-        console.log('Batch processing timed out, disabling retry');
         controller.noRetry();
       } else if (error instanceof Error && error.name === 'TypeError' && error.message.includes('fetch')) {
-        console.log('Network error occurred, disabling retry');
         controller.noRetry();
       }
     }
     
   } catch (error) {
-    console.error('Scheduled function error:', error);
   }
 }
 

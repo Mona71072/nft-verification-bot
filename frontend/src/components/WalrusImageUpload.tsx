@@ -9,7 +9,6 @@ interface WalrusImageUploadProps {
 }
 
 export default function WalrusImageUpload({ imageCid, imageMimeType, onUpload, apiBase, onMessage }: WalrusImageUploadProps) {
-  const showToast = onMessage || ((msg, type) => console.log(`[${type}] ${msg}`));
   const [uploading, setUploading] = React.useState(false);
   const [dragActive, setDragActive] = React.useState(false);
   const [uploadEnabled, setUploadEnabled] = React.useState(true);
@@ -29,7 +28,6 @@ export default function WalrusImageUpload({ imageCid, imageMimeType, onUpload, a
           setConfigNotice(data.data.notice || null);
         }
       } catch (e) {
-        console.error('Failed to check Walrus config:', e);
       }
     };
     checkConfig();
@@ -37,17 +35,17 @@ export default function WalrusImageUpload({ imageCid, imageMimeType, onUpload, a
 
   const handleFile = async (file: File) => {
     if (!uploadEnabled) {
-      showToast('アップロード機能は現在無効です。Publisher設定が必要です。', 'error');
+      onMessage?.('アップロード機能は現在無効です。Publisher設定が必要です。', 'error');
       return;
     }
 
     if (!file.type.startsWith('image/')) {
-      showToast('画像ファイルを選択してください', 'error');
+      onMessage?.('画像ファイルを選択してください', 'error');
       return;
     }
 
     setUploading(true);
-    showToast('Walrusに画像をアップロード中...', 'info');
+    onMessage?.('Walrusに画像をアップロード中...', 'info');
 
     try {
       const formData = new FormData();
@@ -64,7 +62,7 @@ export default function WalrusImageUpload({ imageCid, imageMimeType, onUpload, a
       if (!response.ok || !result.success) {
         // Publisher未設定エラーの特別処理
         if (result.code === 'PUBLISHER_NOT_CONFIGURED') {
-          showToast('Publisher未設定: Mainnetでは自前Publisherが必要です', 'error');
+          onMessage?.('Publisher未設定: Mainnetでは自前Publisherが必要です', 'error');
           setUploadEnabled(false);
         } else {
           throw new Error(result.error || `アップロードに失敗しました (${response.status})`);
@@ -81,9 +79,9 @@ export default function WalrusImageUpload({ imageCid, imageMimeType, onUpload, a
       expiryDate.setDate(expiryDate.getDate() + (epochs * 14)); // 1 epoch = 14日
       
       onUpload(blobId, file.type, epochs, expiryDate.toISOString());
-      showToast(`画像をアップロードしました（保存期限: 約1年）`, 'success');
+      onMessage?.('画像をアップロードしました（保存期限: 約1年）', 'success');
     } catch (error: any) {
-      showToast(`アップロード失敗: ${error.message}`, 'error');
+      onMessage?.(`アップロード失敗: ${error.message}`, 'error');
     } finally {
       setUploading(false);
     }

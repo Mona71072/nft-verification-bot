@@ -4,28 +4,46 @@
  */
 
 export function logInfo(message: string, data?: any): void {
-  // 本番環境では情報ログを無効化
-  if (process.env.NODE_ENV !== 'production') {
-    console.log(message, data || '');
-  }
+  // Logging disabled
 }
 
 export function logDebug(message: string, data?: any): void {
-  // デバッグログは本番環境では無効化
-  if (process.env.NODE_ENV !== 'production') {
-    console.debug(message, data || '');
-  }
+  // Logging disabled
 }
 
 export function logSuccess(message: string, data?: any): void {
-  // 成功ログは本番環境でも出力
-  console.log(`✅ ${message}`, data || '');
+  // Logging disabled
 }
 
 export function logWarning(message: string, data?: any): void {
-  console.warn(`⚠️ ${message}`, data || '');
+  // 一時的にログを有効化（デバッグ用）
+  try {
+    if (data) {
+      const dataInfo = typeof data === 'object' ? JSON.stringify(data) : String(data);
+      console.warn(`[WARNING] ${message}`, dataInfo);
+    } else {
+      console.warn(`[WARNING] ${message}`);
+    }
+  } catch (e) {
+    console.warn(`[WARNING] ${message}`, String(data));
+  }
 }
 
 export function logError(message: string, error?: any): void {
-  console.error(`❌ ${message}`, error || '');
+  // 一時的にログを有効化（デバッグ用）
+  try {
+    if (error) {
+      const errorInfo = {
+        message: error?.message,
+        name: error?.name,
+        stack: error?.stack,
+        ...(typeof error === 'object' ? error : { value: String(error) })
+      };
+      console.error(`[ERROR] ${message}`, JSON.stringify(errorInfo));
+    } else {
+      console.error(`[ERROR] ${message}`);
+    }
+  } catch (e) {
+    console.error(`[ERROR] ${message}`, String(error));
+  }
 }

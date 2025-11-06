@@ -1,0 +1,1395 @@
+import { useState, useMemo } from 'react';
+import { useWalletWithErrorHandling } from './useWallet';
+import { useCollections } from './queries/useCollections';
+import { useEvents } from './queries/useEvents';
+import { useOwnedNFTs, useOnchainCounts } from './queries/useNFTs';
+import { useActivityStats, type ActivityStats } from './useActivityStats';
+import { useResponsive } from './useResponsive';
+import { useDisplaySettings } from './useDisplaySettings';
+import type { DisplaySettings } from '../types';
+
+const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
+  enabledCollections: [],
+  enabledEvents: [],
+  customNFTTypes: [],
+  includeKiosk: true,
+  collectionDisplayNames: {},
+  collectionLayouts: []
+};
+
+export type HomeTabType = 'all' | 'owned' | 'calendar' | 'activity' | 'dashboard';
+
+export interface OwnedNFT {
+  objectId: string;
+  type: string;
+  display?: {
+    name?: string;
+    description?: string;
+    image_url?: string;
+    event_date?: string;
+  };
+  owner?: unknown;
+}
+
+export interface OwnedNFT {
+  objectId: string;
+  type: string;
+  display?: {
+    name?: string;
+    description?: string;
+    image_url?: string;
+    event_date?: string;
+  };
+  owner?: unknown;
+}
+
+export interface CollectionConfig {
+  id: string;
+  name: string;
+  packageId: string;
+  displayName: string;
+  description?: string;
+  isActive: boolean;
+  roleId?: string;
+  originalId?: string;
+}
+
+export interface EventConfig {
+  id: string;
+  name: string;
+  description?: string;
+  imageUrl?: string;
+  imageCid?: string;
+  imageMimeType?: string;
+  active: boolean;
+  startAt?: string;
+  endAt?: string;
+  eventDate?: string;
+  collectionId: string;
+  displayName?: string;
+  totalCap?: number;
+  mintedCount?: number;
+  moveCall?: {
+    target?: string;
+    typeArguments?: string[];
+    argumentsTemplate?: string[];
+    gasBudget?: number;
+  };
+}
+
+export interface DisplaySettingsState extends DisplaySettings {
+  enabledCollections: string[];
+  enabledEvents: string[];
+  customNFTTypes: string[];
+  includeKiosk: boolean;
+}
+
+export function useHomePageState() {
+  // ウォレット接続を安全に取得
+  let account: { address: string } | null = null;
+  let connected = false;
+  
+  try {
+    const walletState = useWalletWithErrorHandling();
+    if (walletState && typeof walletState === 'object') {
+      account = walletState.account as { address: string } | null;
+      connected = walletState.connected || false;
+    }
+  } catch (error) {
+    console.error('Wallet hook error:', error);
+    account = null;
+    connected = false;
+  }
+  
+  // タブ管理
+  const [activeTab, setActiveTab] = useState<HomeTabType>('all');
+  
+  // コレクション管理
+  const [expandedCollections, setExpandedCollections] = useState<Set<string>>(new Set());
+  
+  // NFT管理
+  const [selectedNFT, setSelectedNFT] = useState<OwnedNFT | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  
+  // ソート機能
+  const [sortBy, setSortBy] = useState<'eventName' | 'eventDate' | 'collection'>('eventName');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  
+  // 検索機能
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  // レスポンシブ対応
+  let deviceType: 'mobile' | 'tablet' | 'desktop' = 'desktop';
+  try {
+    const responsive = useResponsive();
+    deviceType = responsive.deviceType;
+  } catch (error) {
+    console.error('useResponsive error:', error);
+  }
+
+  // TanStack Query hooks
+  const { data: rawCollections = [], isLoading: collectionsLoading, error: collectionsError } = useCollections();
+  const { data: rawEvents = [], isLoading: eventsLoading, error: eventsError } = useEvents();
+  const { data: displaySettings } = useDisplaySettings();
+
+  // displaySettingsの内容ベースの比較のための文字列化
+  // displaySettingsオブジェクト全体を依存関係として使用し、useMemo内でJSON.stringifyを使用
+  // これにより、参照が変わるたびに再計算されるが、内容が同じ場合は同じキーが返される
+  const displaySettingsKey = useMemo(() => {
+    if (!displaySettings) return 'default';
+    try {
+      return JSON.stringify({
+        enabledCollections: displaySettings.enabledCollections || [],
+        enabledEvents: displaySettings.enabledEvents || [],
+        customNFTTypes: displaySettings.customNFTTypes || [],
+        includeKiosk: displaySettings.includeKiosk ?? true,
+        collectionDisplayNames: displaySettings.collectionDisplayNames || {},
+        collectionLayouts: displaySettings.collectionLayouts || []
+      });
+    } catch (e) {
+      console.error('Failed to stringify displaySettings:', e);
+      return 'default';
+    }
+    // displaySettingsの参照が変わるたびに再計算
+    // TanStack Queryは通常、同じデータの場合は同じ参照を返すべきだが、
+    // 念のため参照ベースの比較を行う
+  }, [displaySettings]);
+
+  const safeDisplaySettings = useMemo<DisplaySettings>(() => {
+    if (
+      displaySettings &&
+      Array.isArray(displaySettings.enabledCollections) &&
+      Array.isArray(displaySettings.enabledEvents) &&
+      Array.isArray(displaySettings.customNFTTypes)
+    ) {
+      return {
+        enabledCollections: displaySettings.enabledCollections,
+        enabledEvents: displaySettings.enabledEvents,
+        customNFTTypes: displaySettings.customNFTTypes,
+        includeKiosk: typeof displaySettings.includeKiosk === 'boolean' ? displaySettings.includeKiosk : true,
+        collectionDisplayNames: displaySettings.collectionDisplayNames || {},
+        collectionLayouts: Array.isArray(displaySettings.collectionLayouts) ? displaySettings.collectionLayouts : []
+      };
+    }
+    return DEFAULT_DISPLAY_SETTINGS;
+  }, [displaySettingsKey]);
+
+  const { normalizedEnabledCollections, normalizedCollectionNames, normalizedCollectionLayouts } = useMemo<{
+    normalizedEnabledCollections: string[];
+    normalizedCollectionNames: Record<string, string>;
+    normalizedCollectionLayouts: Array<{ id: string; title: string; subtitle?: string; collectionIds: string[] }>;
+  }>(() => {
+    if (!rawCollections || !Array.isArray(rawCollections)) {
+      return {
+        normalizedEnabledCollections: safeDisplaySettings.enabledCollections,
+        normalizedCollectionNames: { ...(safeDisplaySettings.collectionDisplayNames || {}) },
+        normalizedCollectionLayouts: safeDisplaySettings.collectionLayouts || []
+      };
+    }
+
+    const normalized = new Set<string>();
+    const names: Record<string, string> = { ...(safeDisplaySettings.collectionDisplayNames || {}) };
+
+    safeDisplaySettings.enabledCollections.forEach(id => {
+      normalized.add(id);
+      const isScxtGenesis = id.includes('scxt_genesis');
+      if (isScxtGenesis) {
+        console.log('[normalizedEnabledCollections] Processing enabledCollection:', id);
+      }
+      const match = rawCollections.find(col => 
+        col.id === id || 
+        col.packageId === id || 
+        (col as any).roleId === id ||
+        (col as any).originalId === id
+      );
+      if (match) {
+        normalized.add(match.id);
+        if (match.packageId) normalized.add(match.packageId);
+        const roleId = (match as any).roleId;
+        if (roleId) normalized.add(roleId);
+        if (isScxtGenesis) {
+          console.log('[normalizedEnabledCollections] Found match:', {
+            id: match.id,
+            packageId: match.packageId,
+            roleId: roleId,
+            addedToNormalized: [match.id, match.packageId, roleId].filter(Boolean)
+          });
+        }
+
+        const displayName = safeDisplaySettings.collectionDisplayNames?.[id];
+        if (displayName) {
+          names[id] = displayName;
+          names[match.id] = displayName;
+          if (match.packageId) names[match.packageId] = displayName;
+          if (roleId) names[roleId] = displayName;
+        }
+      } else if (isScxtGenesis) {
+        console.log('[normalizedEnabledCollections] No match found for:', id);
+      }
+    });
+
+    const layouts = (safeDisplaySettings.collectionLayouts || []).map(layout => ({
+      id: layout.id || `layout_${(layout.collectionIds || []).join('_')}`,
+      title: layout.title || '',
+      subtitle: layout.subtitle,
+      collectionIds: Array.from(new Set((layout.collectionIds || []).map(id => {
+        const match = rawCollections.find(col => 
+          col.id === id ||
+          col.packageId === id ||
+          (col as any).roleId === id ||
+          (col as any).originalId === id
+        );
+        return match ? match.id : id;
+      })))
+    }));
+
+    const normalizedArray = Array.from(normalized);
+    if (normalizedArray.some(id => id.includes('scxt_genesis'))) {
+      console.log('[normalizedEnabledCollections] Final result:', normalizedArray);
+    }
+    return {
+      normalizedEnabledCollections: normalizedArray,
+      normalizedCollectionNames: names,
+      normalizedCollectionLayouts: layouts
+    };
+  }, [safeDisplaySettings.enabledCollections, safeDisplaySettings.collectionDisplayNames, safeDisplaySettings.collectionLayouts, rawCollections]);
+
+  const hasSelectionFilters = useMemo(() => (
+    normalizedEnabledCollections.length > 0 ||
+    safeDisplaySettings.enabledEvents.length > 0 ||
+    safeDisplaySettings.customNFTTypes.length > 0
+  ), [normalizedEnabledCollections.length, safeDisplaySettings.enabledEvents.length, safeDisplaySettings.customNFTTypes.length]);
+
+  const hasDisplaySettings = useMemo(() => (
+    hasSelectionFilters || safeDisplaySettings.includeKiosk !== true
+  ), [hasSelectionFilters, safeDisplaySettings.includeKiosk]);
+
+  // enabledCollectionsからNFTタイプ（::を含む）を検出してcustomNFTTypesに追加
+  const effectiveCustomNFTTypes = useMemo(() => {
+    const customTypes = new Set<string>(safeDisplaySettings.customNFTTypes || []);
+    // enabledCollectionsにNFTタイプ（::を含む）が含まれている場合は自動追加
+    safeDisplaySettings.enabledCollections.forEach(id => {
+      if (id.includes('::') && id.split('::').length >= 3) {
+        // packageId::module::StructName 形式と判定
+        customTypes.add(id);
+        if (id.includes('scxt_genesis')) {
+          console.log('[effectiveCustomNFTTypes] Added from enabledCollections:', id);
+        }
+      }
+    });
+    // collectionLayoutsのcollectionIdsからも検出
+    (safeDisplaySettings.collectionLayouts || []).forEach(layout => {
+      (layout.collectionIds || []).forEach(id => {
+        if (id.includes('::') && id.split('::').length >= 3) {
+          customTypes.add(id);
+          if (id.includes('scxt_genesis')) {
+            console.log('[effectiveCustomNFTTypes] Added from collectionLayouts:', id);
+          }
+        }
+      });
+    });
+    const result = Array.from(customTypes);
+    if (result.some(id => id.includes('scxt_genesis'))) {
+      console.log('[effectiveCustomNFTTypes] Final result:', result);
+    }
+    return result;
+  }, [safeDisplaySettings.enabledCollections, safeDisplaySettings.customNFTTypes, safeDisplaySettings.collectionLayouts]);
+
+  const enabledCollectionSet = useMemo(() => {
+    const set = new Set<string>();
+    normalizedEnabledCollections.forEach(id => set.add(id));
+    // 本番環境でも動作するデバッグログ
+    console.log('[enabledCollectionSet] Created set with:', Array.from(set));
+    console.log('[enabledCollectionSet] normalizedEnabledCollections:', normalizedEnabledCollections);
+    return set;
+  }, [normalizedEnabledCollections]);
+  const enabledEventSet = useMemo(() => new Set(safeDisplaySettings.enabledEvents), [safeDisplaySettings.enabledEvents]);
+  const customNFTTypesSet = useMemo(() => {
+    const set = new Set(effectiveCustomNFTTypes);
+    if (effectiveCustomNFTTypes.some(t => t.includes('scxt_genesis'))) {
+      console.log('[customNFTTypesSet] Created set with scxt_genesis:', Array.from(set));
+      console.log('[customNFTTypesSet] effectiveCustomNFTTypes:', effectiveCustomNFTTypes);
+    }
+    return set;
+  }, [effectiveCustomNFTTypes]);
+  const includeKiosk = safeDisplaySettings.includeKiosk ?? true;
+
+  const isKioskOwned = (owner: any): boolean => {
+    if (!owner) return false;
+    if (owner.ObjectOwner) return true;
+    if (owner?.parent?.address) return true;
+    if (owner?.parent && typeof owner.parent === 'object' && owner.parent.address) return true;
+    if (owner.Parent) return true;
+    return false;
+  };
+
+  // エラーログ
+  if (collectionsError) {
+    console.error('useCollections error:', collectionsError);
+  }
+  if (eventsError) {
+    console.error('useEvents error:', eventsError);
+  }
+
+  // コレクションタイプパス
+  const collectionTypes = useMemo(() => {
+    if (!rawCollections || !Array.isArray(rawCollections)) {
+      return [];
+    }
+    return rawCollections.map(col => col?.id).filter(Boolean);
+  }, [rawCollections]);
+
+  // オンチェーンカウント
+  const { data: onchainCounts = new Map(), error: onchainCountsError } = useOnchainCounts(collectionTypes);
+
+  if (onchainCountsError) {
+    console.error('useOnchainCounts error:', onchainCountsError);
+  }
+
+  // 所有NFT
+  const { data: allOwnedNFTs = [], isLoading: nftLoading, error: nftError } = useOwnedNFTs(account?.address || '', collectionTypes);
+
+  if (nftError) {
+    console.error('useOwnedNFTs error:', nftError);
+  }
+
+  // アクティビティ統計
+  const activityStats: ActivityStats = useActivityStats(account?.address || '', collectionTypes);
+
+  // ローディング状態
+  const loading = collectionsLoading || eventsLoading || nftLoading;
+
+  // クリティカルエラー
+  const hasCriticalErrors = Boolean(collectionsError || eventsError || nftError);
+
+  // NFT分類（表示設定に基づくフィルタリング）
+  const eventNFTs = useMemo(() => {
+    if (!allOwnedNFTs || !Array.isArray(allOwnedNFTs) || !rawEvents || !Array.isArray(rawEvents) || !rawCollections || !Array.isArray(rawCollections)) {
+      return [];
+    }
+    
+    if (hasSelectionFilters) {
+      console.log('[eventNFTs] hasSelectionFilters is true, filtering NFTs');
+      console.log('[eventNFTs] allOwnedNFTs count:', allOwnedNFTs.length);
+      console.log('[eventNFTs] enabledCollectionSet size:', enabledCollectionSet.size);
+      console.log('[eventNFTs] enabledEventSet size:', enabledEventSet.size);
+      console.log('[eventNFTs] customNFTTypesSet size:', customNFTTypesSet.size);
+      console.log('[eventNFTs] includeKiosk:', includeKiosk);
+      
+      const eventNames = new Set(rawEvents.filter(e => enabledEventSet.has(e.id)).map(e => e.name));
+
+      const filtered = allOwnedNFTs.filter(nft => {
+        const isScxtGenesis = nft.type?.includes('scxt_genesis');
+        
+        if (!includeKiosk && isKioskOwned(nft.owner)) {
+          if (isScxtGenesis) {
+            console.log('[eventNFTs] Kiosk-owned NFT filtered out:', nft.type, 'includeKiosk:', includeKiosk, 'owner:', nft.owner);
+          }
+          return false;
+        }
+        // 1. 選択されたコレクションに含まれるNFT
+        if (nft.type) {
+          // まず、enabledCollectionsにNFTタイプが直接含まれているかチェック
+          if (isScxtGenesis) {
+            console.log('[eventNFTs] Checking enabledCollectionSet for:', nft.type);
+            console.log('[eventNFTs] enabledCollectionSet.has(nft.type):', enabledCollectionSet.has(nft.type));
+            console.log('[eventNFTs] enabledCollectionSet contents:', Array.from(enabledCollectionSet));
+            console.log('[eventNFTs] nft.type:', nft.type);
+            console.log('[eventNFTs] Type comparison:', {
+              nftType: nft.type,
+              nftTypeLength: nft.type.length,
+              inSet: enabledCollectionSet.has(nft.type),
+              setContents: Array.from(enabledCollectionSet),
+              exactMatch: Array.from(enabledCollectionSet).some(id => id === nft.type),
+              includesMatch: Array.from(enabledCollectionSet).some(id => id.includes(nft.type) || nft.type.includes(id))
+            });
+          }
+          
+          if (enabledCollectionSet.has(nft.type)) {
+            if (isScxtGenesis) {
+              console.log('[eventNFTs] ✅ NFT type matches enabledCollection directly:', nft.type);
+            }
+            return true;
+          }
+          
+          if (isScxtGenesis) {
+            console.log('[eventNFTs] Checking collection match for:', nft.type);
+            console.log('[eventNFTs] normalizedEnabledCollections:', normalizedEnabledCollections);
+            console.log('[eventNFTs] rawCollections count:', rawCollections.length);
+          }
+          
+          const collectionMatch = rawCollections.some(col => {
+            if (!enabledCollectionSet.has(col.id)) return false;
+            const matches = col.id === nft.type || 
+                   col.packageId === nft.type || 
+                   (col.packageId && nft.type.includes(col.packageId));
+            if (isScxtGenesis && matches) {
+              console.log('[eventNFTs] ✅ Collection match found:', col.id, col.packageId, 'for NFT type:', nft.type);
+            }
+            return matches;
+          });
+          if (collectionMatch) return true;
+        }
+
+        // 2. 選択されたイベントに登録されているNFT
+        if (enabledEventSet.size > 0) {
+          const nftName = nft.display?.name;
+          const eventDate = nft.display?.event_date;
+          const nameMatches = nftName && eventNames.has(nftName);
+          const hasValidEventDate = eventDate && 
+            eventDate !== '{eventDate}' && 
+            eventDate !== 'null' && 
+            eventDate !== 'Unknown' &&
+            !isNaN(new Date(eventDate).getTime());
+          if (nameMatches && hasValidEventDate) {
+            if (isScxtGenesis) {
+              console.log('[eventNFTs] ✅ Event match found for:', nft.type);
+            }
+            return true;
+          }
+        }
+
+        // 3. 独自NFTタイプに該当するNFT
+        if (nft.type) {
+          // 完全一致をチェック
+          if (customNFTTypesSet.has(nft.type)) {
+            if (isScxtGenesis) {
+              console.log('[eventNFTs] ✅ Custom NFT type match (exact):', nft.type);
+            }
+            return true;
+          }
+          
+          // 部分一致をチェック（customTypeがnft.typeに含まれる、またはその逆）
+          for (const customType of customNFTTypesSet) {
+            const normalizedNftType = nft.type.trim();
+            const normalizedCustomType = customType.trim();
+            
+            if (isScxtGenesis) {
+              console.log('[eventNFTs] Comparing NFT type:', {
+                nftType: normalizedNftType,
+                customType: normalizedCustomType,
+                exactMatch: normalizedNftType === normalizedCustomType,
+                nftIncludesCustom: normalizedNftType.includes(normalizedCustomType),
+                customIncludesNft: normalizedCustomType.includes(normalizedNftType)
+              });
+            }
+            
+            if (normalizedNftType === normalizedCustomType) {
+              if (isScxtGenesis) {
+                console.log('[eventNFTs] ✅ Custom NFT type match (normalized exact):', nft.type, '===', customType);
+              }
+              return true;
+            }
+            // より柔軟なマッチング: いずれかがもう一方を含む
+            if (normalizedNftType.includes(normalizedCustomType) || normalizedCustomType.includes(normalizedNftType)) {
+              if (isScxtGenesis) {
+                console.log('[eventNFTs] ✅ Custom NFT type match (partial):', nft.type, 'includes', customType);
+              }
+              return true;
+            }
+            
+            // packageId部分だけを比較（より柔軟なマッチング）
+            const nftPackageId = normalizedNftType.split('::')[0];
+            const customPackageId = normalizedCustomType.split('::')[0];
+            if (nftPackageId && customPackageId && (nftPackageId === customPackageId || nftPackageId.includes(customPackageId) || customPackageId.includes(nftPackageId))) {
+              // さらに、モジュール名と構造体名も確認
+              const nftParts = normalizedNftType.split('::');
+              const customParts = normalizedCustomType.split('::');
+              if (nftParts.length >= 3 && customParts.length >= 3) {
+                const nftModule = nftParts[1];
+                const customModule = customParts[1];
+                const nftStruct = nftParts[2];
+                const customStruct = customParts[2];
+                if (nftModule === customModule && nftStruct === customStruct) {
+                  if (isScxtGenesis) {
+                    console.log('[eventNFTs] ✅ Custom NFT type match (package/module/struct):', nft.type, '===', customType);
+                  }
+                  return true;
+                }
+              }
+            }
+          }
+          
+          if (isScxtGenesis) {
+            console.log('[eventNFTs] ❌ No match found for:', nft.type);
+            console.log('[eventNFTs] customNFTTypesSet:', Array.from(customNFTTypesSet));
+            console.log('[eventNFTs] effectiveCustomNFTTypes:', effectiveCustomNFTTypes);
+            console.log('[eventNFTs] enabledCollections:', safeDisplaySettings.enabledCollections);
+            console.log('[eventNFTs] collectionLayouts:', safeDisplaySettings.collectionLayouts);
+            console.log('[eventNFTs] includeKiosk:', includeKiosk);
+            console.log('[eventNFTs] isKioskOwned:', isKioskOwned(nft.owner));
+          }
+        }
+
+        if (isScxtGenesis) {
+          console.log('[eventNFTs] ❌ NFT filtered out - no match:', nft.type);
+        }
+        return false;
+      });
+      
+      console.log('[eventNFTs] Filtered result count:', filtered.length);
+      const scxtGenesisCount = filtered.filter(nft => nft.type?.includes('scxt_genesis')).length;
+      if (scxtGenesisCount > 0) {
+        console.log('[eventNFTs] SCXT Genesis NFT count in filtered result:', scxtGenesisCount);
+      }
+      
+      return filtered;
+    }
+
+    // 表示設定がない場合：デフォルト動作（イベント登録済みNFTのみ）
+    const eventNames = new Set(rawEvents.map(e => e.name));
+    return allOwnedNFTs.filter(nft => {
+      const nftName = nft.display?.name;
+      const eventDate = nft.display?.event_date;
+      
+      if (!includeKiosk && isKioskOwned(nft.owner)) {
+        return false;
+      }
+
+      const nameMatches = nftName && eventNames.has(nftName);
+      const hasValidEventDate = eventDate && 
+        eventDate !== '{eventDate}' && 
+        eventDate !== 'null' && 
+        eventDate !== 'Unknown' &&
+        !isNaN(new Date(eventDate).getTime());
+      
+      return nameMatches && hasValidEventDate;
+    });
+  }, [
+    allOwnedNFTs,
+    rawEvents,
+    rawCollections,
+    hasSelectionFilters,
+    enabledCollectionSet,
+    enabledEventSet,
+    customNFTTypesSet,
+    includeKiosk
+  ]);
+
+  // イベント登録されていないNFT（OwnedTabで使用）
+  // eventNFTsに含まれないNFTを返す
+  const nonEventNFTs = useMemo(() => {
+    if (!allOwnedNFTs || !Array.isArray(allOwnedNFTs)) {
+      return [];
+    }
+    
+    const eventNFTIds = new Set(eventNFTs.map(nft => nft.objectId));
+    return allOwnedNFTs.filter(nft => {
+      if (eventNFTIds.has(nft.objectId)) {
+        return false;
+      }
+      if (!includeKiosk && isKioskOwned(nft.owner)) {
+        return false;
+      }
+      return true;
+    });
+  }, [allOwnedNFTs, eventNFTs, includeKiosk]);
+
+  // OWNEDタブ用のNFT一覧
+  // hasSelectionFiltersがtrueの場合でも、Kiosk所有NFTを含める必要がある場合は追加
+  const ownedTabNFTs = useMemo(() => {
+    console.log('[ownedTabNFTs] Starting ownedTabNFTs calculation');
+    console.log('[ownedTabNFTs] hasSelectionFilters:', hasSelectionFilters);
+    console.log('[ownedTabNFTs] allOwnedNFTs count:', allOwnedNFTs?.length || 0);
+    console.log('[ownedTabNFTs] eventNFTs count:', eventNFTs?.length || 0);
+    console.log('[ownedTabNFTs] customNFTTypesSet size:', customNFTTypesSet?.size || 0);
+    console.log('[ownedTabNFTs] customNFTTypesSet contents:', Array.from(customNFTTypesSet || []));
+    
+    if (!hasSelectionFilters) {
+      const scxtGenesisInNonEvent = nonEventNFTs.filter(nft => nft.type?.includes('scxt_genesis'));
+      if (scxtGenesisInNonEvent.length > 0) {
+        console.log('[ownedTabNFTs] SCXT Genesis NFTs in nonEventNFTs:', scxtGenesisInNonEvent.length);
+      }
+      return nonEventNFTs;
+    }
+    
+    // eventNFTsに含まれるNFT
+    const result = [...eventNFTs];
+    const resultNFTIds = new Set(eventNFTs.map(nft => nft.objectId));
+    
+    // 特定のNFTがeventNFTsに含まれているか確認
+    const targetNFT = allOwnedNFTs?.find(nft => nft.objectId === '0x76b5d99946e4833f0fec1700588e83cb0d4ff016eda953417b8532c7e007ff54');
+    if (targetNFT) {
+      const inEventNFTs = eventNFTs.some(e => e.objectId === targetNFT.objectId);
+      console.log('[ownedTabNFTs] Target NFT in eventNFTs:', inEventNFTs);
+      if (!inEventNFTs) {
+        console.log('[ownedTabNFTs] Target NFT details:', {
+          objectId: targetNFT.objectId,
+          type: targetNFT.type,
+          owner: targetNFT.owner,
+          isKioskOwned: isKioskOwned(targetNFT.owner),
+          inCustomNFTTypesSet: customNFTTypesSet.has(targetNFT.type || ''),
+          customNFTTypesMatch: Array.from(customNFTTypesSet).some(ct => {
+            const nftType = (targetNFT.type || '').trim();
+            const customType = ct.trim();
+            return nftType === customType || 
+                   nftType.includes(customType) || 
+                   customType.includes(nftType) ||
+                   (nftType.split('::').length >= 3 && customType.split('::').length >= 3 &&
+                    nftType.split('::')[0] === customType.split('::')[0] && 
+                    nftType.split('::')[1] === customType.split('::')[1] && 
+                    nftType.split('::')[2] === customType.split('::')[2]);
+          })
+        });
+      }
+    }
+    const scxtGenesisInEvent = eventNFTs.filter(nft => nft.type?.includes('scxt_genesis'));
+    if (scxtGenesisInEvent.length > 0) {
+      console.log('[ownedTabNFTs] SCXT Genesis NFTs in eventNFTs:', scxtGenesisInEvent.length);
+      scxtGenesisInEvent.forEach(nft => {
+        console.log('[ownedTabNFTs] SCXT Genesis NFT in eventNFTs:', {
+          objectId: nft.objectId,
+          type: nft.type,
+          name: nft.display?.name
+        });
+      });
+    }
+    
+    // includeKioskがtrueの場合、Kiosk所有NFTも追加（フィルタリング条件にマッチしない場合でも）
+    if (includeKiosk) {
+      const kioskNFTs = allOwnedNFTs.filter(nft => {
+        // 既にresultに含まれている場合はスキップ
+        if (resultNFTIds.has(nft.objectId)) {
+          return false;
+        }
+        // Kiosk所有NFTのみ追加
+        return isKioskOwned(nft.owner);
+      });
+      const scxtGenesisInKiosk = kioskNFTs.filter(nft => nft.type?.includes('scxt_genesis'));
+      if (scxtGenesisInKiosk.length > 0) {
+        console.log('[ownedTabNFTs] SCXT Genesis NFTs in Kiosk:', scxtGenesisInKiosk.length);
+        scxtGenesisInKiosk.forEach(nft => {
+          console.log('[ownedTabNFTs] SCXT Genesis NFT in Kiosk:', {
+            objectId: nft.objectId,
+            type: nft.type,
+            name: nft.display?.name,
+            owner: nft.owner
+          });
+        });
+      }
+      kioskNFTs.forEach(nft => resultNFTIds.add(nft.objectId));
+      result.push(...kioskNFTs);
+    }
+    
+    // enabledCollectionsまたはcustomNFTTypesに含まれるNFTがeventNFTsやKioskに含まれていない場合、確実に追加
+    // これは、eventNFTsのフィルタリングで何らかの理由で除外された場合のフォールバック
+    const additionalNFTs = allOwnedNFTs.filter(nft => {
+      // 既にresultに含まれている場合はスキップ
+      if (resultNFTIds.has(nft.objectId)) {
+        return false;
+      }
+      
+      if (!nft.type) {
+        return false;
+      }
+      
+      // チェック1: enabledCollectionSetに含まれるか
+      if (enabledCollectionSet.has(nft.type)) {
+        console.log('[ownedTabNFTs] ✅ NFT found via enabledCollectionSet:', nft.objectId, nft.type);
+        return true;
+      }
+      
+      // チェック2: enabledCollectionsで部分一致
+      for (const enabledId of normalizedEnabledCollections) {
+        const normalizedNftType = nft.type.trim();
+        const normalizedEnabledId = enabledId.trim();
+        if (normalizedNftType === normalizedEnabledId ||
+            normalizedNftType.includes(normalizedEnabledId) ||
+            normalizedEnabledId.includes(normalizedNftType)) {
+          console.log('[ownedTabNFTs] ✅ NFT found via enabledCollections (partial):', nft.objectId, nft.type);
+          return true;
+        }
+      }
+      
+      // チェック3: customNFTTypesSetに含まれるか
+      if (customNFTTypesSet.has(nft.type)) {
+        console.log('[ownedTabNFTs] ✅ NFT found via customNFTTypesSet:', nft.objectId, nft.type);
+        return true;
+      }
+      
+      // チェック4: customNFTTypesSetで部分一致
+      for (const customType of customNFTTypesSet) {
+        const normalizedNftType = nft.type.trim();
+        const normalizedCustomType = customType.trim();
+        
+        if (normalizedNftType === normalizedCustomType) {
+          console.log('[ownedTabNFTs] ✅ NFT found via customNFTTypes (exact):', nft.objectId, nft.type);
+          return true;
+        }
+        
+        if (normalizedNftType.includes(normalizedCustomType) || normalizedCustomType.includes(normalizedNftType)) {
+          console.log('[ownedTabNFTs] ✅ NFT found via customNFTTypes (partial):', nft.objectId, nft.type);
+          return true;
+        }
+        
+        // packageId/module/struct で比較
+        const nftPackageId = normalizedNftType.split('::')[0];
+        const customPackageId = normalizedCustomType.split('::')[0];
+        if (nftPackageId && customPackageId && (nftPackageId === customPackageId || nftPackageId.includes(customPackageId) || customPackageId.includes(nftPackageId))) {
+          const nftParts = normalizedNftType.split('::');
+          const customParts = normalizedCustomType.split('::');
+          if (nftParts.length >= 3 && customParts.length >= 3) {
+            if (nftParts[1] === customParts[1] && nftParts[2] === customParts[2]) {
+              console.log('[ownedTabNFTs] ✅ NFT found via customNFTTypes (package/module/struct):', nft.objectId, nft.type);
+              return true;
+            }
+          }
+        }
+      }
+      
+      return false;
+    });
+    
+    const scxtGenesisInAdditional = additionalNFTs.filter(nft => nft.type?.includes('scxt_genesis'));
+    if (scxtGenesisInAdditional.length > 0) {
+      console.log('[ownedTabNFTs] SCXT Genesis NFTs found via additional check:', scxtGenesisInAdditional.length);
+      scxtGenesisInAdditional.forEach(nft => {
+        console.log('[ownedTabNFTs] SCXT Genesis NFT added via additional check:', {
+          objectId: nft.objectId,
+          type: nft.type,
+          name: nft.display?.name,
+          owner: nft.owner,
+          isKioskOwned: isKioskOwned(nft.owner)
+        });
+      });
+    }
+    additionalNFTs.forEach(nft => resultNFTIds.add(nft.objectId));
+    result.push(...additionalNFTs);
+    
+    const scxtGenesisInResult = result.filter(nft => nft.type?.includes('scxt_genesis'));
+    const targetNFTInResult = result.some(nft => nft.objectId === '0x76b5d99946e4833f0fec1700588e83cb0d4ff016eda953417b8532c7e007ff54');
+    
+    console.log('[ownedTabNFTs] Final result count:', result.length);
+    console.log('[ownedTabNFTs] SCXT Genesis NFTs in final result:', scxtGenesisInResult.length);
+    console.log('[ownedTabNFTs] Target NFT (0x76b5d999...) in result:', targetNFTInResult);
+    
+    if (scxtGenesisInResult.length === 0 || !targetNFTInResult) {
+      // すべてのscxt_genesis NFTを確認
+      const allScxtGenesis = allOwnedNFTs.filter(nft => nft.type?.includes('scxt_genesis'));
+      console.log('[ownedTabNFTs] All SCXT Genesis NFTs in allOwnedNFTs:', allScxtGenesis.length);
+      allScxtGenesis.forEach(nft => {
+        const inResult = result.some(r => r.objectId === nft.objectId);
+        console.log('[ownedTabNFTs] SCXT Genesis NFT in allOwnedNFTs:', {
+          objectId: nft.objectId,
+          type: nft.type,
+          name: nft.display?.name,
+          owner: nft.owner,
+          isKioskOwned: isKioskOwned(nft.owner),
+          inEventNFTs: eventNFTs.some(e => e.objectId === nft.objectId),
+          inResult: inResult,
+          inCustomNFTTypesSet: customNFTTypesSet.has(nft.type || '')
+        });
+      });
+    }
+    
+    return result;
+  }, [hasSelectionFilters, eventNFTs, nonEventNFTs, includeKiosk, allOwnedNFTs, customNFTTypesSet, enabledCollectionSet, normalizedEnabledCollections]);
+
+  const filteredEvents = useMemo(() => {
+    if (!rawEvents || !Array.isArray(rawEvents)) {
+      return [];
+    }
+
+    if (!hasSelectionFilters) {
+      return rawEvents;
+    }
+
+    return rawEvents.filter(event => {
+      const collectionId = event.collectionId;
+
+      if (enabledEventSet.has(event.id)) {
+        return true;
+      }
+
+      if (collectionId && enabledCollectionSet.has(collectionId)) {
+        return true;
+      }
+
+      if (collectionId) {
+        if (customNFTTypesSet.has(collectionId)) {
+          return true;
+        }
+        for (const customType of customNFTTypesSet) {
+          if (collectionId.includes(customType)) {
+            return true;
+          }
+        }
+      }
+
+      return false;
+    });
+  }, [
+    rawEvents,
+    hasSelectionFilters,
+    enabledEventSet,
+    enabledCollectionSet,
+    customNFTTypesSet
+    // eventNFTsの依存関係を削除して循環依存を解消
+  ]);
+
+  const filteredCollections = useMemo(() => {
+    if (!rawCollections || !Array.isArray(rawCollections)) {
+      return [] as (typeof rawCollections);
+    }
+
+    const addDisplayName = (col: any): CollectionConfig => ({
+      ...col,
+      displayName: normalizedCollectionNames[col.id] || col.displayName || (col.packageId ? normalizedCollectionNames[col.packageId] : undefined) || col.name
+    });
+
+    if (!hasSelectionFilters) {
+      return rawCollections.map(addDisplayName);
+    }
+
+    const eventCollectionIds = new Set(
+      filteredEvents
+        .map(event => event.collectionId)
+        .filter((id): id is string => Boolean(id))
+    );
+
+    const nftCollectionTypes = new Set(
+      allOwnedNFTs
+        .map(nft => nft.type)
+        .filter((type): type is string => Boolean(type))
+    );
+
+    const filtered = rawCollections.filter(col => {
+      const colId = col.id;
+      const packageId = col.packageId;
+
+      if (enabledCollectionSet.has(colId)) {
+        return true;
+      }
+
+      if (packageId && enabledCollectionSet.has(packageId)) {
+        return true;
+      }
+
+      if (eventCollectionIds.has(colId) || (packageId && eventCollectionIds.has(packageId))) {
+        return true;
+      }
+
+      if (packageId && customNFTTypesSet.has(packageId)) {
+        return true;
+      }
+
+      for (const customType of customNFTTypesSet) {
+        if (packageId && packageId.includes(customType)) {
+          return true;
+        }
+      }
+
+      for (const nftType of nftCollectionTypes) {
+        if (nftType === colId) {
+          return true;
+        }
+        if (packageId && (nftType === packageId || nftType.includes(packageId))) {
+          return true;
+        }
+      }
+
+      return false;
+    });
+
+    return filtered.map(addDisplayName);
+  }, [
+    rawCollections,
+    hasDisplaySettings,
+    hasSelectionFilters,
+    enabledCollectionSet,
+    customNFTTypesSet,
+    filteredEvents,
+    allOwnedNFTs,
+    normalizedCollectionNames
+  ]);
+
+  const collectionGroups = useMemo(() => {
+    console.log('[collectionGroups] Starting collectionGroups generation');
+    console.log('[collectionGroups] filteredCollections length:', filteredCollections?.length || 0);
+    console.log('[collectionGroups] eventNFTs length:', eventNFTs?.length || 0);
+    console.log('[collectionGroups] normalizedCollectionLayouts:', normalizedCollectionLayouts);
+    console.log('[collectionGroups] hasSelectionFilters:', hasSelectionFilters);
+    console.log('[collectionGroups] includeKiosk:', includeKiosk);
+    
+    const groups: Array<{
+      id: string;
+      title: string;
+      subtitle?: string;
+      collectionIds: string[];
+      collections: CollectionConfig[];
+      events: EventConfig[];
+      ownedNFTs: OwnedNFT[];
+    }> = [];
+
+    if (!filteredCollections || filteredCollections.length === 0) {
+      console.log('[collectionGroups] No filteredCollections, returning empty groups');
+      return groups;
+    }
+
+    const collectionMap = new Map<string, CollectionConfig>();
+    filteredCollections.forEach(col => {
+      const displayName = col.displayName || normalizedCollectionNames[col.id] || col.name;
+      collectionMap.set(col.id, { ...col, displayName });
+    });
+
+    const synonymToCanonical = new Map<string, string>();
+    filteredCollections.forEach(col => {
+      const synonyms = [col.id, col.packageId, (col as any).originalId, (col as any).roleId].filter(Boolean) as string[];
+      synonyms.forEach(value => synonymToCanonical.set(value, col.id));
+    });
+
+    const resolveCanonical = (value?: string) => {
+      if (!value) return undefined;
+      if (synonymToCanonical.has(value)) {
+        return synonymToCanonical.get(value);
+      }
+      for (const [synonym, canonical] of synonymToCanonical.entries()) {
+        if (value.includes(synonym)) {
+          return canonical;
+        }
+      }
+      return undefined;
+    };
+
+    const eventsByCollection = new Map<string, EventConfig[]>();
+
+    const normalizeEvent = (event: any, canonicalId: string): EventConfig => ({
+      id: event.id,
+      name: event.name,
+      description: event.description,
+      imageUrl: event.imageUrl ?? event.image_url,
+      imageCid: event.imageCid ?? event.image_cid,
+      imageMimeType: event.imageMimeType ?? event.image_mimeType,
+      active: typeof event.active === 'boolean' ? event.active : true,
+      startAt: event.startAt,
+      endAt: event.endAt,
+      eventDate: event.eventDate,
+      collectionId: canonicalId,
+      displayName: event.displayName,
+      totalCap: event.totalCap,
+      mintedCount: event.mintedCount,
+      moveCall: event.moveCall ? {
+        target: event.moveCall.target,
+        typeArguments: event.moveCall.typeArguments || [],
+        argumentsTemplate: Array.isArray(event.moveCall.argumentsTemplate)
+          ? event.moveCall.argumentsTemplate
+          : event.moveCall.argumentsTemplate
+            ? [event.moveCall.argumentsTemplate]
+            : [],
+        gasBudget: event.moveCall.gasBudget
+      } : undefined
+    });
+
+    filteredEvents.forEach(event => {
+      const canonical = resolveCanonical(event.collectionId);
+      if (!canonical || !collectionMap.has(canonical)) {
+        return;
+      }
+      if (!eventsByCollection.has(canonical)) {
+        eventsByCollection.set(canonical, []);
+      }
+      eventsByCollection.get(canonical)!.push(normalizeEvent(event, canonical));
+    });
+
+    const nftsByCollection = new Map<string, OwnedNFT[]>();
+    // customNFTTypes用の仮想コレクションIDマップを作成
+    const customTypeToCollectionId = new Map<string, string>();
+    filteredCollections.forEach(col => {
+      // コレクションのpackageIdがcustomNFTTypesに含まれている場合
+      for (const customType of customNFTTypesSet) {
+        if (col.packageId && (customType.includes(col.packageId) || col.packageId.includes(customType))) {
+          customTypeToCollectionId.set(customType, col.id);
+        }
+      }
+    });
+    
+    // ALLタブで使用されるeventNFTsを使用してグループ化
+    console.log('[collectionGroups] eventNFTs count:', eventNFTs.length);
+    console.log('[collectionGroups] customNFTTypesSet:', Array.from(customNFTTypesSet));
+    console.log('[collectionGroups] normalizedCollectionLayouts:', normalizedCollectionLayouts);
+    
+    // まず、customNFTTypesに対応する仮想コレクションを事前に作成
+    customNFTTypesSet.forEach(customType => {
+      const virtualId = `custom_${customType.replace(/[^a-zA-Z0-9]/g, '_')}`;
+      if (!collectionMap.has(virtualId)) {
+        const parts = customType.split('::');
+        const virtualCollection: CollectionConfig = {
+          id: virtualId,
+          name: parts[parts.length - 1] || customType,
+          packageId: parts[0] || '',
+          roleId: virtualId,
+          description: '',
+          isActive: true,
+          createdAt: new Date().toISOString(),
+          displayName: parts[parts.length - 1] || customType
+        } as CollectionConfig;
+        collectionMap.set(virtualId, virtualCollection);
+        synonymToCanonical.set(customType, virtualId);
+        // packageIdでも参照できるように
+        if (parts[0]) {
+          synonymToCanonical.set(parts[0], virtualId);
+        }
+          console.log('[collectionGroups] Pre-created virtual collection:', virtualId, 'for type:', customType);
+      }
+    });
+    
+    eventNFTs.forEach(nft => {
+      let canonical = resolveCanonical(nft.type);
+      
+      // customNFTTypesに対応する場合
+      if (!canonical && nft.type) {
+        if (customNFTTypesSet.has(nft.type)) {
+          console.log('[collectionGroups] Processing custom NFT type:', nft.type);
+        }
+        // 完全一致をチェック
+        if (customNFTTypesSet.has(nft.type)) {
+          // 仮想コレクションIDを使用
+          const virtualId = `custom_${nft.type.replace(/[^a-zA-Z0-9]/g, '_')}`;
+          canonical = collectionMap.has(virtualId) ? virtualId : undefined;
+          if (!canonical) {
+            // 既に作成されているはずだが、念のため再作成
+            const parts = nft.type.split('::');
+            const virtualCollection: CollectionConfig = {
+              id: virtualId,
+              name: parts[parts.length - 1] || nft.type,
+              packageId: parts[0] || '',
+              roleId: virtualId,
+              description: '',
+              isActive: true,
+              createdAt: new Date().toISOString(),
+              displayName: nft.display?.name || parts[parts.length - 1] || nft.type
+            } as CollectionConfig;
+            collectionMap.set(virtualId, virtualCollection);
+            synonymToCanonical.set(nft.type, virtualId);
+            canonical = virtualId;
+          }
+        } else {
+          // 部分一致をチェック
+          for (const customType of customNFTTypesSet) {
+            const normalizedNftType = nft.type.trim();
+            const normalizedCustomType = customType.trim();
+            if (normalizedNftType === normalizedCustomType || 
+                normalizedNftType.includes(normalizedCustomType) || 
+                normalizedCustomType.includes(normalizedNftType)) {
+              const virtualId = `custom_${customType.replace(/[^a-zA-Z0-9]/g, '_')}`;
+              canonical = collectionMap.has(virtualId) ? virtualId : undefined;
+              if (!canonical) {
+                const parts = customType.split('::');
+                const virtualCollection: CollectionConfig = {
+                  id: virtualId,
+                  name: parts[parts.length - 1] || customType,
+                  packageId: parts[0] || '',
+                  roleId: virtualId,
+                  description: '',
+                  isActive: true,
+                  createdAt: new Date().toISOString(),
+                  displayName: parts[parts.length - 1] || customType
+                } as CollectionConfig;
+                collectionMap.set(virtualId, virtualCollection);
+                synonymToCanonical.set(customType, virtualId);
+                canonical = virtualId;
+              }
+              break;
+            }
+          }
+        }
+      }
+      
+      if (!canonical || !collectionMap.has(canonical)) {
+        if (customNFTTypesSet.has(nft.type)) {
+          console.warn('[collectionGroups] Failed to resolve canonical for custom NFT type:', nft.type, 'canonical:', canonical, 'hasInMap:', collectionMap.has(canonical || ''));
+        }
+        return;
+      }
+      if (!nftsByCollection.has(canonical)) {
+        nftsByCollection.set(canonical, []);
+      }
+      nftsByCollection.get(canonical)!.push(nft);
+      if (customNFTTypesSet.has(nft.type)) {
+        console.log('[collectionGroups] Added NFT to collection:', canonical, 'nft type:', nft.type, 'NFT count:', nftsByCollection.get(canonical)!.length);
+      }
+    });
+    
+    console.log('[collectionGroups] nftsByCollection keys:', Array.from(nftsByCollection.keys()));
+    nftsByCollection.forEach((nfts, id) => {
+      console.log('[collectionGroups] Collection:', id, 'has', nfts.length, 'NFTs');
+    });
+
+    const assigned = new Set<string>();
+
+    const addGroup = (groupId: string, title: string, subtitle: string | undefined, collectionIds: string[]) => {
+      const canonicalIds = Array.from(new Set(collectionIds)).filter(id => collectionMap.has(id));
+      if (canonicalIds.length === 0) {
+        return;
+      }
+      canonicalIds.forEach(id => assigned.add(id));
+      const groupCollections = canonicalIds
+        .map(id => collectionMap.get(id))
+        .filter((col): col is CollectionConfig => Boolean(col));
+      groups.push({
+        id: groupId,
+        title,
+        subtitle,
+        collectionIds: canonicalIds,
+        collections: groupCollections,
+        events: canonicalIds.flatMap(id => eventsByCollection.get(id) ?? []),
+        ownedNFTs: canonicalIds.flatMap(id => nftsByCollection.get(id) ?? [])
+      });
+    };
+
+    // normalizedCollectionLayoutsを使用（参照が変わる可能性があるが、内容が同じ場合は問題ない）
+    normalizedCollectionLayouts.forEach(layout => {
+      const canonicalIds: string[] = [];
+      
+      console.log('[collectionGroups] Processing layout:', layout.id, 'title:', layout.title, 'collectionIds:', layout.collectionIds);
+      
+      // layout.collectionIdsを正規化
+      for (const id of layout.collectionIds) {
+        // まず通常の解決を試みる
+        let canonical = resolveCanonical(id);
+        
+        // 解決できない場合、customNFTTypesかどうかチェック
+        if (!canonical) {
+          // customNFTTypesのタイプかどうかチェック
+          if (customNFTTypesSet.has(id)) {
+            // 対応する仮想コレクションIDを探す
+            const virtualId = `custom_${id.replace(/[^a-zA-Z0-9]/g, '_')}`;
+            if (collectionMap.has(virtualId)) {
+              canonical = virtualId;
+            } else {
+              // 仮想コレクションがまだ作成されていない場合は作成
+              const parts = id.split('::');
+              const virtualCollection: CollectionConfig = {
+                id: virtualId,
+                name: parts[parts.length - 1] || id,
+                packageId: parts[0] || '',
+                roleId: virtualId,
+                description: '',
+                isActive: true,
+                createdAt: new Date().toISOString(),
+                displayName: parts[parts.length - 1] || id
+              } as CollectionConfig;
+              collectionMap.set(virtualId, virtualCollection);
+              synonymToCanonical.set(id, virtualId);
+              canonical = virtualId;
+            }
+          } else {
+            // 部分一致をチェック
+            for (const customType of customNFTTypesSet) {
+              const normalizedId = id.trim();
+              const normalizedCustomType = customType.trim();
+              if (normalizedId === normalizedCustomType || 
+                  normalizedId.includes(normalizedCustomType) || 
+                  normalizedCustomType.includes(normalizedId)) {
+                const virtualId = `custom_${customType.replace(/[^a-zA-Z0-9]/g, '_')}`;
+                if (collectionMap.has(virtualId)) {
+                  canonical = virtualId;
+                } else {
+                  const parts = customType.split('::');
+                  const virtualCollection: CollectionConfig = {
+                    id: virtualId,
+                    name: parts[parts.length - 1] || customType,
+                    packageId: parts[0] || '',
+                    roleId: virtualId,
+                    description: '',
+                    isActive: true,
+                    createdAt: new Date().toISOString(),
+                    displayName: parts[parts.length - 1] || customType
+                  } as CollectionConfig;
+                  collectionMap.set(virtualId, virtualCollection);
+                  synonymToCanonical.set(customType, virtualId);
+                  canonical = virtualId;
+                }
+                break;
+              }
+            }
+          }
+        }
+        
+        if (canonical && collectionMap.has(canonical)) {
+          canonicalIds.push(canonical);
+        }
+      }
+      
+      if (canonicalIds.length === 0) {
+        if (import.meta.env.DEV) {
+          console.warn('[collectionGroups] Layout has no valid canonical IDs:', layout.id, 'original IDs:', layout.collectionIds);
+        }
+        return;
+      }
+      const title = layout.title || canonicalIds
+        .map(id => normalizedCollectionNames[id] || collectionMap.get(id)?.displayName || collectionMap.get(id)?.name || id)
+        .join(', ');
+      
+      if (import.meta.env.DEV) {
+        console.log('[collectionGroups] Adding group:', layout.id, 'title:', title, 'canonicalIds:', canonicalIds);
+        canonicalIds.forEach(id => {
+          const nftCount = nftsByCollection.get(id)?.length || 0;
+          console.log('[collectionGroups] Group collection:', id, 'NFT count:', nftCount);
+        });
+      }
+      
+      addGroup(layout.id, title, layout.subtitle, canonicalIds);
+    });
+
+    const remaining = filteredCollections.filter(col => !assigned.has(col.id));
+    if (remaining.length > 0) {
+      const eventCollections = remaining.filter(col => (eventsByCollection.get(col.id)?.length ?? 0) > 0);
+      const otherCollections = remaining.filter(col => !assigned.has(col.id) && (eventsByCollection.get(col.id)?.length ?? 0) === 0);
+
+      if (eventCollections.length > 0) {
+        addGroup('auto_events', 'イベントNFT', undefined, eventCollections.map(col => col.id));
+      }
+      if (otherCollections.length > 0) {
+        addGroup('auto_others', 'その他のNFT', undefined, otherCollections.map(col => col.id));
+      }
+    }
+
+    if (groups.length === 0) {
+      console.log('[collectionGroups] No groups found, adding default group');
+      addGroup('default', 'NFT一覧', undefined, filteredCollections.map(col => col.id));
+    }
+    
+    console.log('[collectionGroups] Final groups count:', groups.length);
+    groups.forEach((group, index) => {
+      console.log(`[collectionGroups] Group ${index}:`, {
+        id: group.id,
+        title: group.title,
+        subtitle: group.subtitle,
+        collectionIds: group.collectionIds,
+        collectionsCount: group.collections.length,
+        eventsCount: group.events.length,
+        nftsCount: group.ownedNFTs.length
+      });
+    });
+
+    return groups;
+  }, [
+    filteredCollections, 
+    filteredEvents, 
+    eventNFTs, 
+    normalizedCollectionLayouts,
+    normalizedCollectionNames,
+    customNFTTypesSet,
+    rawCollections
+  ]);
+
+  // 統計データ
+  const totalMints = useMemo(() => {
+    if (!onchainCounts || !(onchainCounts instanceof Map)) {
+      return 0;
+    }
+
+    try {
+      if (!filteredCollections || filteredCollections.length === 0) {
+        return 0;
+      }
+
+      let total = 0;
+      filteredCollections.forEach(col => {
+        total += onchainCounts.get(col.id) || 0;
+      });
+      return total;
+    } catch (error) {
+      console.error('Error calculating total mints:', error);
+      return 0;
+    }
+  }, [onchainCounts, filteredCollections]);
+
+  // トレンドデータ
+  const collectionsTrendData = useMemo(() => {
+    if (!filteredCollections || !Array.isArray(filteredCollections) || !onchainCounts || !(onchainCounts instanceof Map)) {
+      return [];
+    }
+    try {
+      return filteredCollections.map(col => ({
+        date: new Date().toISOString(),
+        count: onchainCounts.get(col?.id) || 0
+      }));
+    } catch (error) {
+      console.error('Error creating collections trend data:', error);
+      return [];
+    }
+  }, [filteredCollections, onchainCounts]);
+
+  const mintsTrendData = useMemo(() => {
+    if (!onchainCounts || !(onchainCounts instanceof Map) || !filteredCollections || !Array.isArray(filteredCollections)) {
+      return [];
+    }
+    try {
+      const allowedIds = new Set(filteredCollections.map(col => col.id));
+      const entries = Array.from(onchainCounts.entries()).filter(([id]) => allowedIds.has(id));
+      return entries.map(([, count]) => ({
+        date: new Date().toISOString(),
+        count: count || 0
+      }));
+    } catch (error) {
+      console.error('Error creating mints trend data:', error);
+      return [];
+    }
+  }, [onchainCounts, filteredCollections]);
+
+  return {
+    // ウォレット
+    account,
+    connected,
+    
+    // タブ管理
+    activeTab,
+    setActiveTab,
+    
+    // コレクション管理
+    expandedCollections,
+    setExpandedCollections,
+    
+    // NFT管理
+    selectedNFT,
+    setSelectedNFT,
+    isDrawerOpen,
+    setIsDrawerOpen,
+    
+    // ソート・検索
+    sortBy,
+    setSortBy,
+    sortOrder,
+    setSortOrder,
+    searchQuery,
+    setSearchQuery,
+    
+    // レスポンシブ
+    deviceType,
+    
+    // データ
+    collections: filteredCollections,
+    events: filteredEvents,
+    allOwnedNFTs,
+    eventNFTs,
+    nonEventNFTs,
+    ownedTabNFTs,
+    onchainCounts,
+    activityStats,
+    displaySettings: {
+      ...safeDisplaySettings,
+      enabledCollections: normalizedEnabledCollections,
+      collectionDisplayNames: normalizedCollectionNames,
+      collectionLayouts: normalizedCollectionLayouts
+    },
+    hasDisplaySettings,
+    includeKiosk,
+    collectionGroups,
+    collectionLayouts: normalizedCollectionLayouts,
+    collectionDisplayNames: normalizedCollectionNames,
+    
+    // 状態
+    loading,
+    hasCriticalErrors,
+    collectionsLoading,
+    eventsLoading,
+    nftLoading,
+    
+    // 統計
+    totalMints,
+    collectionsTrendData,
+    mintsTrendData
+  };
+}

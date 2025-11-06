@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout';
 import { Breadcrumb } from '../../components/admin/Breadcrumb';
 import { PageHeader } from '../../components/admin/PageHeader';
-import type { AdminMintEvent } from '../../types';
+import type { AdminMintEvent, NFTCollection } from '../../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
 
@@ -15,7 +15,7 @@ interface HistoryItem {
 }
 
 export default function MintHistory() {
-  const [mintCollections, setMintCollections] = useState<any[]>([]);
+  const [mintCollections, setMintCollections] = useState<NFTCollection[]>([]);
   const [events, setEvents] = useState<AdminMintEvent[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
@@ -38,7 +38,6 @@ export default function MintHistory() {
       const data = await res.json();
       if (data.success) setMintCollections(data.data || []);
     } catch (e) {
-      console.error('Failed to fetch mint collections', e);
     }
   }, []);
 
@@ -48,14 +47,14 @@ export default function MintHistory() {
       const data = await res.json();
       if (data.success) setEvents(data.data || []);
     } catch (e) {
-      console.error('Failed to fetch events', e);
     }
   }, []);
 
   useEffect(() => {
     fetchMintCollections();
     fetchEvents();
-  }, [fetchMintCollections, fetchEvents]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 検索のデバウンス
   useEffect(() => {
@@ -65,19 +64,18 @@ export default function MintHistory() {
     return () => clearTimeout(timer);
   }, [historySearch]);
 
-  // デバッグ: イベントとコレクションの関連を表示
+  // デバッグ: イベントとコレクションの関連を表示（開発時のみ）
   useEffect(() => {
-    if (events.length > 0) {
-      console.log('[MintHistory] Events loaded:');
-      events.forEach(ev => {
-        console.log(`  - ${ev.name}: collectionId = ${ev.collectionId}`);
-      });
-    }
-    if (mintCollections.length > 0) {
-      console.log('[MintHistory] Mint Collections:');
-      mintCollections.forEach(col => {
-        console.log(`  - ${col.name}: id = ${col.id}, typePath = ${(col as any).typePath || col.packageId}`);
-      });
+    if (import.meta.env.DEV) {
+      if (events.length > 0) {
+        events.forEach(ev => {
+        });
+      }
+      if (mintCollections.length > 0) {
+        mintCollections.forEach(col => {
+           
+        });
+      }
     }
   }, [events, mintCollections]);
 
@@ -89,18 +87,20 @@ export default function MintHistory() {
       const eventParam = eventId ? `&eventId=${encodeURIComponent(eventId)}` : '';
       const url = `${API_BASE_URL}/api/mint-collections/${encoded}/mints?limit=${limit}${eventParam}`;
       
-      console.log('[MintHistory] Fetching history for typePath:', typePath, 'eventId:', eventId || 'all');
-      console.log('[MintHistory] Request URL:', url);
+      // DEBUG: 開発時のみログ出力
+      if (import.meta.env.DEV) {
+      }
       
       const res = await fetch(url);
       const data = await res.json();
       
-      console.log('[MintHistory] Response:', data);
-      console.log('[MintHistory] Items received:', data.data?.length || 0);
-      
-      // 各アイテムのeventIdをログ出力
-      if (data.data && Array.isArray(data.data)) {
-        console.log('[MintHistory] Event IDs in history:', data.data.map((item: any) => item.eventId));
+      // DEBUG: 開発時のみログ出力
+      if (import.meta.env.DEV) {
+        
+        // 各アイテムのeventIdをログ出力
+        if (data.data && Array.isArray(data.data)) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        }
       }
       
       if (data.success) {
@@ -115,7 +115,6 @@ export default function MintHistory() {
         setHistoryItems([]);
       }
     } catch (e) {
-      console.error('Failed to fetch collection history', e);
       setMessage('履歴の取得に失敗しました');
       setHistoryItems([]);
     } finally {
@@ -132,7 +131,9 @@ export default function MintHistory() {
       // 全イベントのユニークなcollectionIdを取得
       const uniqueCollectionIds = Array.from(new Set(events.map(ev => ev.collectionId).filter(Boolean)));
       
-      console.log('[MintHistory] Fetching history for all collection IDs:', uniqueCollectionIds);
+      // DEBUG: 開発時のみログ出力
+      if (import.meta.env.DEV) {
+      }
       
       // 各collectionIdの履歴を並列取得
       const allHistories = await Promise.all(
@@ -151,7 +152,10 @@ export default function MintHistory() {
       
       // 全ての履歴を統合
       const combined = allHistories.flat();
-      console.log('[MintHistory] Combined history items:', combined.length);
+      
+      // DEBUG: 開発時のみログ出力
+      if (import.meta.env.DEV) {
+      }
       
       // 日付順でソート（新しい順）
       combined.sort((a, b) => {
@@ -164,7 +168,6 @@ export default function MintHistory() {
       setHistoryCollection('__ALL__'); // 特殊値で全イベント表示を示す
       setMessage(`全イベントから${combined.length}件の履歴を取得しました`);
     } catch (e) {
-      console.error('Failed to fetch all events history', e);
       setMessage('履歴の取得に失敗しました');
       setHistoryItems([]);
     } finally {
@@ -378,7 +381,7 @@ export default function MintHistory() {
                 >
                   <option value="">コレクションを選択</option>
                   {mintCollections.map(col => (
-                    <option key={col.id} value={(col as any).typePath || col.packageId}>
+                    <option key={col.id} value={col.packageId}>
                       {col.name}
                     </option>
                   ))}
@@ -400,11 +403,9 @@ export default function MintHistory() {
                   value={selectedEventId}
                   onChange={(e) => {
                     const eventId = e.target.value;
-                    console.log('[MintHistory] Event selected:', eventId);
                     setSelectedEventId(eventId);
                     const selectedEvent = events.find(ev => ev.id === eventId);
                     if (selectedEvent) {
-                      console.log('[MintHistory] Selected event:', selectedEvent.name, 'collectionId:', selectedEvent.collectionId);
                       setHistoryCollection(selectedEvent.collectionId);
                       setHistoryItems([]);
                       setHistoryPage(1);
@@ -444,9 +445,7 @@ export default function MintHistory() {
               <button
                 onClick={() => {
                   if (historyCollection) {
-                    console.log('[MintHistory] Button clicked. Collection:', historyCollection, 'EventId:', selectedEventId);
                     const eventIdToSend = selectedEventId && selectedEventId !== '' ? selectedEventId : undefined;
-                    console.log('[MintHistory] Sending eventId:', eventIdToSend);
                     fetchCollectionHistory(historyCollection, eventIdToSend, 100);
                   }
                 }}

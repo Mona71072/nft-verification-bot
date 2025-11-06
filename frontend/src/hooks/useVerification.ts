@@ -17,14 +17,13 @@ export const useVerification = (apiBaseUrl: string) => {
       }
       return false;
     } catch (error) {
-      console.error('Error checking verified user status:', error);
       return false;
     }
   };
 
   const handleVerifyNFT = async (
-    account: any,
-    signPersonalMessage: any,
+    account: { address: string; publicKey?: string } | null,
+    signPersonalMessage: (params: { message: Uint8Array }) => Promise<{ signature: string | Uint8Array; bytes: Uint8Array; publicKey?: string }>,
     discordId: string,
     selectedCollections: string[]
   ) => {
@@ -74,7 +73,6 @@ export const useVerification = (apiBaseUrl: string) => {
       const signatureResult = await signPersonalMessage({
         message: messageBytes
       }).catch((error: unknown) => {
-        console.error('Signature error:', error);
         throw new Error('Signature failed. Please approve the signature in your wallet.');
       });
 
@@ -82,7 +80,8 @@ export const useVerification = (apiBaseUrl: string) => {
       const requestBody = {
         signature: signatureResult.signature,
         bytes: signatureResult.bytes,
-        publicKey: (signatureResult as any)?.publicKey ?? (account as any)?.publicKey,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        publicKey: signatureResult?.publicKey ?? (account as any)?.publicKey,
         address: account.address,
         discordId: discordId.trim(),
         nonce: nonce,
@@ -131,7 +130,6 @@ export const useVerification = (apiBaseUrl: string) => {
       }
 
     } catch (error) {
-      console.error('Verification error:', error);
       setVerificationResult({
         success: false,
         message: `An error occurred: ${error instanceof Error ? error.message : 'Unknown error'}`

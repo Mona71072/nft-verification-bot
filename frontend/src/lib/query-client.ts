@@ -10,35 +10,50 @@ import { QueryClient } from '@tanstack/react-query';
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // データを5分間は新鮮とみなす
-      staleTime: 5 * 60 * 1000, // 5 minutes
+      // データを15分間は新鮮とみなす（リクエスト削減のため延長）
+      staleTime: 15 * 60 * 1000, // 15 minutes
       
-      // キャッシュを10分間保持
-      cacheTime: 10 * 60 * 1000, // 10 minutes
+      // キャッシュを30分間保持（リクエスト削減のため延長）
+      // TanStack Query v5ではcacheTimeがgcTimeに変更
+      gcTime: 30 * 60 * 1000, // 30 minutes
       
-      // 失敗時のリトライ設定
+      // 失敗時のリトライ設定（リクエスト削減のため削減）
       retry: (failureCount, error: any) => {
         // 4xxエラーはリトライしない
         if (error?.status >= 400 && error?.status < 500) {
           return false;
         }
-        // その他は最大3回リトライ
-        return failureCount < 3;
+        // その他は最大2回リトライ（3回から削減）
+        return failureCount < 2;
       },
       
-      // ウィンドウフォーカス時の再フェッチを無効化（必要に応じて有効化）
+      // ウィンドウフォーカス時の再フェッチを無効化
       refetchOnWindowFocus: false,
       
-      // ネットワーク再接続時の再フェッチ
-      refetchOnReconnect: true,
+      // ネットワーク再接続時の再フェッチを無効化（リクエスト削減のため）
+      refetchOnReconnect: false,
+      
+      // エラー時の自動再フェッチを無効化（無限ループ防止）
+      // refetchOnMount: 'always' | true の場合、エラー状態でも再フェッチされる可能性があるため、
+      // エラー状態のクエリは再フェッチしないように設定（TanStack Query v5のデフォルト動作を利用）
+      refetchOnMount: (query) => {
+        // エラー状態のクエリは再フェッチしない（無限ループ防止）
+        if (query.state.error) {
+          return false;
+        }
+        // エラーでない場合は再フェッチ
+        return true;
+      },
+      refetchOnError: false, // エラー時の自動再フェッチを無効化（無限ループ防止）
     },
     mutations: {
-      // ミューテーション失敗時のリトライ設定
+      // ミューテーション失敗時のリトライ設定（リクエスト削減のため削減）
       retry: (failureCount, error: any) => {
         if (error?.status >= 400 && error?.status < 500) {
           return false;
         }
-        return failureCount < 2;
+        // 最大1回リトライ（2回から削減）
+        return failureCount < 1;
       },
     },
   },

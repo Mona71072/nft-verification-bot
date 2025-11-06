@@ -3,6 +3,7 @@ import { ConnectButton } from '@mysten/dapp-kit';
 import '@mysten/dapp-kit/dist/index.css';
 import { useWalletWithErrorHandling } from './hooks/useWallet';
 import { getImageDisplayUrl } from './utils/walrus';
+import { useEventPublic } from './hooks/queries/useEvents';
 
 export default function MintPage() {
   const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
@@ -25,7 +26,9 @@ export default function MintPage() {
     return parts.length >= 2 ? parts[1] : '';
   }, []);
 
-  const [loading, setLoading] = useState(true);
+  // TanStack Queryを使用してキャッシュを活用（リクエスト削減のため）
+  const { data: eventData, isLoading: eventLoading, error: eventError } = useEventPublic(eventId);
+  
   const [event, setEvent] = useState<MintEvent | null>(null);
   const [message, setMessage] = useState('');
   const [minting, setMinting] = useState(false);
@@ -39,32 +42,17 @@ export default function MintPage() {
     status: 'not-started' | 'active' | 'ended';
   } | null>(null);
 
+  // TanStack Queryの結果をstateに反映
   useEffect(() => {
-    let ignore = false;
-    (async () => {
-      if (!eventId) {
-        setMessage('イベントIDが指定されていません');
-        setLoading(false);
-        return;
-      }
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/events/${eventId}/public`);
-        const data = await res.json();
-        if (!ignore) {
-          if (data.success) {
-            setEvent(data.data);
-          } else {
-            setMessage(data.error || 'イベント情報の取得に失敗しました');
-          }
-        }
-      } catch {
-        if (!ignore) setMessage('イベント情報の取得に失敗しました');
-      } finally {
-        if (!ignore) setLoading(false);
-      }
-    })();
-    return () => { ignore = true; };
-  }, [API_BASE_URL, eventId]);
+    if (eventData) {
+      setEvent(eventData as MintEvent);
+    } else if (eventError) {
+      setMessage('イベント情報の取得に失敗しました');
+    }
+    if (!eventId) {
+      setMessage('イベントIDが指定されていません');
+    }
+  }, [eventData, eventError, eventId]);
 
   // Countdown timer logic
   useEffect(() => {
@@ -126,7 +114,6 @@ export default function MintPage() {
           }
         }
       } catch (error) {
-        console.error('Failed to check NFT ownership:', error);
         if (!ignore) setAlreadyMinted(false);
       } finally {
         if (!ignore) setCheckingOwnership(false);
@@ -191,27 +178,42 @@ export default function MintPage() {
       let sig;
       try {
         sig = await signPersonalMessage({ message: bytes });
-      } catch (e: any) {
+      } catch {
         throw new Error('Signature was cancelled');
       }
 
-      // 3) ミント実行
+      // 3) ミント実行（タイムアウト付き）
       setMessage('EXECUTING: Minting NFT...');
-      const mintResp = await fetch(`${API_BASE_URL}/api/mint`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          eventId,
-          address: account.address,
-          signature: sig.signature,
-          bytes: Array.from(bytes),
-          publicKey: (sig as any)?.publicKey ?? (account as any)?.publicKey,
-          authMessage
-        })
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 35000); // 35秒タイムアウト
+      
+      let mintResp: Response;
+      try {
+        mintResp = await fetch(`${API_BASE_URL}/api/mint`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            eventId,
+            address: account.address,
+            signature: sig.signature,
+            bytes: Array.from(bytes),
+            publicKey: (sig as any)?.publicKey ?? (account as any)?.publicKey,
+            authMessage
+          }),
+          signal: controller.signal
+        });
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId);
+        if (fetchError.name === 'AbortError') {
+          throw new Error('Mint request timeout. Please try again.');
+        }
+        throw fetchError;
+      } finally {
+        clearTimeout(timeoutId);
+      }
       
       if (!mintResp.ok) {
-        const errorText = await mintResp.text();
+        const errorText = await mintResp.text().catch(() => 'Unknown error');
         let errorData;
         try {
           errorData = JSON.parse(errorText);
@@ -221,7 +223,7 @@ export default function MintPage() {
         throw new Error(`Mint error (${mintResp.status}): ${errorData.error || errorText}`);
       }
       
-      const mintData = await mintResp.json();
+      const mintData = await mintResp.json().catch(() => ({ success: false, error: 'Failed to parse response' }));
       if (mintData?.success) {
         const txDigest = mintData?.data?.txDigest || 'N/A';
         const nftObjectIds = mintData?.data?.nftObjectIds || [];
@@ -266,20 +268,19 @@ export default function MintPage() {
           `;
           setMessage(messageDiv.innerHTML);
         } else {
-          setMessage(`SUCCESS: Mint Completed! Transaction: ${txDigest}`);
+          setMessage(`SUCCESS: Mint Completed! Transaction: <a href="https://suivision.xyz/txblock/${txDigest}" target="_blank" rel="noreferrer" style="color: rgba(102, 126, 234, 0.9); text-decoration: underline;">${txDigest}</a>`);
         }
       } else {
         throw new Error(mintData?.error || 'Mint failed');
       }
     } catch (e: any) {
-      console.error('Mint error:', e);
       setMessage(`ERROR: ${e?.message || 'An error occurred during minting'}`);
     } finally {
       setMinting(false);
     }
   };
 
-  if (loading) {
+  if (eventLoading || !event) {
     return (
       <div style={{
         minHeight: '100vh',
@@ -697,7 +698,6 @@ export default function MintPage() {
                     img.style.transform = 'scale(1)';
                   }}
                   onError={(e) => {
-                    console.log('Walrus portal image load error, showing placeholder...');
                     const img = e.target as HTMLImageElement;
                     
                     img.style.display = 'none';

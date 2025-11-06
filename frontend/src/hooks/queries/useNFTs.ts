@@ -12,7 +12,9 @@ interface OwnedNFT {
     image_url?: string;
     event_date?: string;
   };
-  owner?: any;
+  owner?: unknown;
+  previousTransaction?: string;
+  timestamp?: number; // ブロックチェーン上のトランザクションtimestamp（ミリ秒）
 }
 
 interface OnchainCountResponse {
@@ -49,12 +51,11 @@ export function useOwnedNFTs(address: string, collectionTypes: string[]) {
         
         return data.data;
       } catch (error) {
-        console.error('Failed to fetch owned NFTs:', error);
         return [];
       }
     },
     enabled: !!address && collectionTypes.length > 0,
-    staleTime: 2 * 60 * 1000, // 2 minutes (NFT保有状況は比較的頻繁に変わる可能性)
+    staleTime: 10 * 60 * 1000, // 10 minutes（リクエスト削減のため延長、NFT保有状況は比較的頻繁に変わる可能性があるがキャッシュを優先）
   });
 }
 
@@ -75,12 +76,11 @@ export function useOnchainCount(collectionId: string) {
         
         return data;
       } catch (error) {
-        console.error('Failed to fetch onchain count:', error);
         throw new Error('NFT数の取得に失敗しました');
       }
     },
     enabled: !!collectionId,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 15 * 60 * 1000, // 15 minutes（リクエスト削減のため延長）
   });
 }
 
@@ -107,7 +107,6 @@ export function useOnchainCounts(collectionIds: string[]) {
             }
             return { collectionId, count: 0 };
           } catch (error) {
-            console.error(`Failed to fetch count for ${collectionId}:`, error);
             return { collectionId, count: 0 };
           }
         });
@@ -121,11 +120,10 @@ export function useOnchainCounts(collectionIds: string[]) {
         
         return countMap;
       } catch (error) {
-        console.error('Failed to fetch onchain counts:', error);
         return new Map();
       }
     },
     enabled: collectionIds.length > 0,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 15 * 60 * 1000, // 15 minutes（リクエスト削減のため延長）
   });
 }

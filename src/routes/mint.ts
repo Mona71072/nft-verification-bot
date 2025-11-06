@@ -14,7 +14,7 @@ import {
   saveMintRecord,
   incrementMintCount
 } from '../services/mint';
-import { logError } from '../utils/logger';
+import { logError, logWarning } from '../utils/logger';
 
 // Cloudflare Workers環境の型定義
 interface Env {
@@ -22,10 +22,54 @@ interface Env {
   MINTED_STORE?: KVNamespace;
   MINT_SPONSOR_API_URL?: string;
   DISCORD_BOT_API_URL?: string;
+  ctx?: ExecutionContext;
   [key: string]: any;
 }
 
+// ExecutionContext型定義
+interface ExecutionContext {
+  waitUntil(promise: Promise<any>): void;
+  passThroughOnException(): void;
+}
+
 const app = new Hono<{ Bindings: Env }>();
+
+/**
+ * ミント済みチェック
+ * GET /api/mints/check
+ */
+app.get('/api/mints/check', async (c) => {
+  try {
+    const eventId = c.req.query('eventId');
+    const address = c.req.query('address');
+    
+    if (!eventId || !address) {
+      return c.json({ success: false, error: 'eventId and address are required' }, 400);
+    }
+
+    // アドレス形式の検証
+    if (!validateAddress(address)) {
+      return c.json({ success: false, error: 'Invalid address format' }, 400);
+    }
+
+    const mintedStore = c.env.MINTED_STORE as KVNamespace;
+    if (!mintedStore) {
+      return c.json({ success: false, error: 'MINTED_STORE is not available' }, 503);
+    }
+
+    // 重複ミントチェック
+    const alreadyMinted = await isAlreadyMinted(eventId, address, mintedStore);
+
+    return c.json({ 
+      success: true, 
+      alreadyMinted 
+    });
+
+  } catch (error: any) {
+    logError('Mint check API error', error);
+    return c.json({ success: false, error: `Mint check API error: ${error?.message || 'Unknown error'}` }, 500);
+  }
+});
 
 /**
  * NFT ミント実行
@@ -33,22 +77,36 @@ const app = new Hono<{ Bindings: Env }>();
  */
 app.post('/api/mint', async (c) => {
   try {
+    // リクエスト開始をログに記録
+    console.log('[MINT] Request received');
+    
     const eventStore = c.env.EVENT_STORE as KVNamespace;
     const mintedStore = c.env.MINTED_STORE as KVNamespace;
     
     if (!eventStore) {
+      console.error('[MINT] EVENT_STORE is not available');
       return c.json({ success: false, error: 'EVENT_STORE is not available' }, 503);
     }
     if (!mintedStore) {
+      console.error('[MINT] MINTED_STORE is not available');
       return c.json({ success: false, error: 'MINTED_STORE is not available' }, 503);
     }
 
     const body = await c.req.json().catch(() => ({}));
     const { eventId, address, signature, bytes, publicKey, authMessage } = body || {};
+    
+    console.log('[MINT] Request body parsed', {
+      hasEventId: !!eventId,
+      hasAddress: !!address,
+      hasSignature: !!signature,
+      hasBytes: !!bytes,
+      hasAuthMessage: !!authMessage
+    });
 
     // 必須フィールドの検証
     const missing = ['eventId', 'address', 'signature', 'authMessage'].filter((k) => !(body && body[k]));
     if (missing.length) {
+      console.error('[MINT] Missing required fields', { missing });
       return c.json({ success: false, error: `Missing: ${missing.join(', ')}` }, 400);
     }
 
@@ -58,13 +116,17 @@ app.post('/api/mint', async (c) => {
     }
 
     // イベント取得
+    console.log('[MINT] Fetching event', { eventId });
     const listStr = await eventStore.get('events');
     const list = listStr ? JSON.parse(listStr) : [];
     const ev = Array.isArray(list) ? list.find((e: any) => e && e.id === eventId) : null;
     
     if (!ev) {
+      console.error('[MINT] Event not found', { eventId });
       return c.json({ success: false, error: 'Event not found' }, 404);
     }
+    
+    console.log('[MINT] Event found', { eventId: ev.id, active: ev.active });
 
     // イベント期間チェック
     if (!isEventActive(ev)) {
@@ -81,7 +143,8 @@ app.post('/api/mint', async (c) => {
       return c.json({ success: false, error: 'Mint cap reached for this event' }, 400);
     }
 
-    // 署名検証
+    // 署名検証（エラーを投げずにfalseを返すように変更）
+    console.log('[MINT] Verifying signature');
     const isValidSignature = await verifySignature({
       eventId,
       address,
@@ -92,8 +155,11 @@ app.post('/api/mint', async (c) => {
     });
 
     if (!isValidSignature) {
+      console.error('[MINT] Signature verification failed');
       return c.json({ success: false, error: 'Invalid signature' }, 400);
     }
+    
+    console.log('[MINT] Signature verified successfully');
 
     // スポンサーAPI URL取得
     const sponsorUrl = c.env.MINT_SPONSOR_API_URL || c.env.DISCORD_BOT_API_URL;
@@ -101,41 +167,73 @@ app.post('/api/mint', async (c) => {
       return c.json({ success: false, error: 'Sponsor API URL is not configured' }, 500);
     }
 
-    // スポンサーAPIへ委譲
-    const mintResult = await delegateToSponsor(ev, address, sponsorUrl);
-
-    // ミント記録の保存
-    await saveMintRecord(eventId, address, mintResult.txDigest, mintedStore);
-
-    // ミント数の更新
-    await incrementMintCount(eventId, mintedStore);
-
-    // ミント詳細ログ（コレクション別）& NFTオブジェクトID取得
-    let nftObjectIds: string[] = [];
+    // スポンサーAPIへ委譲（タイムアウトはdelegateToSponsor内で処理）
+    console.log('[MINT] Delegating to sponsor API', { sponsorUrl });
+    let mintResult;
     try {
-      if (mintResult.txDigest && ev.collectionId) {
-        nftObjectIds = await logMintDetails(mintResult.txDigest, ev, address, c.env);
-      }
-    } catch (e) {
-      logError('Mint log enrichment failed', e);
+      mintResult = await delegateToSponsor(ev, address, sponsorUrl);
+      console.log('[MINT] Sponsor API success', { txDigest: mintResult.txDigest });
+    } catch (sponsorError: any) {
+      console.error('[MINT] Sponsor API delegation failed', {
+        error: sponsorError?.message,
+        name: sponsorError?.name,
+        stack: sponsorError?.stack
+      });
+      logError('Sponsor API delegation failed', sponsorError);
+      // スポンサーAPIのエラーは詳細を返す
+      const errorMsg = sponsorError?.message || 'Unknown error';
+      return c.json({ 
+        success: false, 
+        error: `Sponsor API error: ${errorMsg}` 
+      }, 500);
+    }
+
+    // ミント記録の保存とミント数の更新を並列実行
+    try {
+      await Promise.all([
+        saveMintRecord(eventId, address, mintResult.txDigest, mintedStore),
+        incrementMintCount(eventId, mintedStore)
+      ]);
+    } catch (saveError: any) {
+      logError('Failed to save mint record', saveError);
+      // ミントは成功しているが、記録の保存に失敗した場合は警告のみ
+      // トランザクションは既に完了しているため、エラーを返さない
+    }
+
+    // ミント詳細ログは非同期で実行（レスポンスをブロックしない）
+    // ExecutionContextがあればwaitUntilを使用、なければバックグラウンドで実行
+    if (mintResult.txDigest && ev.collectionId) {
+      const logPromise = logMintDetails(mintResult.txDigest, ev, address, c.env).catch((e) => {
+        logError('Mint log enrichment failed', e);
+        return [];
+      });
+      
+      // ExecutionContextへのアクセスを試行（Honoでは通常利用不可）
+      // バックグラウンドで実行（エラーを無視）
+      logPromise.catch(() => {});
     }
 
     return c.json({ 
       success: true, 
       data: { 
         txDigest: mintResult.txDigest,
-        nftObjectIds: nftObjectIds
+        nftObjectIds: [] // 非同期実行のため空配列を返す
       } 
     });
 
   } catch (error: any) {
-    logError('Mint API error', error);
-    console.error('Mint API detailed error:', {
-      message: error?.message,
-      stack: error?.stack,
-      name: error?.name
+    console.error('[MINT] Unhandled error', {
+      error: error?.message,
+      name: error?.name,
+      stack: error?.stack
     });
-    return c.json({ success: false, error: `Mint API error: ${error?.message || 'Unknown error'}` }, 500);
+    logError('Mint API error', error);
+    const errorMessage = error?.message || 'Unknown error';
+    // 本番環境ではスタックトレースを含めない（セキュリティ上の理由）
+    return c.json({ 
+      success: false, 
+      error: `Mint API error: ${errorMessage}` 
+    }, 500);
   }
 });
 
@@ -149,13 +247,16 @@ app.post('/api/mint', async (c) => {
  */
 async function logMintDetails(txDigest: string, ev: any, address: string, env: any): Promise<string[]> {
   try {
-    // Sui JSON-RPC 呼び出しで objectChanges を取得
+    // Sui JSON-RPC 呼び出しで objectChanges を取得（タイムアウト付き）
     const suiNet = env.SUI_NETWORK || 'mainnet';
     const fullnode = suiNet === 'testnet'
       ? 'https://fullnode.testnet.sui.io:443'
       : suiNet === 'devnet'
         ? 'https://fullnode.devnet.sui.io:443'
         : 'https://fullnode.mainnet.sui.io:443';
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10秒タイムアウト
 
     const rpcResp = await fetch(fullnode, {
       method: 'POST',
@@ -170,28 +271,29 @@ async function logMintDetails(txDigest: string, ev: any, address: string, env: a
           showInput: false, 
           showEvents: true 
         }]
-      })
+      }),
+      signal: controller.signal
+    }).finally(() => {
+      clearTimeout(timeoutId);
     });
 
+    if (controller.signal.aborted) {
+      throw new Error('Sui RPC request timeout');
+    }
+
     const rpcJson: any = await rpcResp.json().catch(() => null);
+    if (!rpcJson || rpcJson.error) {
+      throw new Error(rpcJson?.error?.message || 'Failed to fetch transaction from Sui');
+    }
+    
     const changes: any[] = rpcJson?.result?.objectChanges || [];
-    
-    console.log(`[Mint Log] Total object changes: ${changes.length}`);
-    console.log(`[Mint Log] Expected collectionId: ${ev.collectionId}`);
-    
     const created = changes.filter((ch) => ch?.type === 'created');
-    console.log(`[Mint Log] Created objects: ${created.length}`);
-    created.forEach((ch, idx) => {
-      console.log(`[Mint Log] Created[${idx}]: type=${ch?.type}, objectType=${ch?.objectType}, objectId=${ch?.objectId}`);
-    });
     
     const nftObjects = created
       .filter((ch) => typeof ch?.objectType === 'string' && ch.objectType === ev.collectionId)
       .map((ch) => ch.objectId)
       .filter(Boolean);
     
-    console.log(`[Mint Log] Filtered NFT objects: ${nftObjects.length}`, nftObjects);
-
     const log = {
       txDigest,
       eventId: ev.id,
@@ -229,8 +331,13 @@ async function logMintDetails(txDigest: string, ev: any, address: string, env: a
     // NFTオブジェクトIDを返す
     return nftObjects;
 
-  } catch (e) {
-    logError('Failed to log mint details', e);
+  } catch (e: any) {
+    // タイムアウトやネットワークエラーは警告のみ（ログに記録しない）
+    if (e.name === 'AbortError' || e.message?.includes('timeout')) {
+      logWarning('Mint log enrichment timeout (non-critical)', e);
+    } else {
+      logError('Failed to log mint details', e);
+    }
     return [];
   }
 }

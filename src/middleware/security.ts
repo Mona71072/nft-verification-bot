@@ -113,7 +113,6 @@ export function publicStorageWarningMiddleware() {
       };
       
       // 警告をログに記録
-      console.warn('Public storage upload attempt:', warning);
     }
     
     await next();

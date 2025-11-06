@@ -30,7 +30,6 @@ class MigrationValidator {
    */
   async testBlobStorage(): Promise<ValidationResult> {
     try {
-      console.log('🧪 Testing blob storage...');
       
       // テスト用の小さな画像を作成
       const testImage = this.createTestImage();
@@ -75,7 +74,6 @@ class MigrationValidator {
    */
   async testDisplayUrl(blobId: string): Promise<ValidationResult> {
     try {
-      console.log('🧪 Testing display URL...');
       
       // Aggregator URL の直接アクセステスト
       const aggregatorBase = (process as any).env.WALRUS_AGGREGATOR_BASE || 'https://aggregator.mainnet.walrus.space';
@@ -123,7 +121,6 @@ class MigrationValidator {
    */
   async testDataModel(): Promise<ValidationResult> {
     try {
-      console.log('🧪 Testing data model...');
       
       // イベント一覧の取得
       const response = await fetch('https://nft-verification-production.mona-syndicatextokyo.workers.dev/api/events');
@@ -182,7 +179,6 @@ class MigrationValidator {
    */
   async testMintFlow(): Promise<ValidationResult> {
     try {
-      console.log('🧪 Testing mint flow...');
       
       // ミント用のテストイベントを作成
       const testEvent = {
@@ -246,7 +242,6 @@ class MigrationValidator {
    */
   async testSuiDisplay(): Promise<ValidationResult> {
     try {
-      console.log('🧪 Testing Sui Display...');
       
       // Display フィールドのテンプレートをチェック
       const expectedImageUrlTemplate = 'https://aggregator.mainnet.walrus.space/v1/blobs/{image_cid}';
@@ -302,7 +297,6 @@ class MigrationValidator {
    */
   async testDocumentationAccess(): Promise<ValidationResult> {
     try {
-      console.log('🧪 Testing documentation access...');
       
       const publisherBase = (process as any).env.WALRUS_PUBLISHER_BASE || 'https://publisher.mainnet.walrus.space';
       const aggregatorBase = (process as any).env.WALRUS_AGGREGATOR_BASE || 'https://aggregator.mainnet.walrus.space';
@@ -358,14 +352,12 @@ class MigrationValidator {
    * 全テストの実行
    */
   async runAllTests(): Promise<ValidationResult[]> {
-    console.log('🚀 Starting Walrus.pdf migration validation...');
     
     // 1. Blob保存テスト
     const blobResult = await this.testBlobStorage();
     this.results.push(blobResult);
     
     if (!blobResult.passed) {
-      console.log('❌ Blob storage test failed, skipping remaining tests');
       return this.results;
     }
     
@@ -400,33 +392,25 @@ class MigrationValidator {
    * 結果の表示
    */
   displayResults(): void {
-    console.log('\n📊 Migration Validation Results');
-    console.log('================================');
     
     let passedCount = 0;
     let totalCount = this.results.length;
     
     this.results.forEach(result => {
       const status = result.passed ? '✅' : '❌';
-      console.log(`${status} ${result.test}`);
       
       if (!result.passed && result.error) {
-        console.log(`   Error: ${result.error}`);
       }
       
       if (result.data) {
-        console.log(`   Data: ${JSON.stringify(result.data, null, 2)}`);
       }
       
       if (result.passed) passedCount++;
     });
     
-    console.log(`\n🎯 Summary: ${passedCount}/${totalCount} tests passed`);
     
     if (passedCount === totalCount) {
-      console.log('🎉 All tests passed! Migration is complete and Walrus.pdf compliant.');
     } else {
-      console.log('⚠️  Some tests failed. Please address the issues before deployment.');
     }
   }
 }
@@ -448,7 +432,6 @@ async function main() {
 
 // スクリプト実行
 if ((require as any).main === module) {
-  main().catch(console.error);
 }
 
 export { MigrationValidator };

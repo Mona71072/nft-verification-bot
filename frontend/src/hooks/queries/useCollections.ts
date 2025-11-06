@@ -9,6 +9,9 @@ interface NFTCollection {
   packageId: string;
   description?: string;
   isActive: boolean;
+  roleId?: string;
+  originalId?: string;
+  displayName?: string;
 }
 
 interface CollectionsResponse {
@@ -42,12 +45,14 @@ export function useCollections() {
         // それをidとして使用する
         const allCollections: NFTCollection[] = roleCollections.map((c: NFTCollection) => ({
           ...c,
+          originalId: c.id,
           id: c.packageId || c.id, // packageIdを優先的に使用
+          displayName: c.name
         }));
         const existingCollectionIds = new Set(allCollections.map((c: NFTCollection) => c.id));
 
         // ミント管理のコレクションを追加
-        mintCollections.forEach((mintCol: any) => {
+        mintCollections.forEach((mintCol: { id?: string; typePath?: string; packageId?: string; name: string; description?: string }) => {
           const typePath = mintCol.typePath || mintCol.packageId;
           if (typePath && !existingCollectionIds.has(typePath)) {
             allCollections.push({
@@ -55,18 +60,20 @@ export function useCollections() {
               name: mintCol.name,
               packageId: typePath,
               description: mintCol.description || 'ミント管理から取得',
-              isActive: true
+              isActive: true,
+              originalId: mintCol.id,
+              displayName: mintCol.name
             });
+            existingCollectionIds.add(typePath);
           }
         });
 
         return allCollections;
       } catch (error) {
-        console.error('Failed to fetch collections:', error);
         throw new Error('コレクションの取得に失敗しました');
       }
     },
-    // コレクションは頻繁に変更されないため、長めのstaleTimeを設定
-    staleTime: 10 * 60 * 1000, // 10 minutes
+    // コレクションは頻繁に変更されないため、長めのstaleTimeを設定（リクエスト削減のため延長）
+    staleTime: 20 * 60 * 1000, // 20 minutes
   });
 }

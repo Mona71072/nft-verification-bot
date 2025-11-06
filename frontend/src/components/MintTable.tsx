@@ -290,11 +290,11 @@ const detailPanel: React.CSSProperties = { width: 480, maxWidth: '90vw', backgro
 const closeBtn: React.CSSProperties = { border: '1px solid #e5e7eb', background: 'white', borderRadius: 6, padding: '4px 8px', cursor: 'pointer' };
 const label: React.CSSProperties = { color: '#64748b', fontWeight: 500 };
 
-function statusCell(status?: 'success' | 'failed' | 'pending') {
-  if (status === 'success') return '✅ 成功';
-  if (status === 'failed') return '❌ 検証エラー';
-  if (status === 'pending') return '⏳ Sponsor待ち';
-  return '-';
-}
+// function statusCell(status?: 'success' | 'failed' | 'pending') {
+//   if (status === 'success') return '✅ 成功';
+//   if (status === 'failed') return '❌ 検証エラー';
+//   if (status === 'pending') return '⏳ Sponsor待ち';
+//   return '-';
+// }
 
 

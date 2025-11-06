@@ -66,7 +66,6 @@ app.post('/notify', async (req, res) => {
     const custom = verificationData?.custom_message;
 
     if (!discordId || !action) {
-      console.error('Missing required fields:', { discordId, action });
       return res.status(400).json({
         success: false,
         error: 'discordId and action are required'
@@ -97,7 +96,6 @@ app.post('/notify', async (req, res) => {
         break;
         
       default:
-        console.error('Invalid action:', action);
         return res.status(400).json({
           success: false,
           error: 'Invalid action. Must be grant_roles/grant_role or verification_failed'
@@ -115,7 +113,6 @@ app.post('/notify', async (req, res) => {
     res.json(response);
 
   } catch (error) {
-    console.error('Notification API Error:', error);
     res.status(500).json({
       success: false,
       error: 'Internal server error'
@@ -129,7 +126,6 @@ app.post('/api/discord-action', async (req, res) => {
     const { discord_id, action, verification_data } = req.body;
 
     if (!discord_id || !action) {
-      console.error('Missing required fields:', { discord_id, action });
       return res.status(400).json({
         success: false,
         error: 'discord_id and action are required'
@@ -164,7 +160,6 @@ app.post('/api/discord-action', async (req, res) => {
         break;
       }
       default:
-        console.error('Invalid action:', action);
         return res.status(400).json({
           success: false,
           error: 'Invalid action. Must be grant_roles/grant_role, verification_failed or revoke_role'
@@ -178,7 +173,6 @@ app.post('/api/discord-action', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('API Error:', error);
     res.status(500).json({
       success: false,
       error: 'Internal server error'
@@ -213,7 +207,6 @@ app.get('/api/discord/roles', async (req, res) => {
       data: rolesList
     });
   } catch (error) {
-    console.error('Discord roles API error:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to fetch Discord roles'
@@ -232,13 +225,11 @@ async function sendBatchNotification(discordId: string, action: string, data: { 
     });
 
     if (!dmSettingsResponse.ok) {
-      console.error('Failed to fetch DM settings');
       return false;
     }
 
     const dmSettingsData = await dmSettingsResponse.json() as any;
     if (!dmSettingsData.success || !dmSettingsData.data) {
-      console.error('Invalid DM settings data');
       return false;
     }
 
@@ -262,14 +253,12 @@ async function sendBatchNotification(discordId: string, action: string, data: { 
     }
 
     if (!shouldNotify) {
-      console.log(`Batch notification skipped for action ${action} (mode: ${batchMode})`);
       return true;
     }
 
     // ユーザーを取得
     const user = await client.users.fetch(discordId);
     if (!user) {
-      console.error('Discord user not found:', discordId);
       return false;
     }
 
@@ -284,7 +273,6 @@ async function sendBatchNotification(discordId: string, action: string, data: { 
     }
 
     if (!template) {
-      console.error('Template not found for action:', action);
       return false;
     }
 
@@ -305,10 +293,8 @@ async function sendBatchNotification(discordId: string, action: string, data: { 
     };
 
     await user.send({ embeds: [embed] });
-    console.log('Batch notification sent to user:', discordId);
     return true;
   } catch (error) {
-    console.error('Error sending batch notification:', error);
     return false;
   }
 }
@@ -325,12 +311,9 @@ app.post('/api/notify-discord', async (req, res) => {
       });
     }
 
-    console.log('Discord notification requested:', { discordId, action, verificationData });
-
     // Discordユーザーを取得
     const user = await client.users.fetch(discordId);
     if (!user) {
-      console.error('Discord user not found:', discordId);
       return res.status(404).json({
         success: false,
         error: 'Discord user not found'
@@ -388,9 +371,7 @@ app.post('/api/notify-discord', async (req, res) => {
         }
 
         await user.send({ embeds: [embed] });
-        console.log('Successfully sent DM to user:', discordId);
       } catch (dmError) {
-        console.error('Failed to send DM:', dmError);
         return res.status(500).json({
           success: false,
           error: 'Failed to send DM'
@@ -404,7 +385,6 @@ app.post('/api/notify-discord', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Discord notification API error:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to send Discord notification'
@@ -424,8 +404,6 @@ app.post('/api/batch-process', async (req, res) => {
       });
     }
 
-    console.log('Batch process requested:', { collectionId, action, adminAddress });
-
     // コレクション情報を取得
     let collectionName = 'NFT Collection';
     try {
@@ -438,7 +416,6 @@ app.post('/api/batch-process', async (req, res) => {
         }
       }
     } catch (error) {
-      console.error('Error fetching collection info:', error);
     }
 
     // Cloudflare Workersから認証済みユーザーを取得
@@ -450,7 +427,6 @@ app.post('/api/batch-process', async (req, res) => {
     });
 
     if (!workersResponse.ok) {
-      console.error('Failed to fetch verified users from Workers');
       return res.status(500).json({
         success: false,
         error: 'Failed to fetch verified users'
@@ -459,8 +435,6 @@ app.post('/api/batch-process', async (req, res) => {
 
     const usersData = await workersResponse.json() as any;
     const verifiedUsers = usersData.success ? usersData.data : [];
-
-    console.log(`Found ${verifiedUsers.length} verified users`);
 
     let processedUsers = 0;
     let errors = 0;
@@ -473,7 +447,6 @@ app.post('/api/batch-process', async (req, res) => {
         const shouldProcess = userCollectionIds.includes(collectionId);
         
         if (!shouldProcess) {
-          console.log(`Skipping user ${user.discordId} (not subscribed to collection ${collectionId})`);
           continue;
         }
         
@@ -505,8 +478,6 @@ app.post('/api/batch-process', async (req, res) => {
             
             if (roleGranted) {
               processedUsers++;
-              console.log(`✅ Granted role to user ${user.discordId}`);
-              
               // バッチ処理時のDM通知を送信
               try {
                 await sendBatchNotification(user.discordId, 'grant_roles', {
@@ -514,7 +485,6 @@ app.post('/api/batch-process', async (req, res) => {
                   roleName: user.roleName || 'NFT Holder'
                 });
               } catch (dmError) {
-                console.error('Failed to send batch notification DM:', dmError);
               }
             } else {
               errors++;
@@ -525,8 +495,6 @@ app.post('/api/batch-process', async (req, res) => {
             
             if (roleRevoked) {
               processedUsers++;
-              console.log(`⚠️ Revoked role from user ${user.discordId} (no NFT)`);
-              
               // ロール剥奪のDM通知を送信
               try {
                 await sendBatchNotification(user.discordId, 'revoke_role', {
@@ -534,7 +502,6 @@ app.post('/api/batch-process', async (req, res) => {
                   roleName: user.roleName || 'NFT Holder'
                 });
               } catch (dmError) {
-                console.error('Failed to send revoke notification DM:', dmError);
               }
             } else {
               errors++;
@@ -542,12 +509,9 @@ app.post('/api/batch-process', async (req, res) => {
           }
         }
       } catch (error) {
-        console.error(`Error processing user ${user.discordId}:`, error);
         errors++;
       }
     }
-
-    console.log(`Batch process completed: ${processedUsers} processed, ${errors} errors`);
 
     // バッチ処理統計を更新
     try {
@@ -571,12 +535,9 @@ app.post('/api/batch-process', async (req, res) => {
       });
 
       if (workersStatsResponse.ok) {
-        console.log('Batch statistics updated successfully');
       } else {
-        console.error('Failed to update batch statistics:', workersStatsResponse.status);
       }
     } catch (statsError) {
-      console.error('Error updating batch statistics:', statsError);
     }
 
     res.json({
@@ -591,7 +552,6 @@ app.post('/api/batch-process', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Batch process API error:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to execute batch process'
@@ -602,7 +562,7 @@ app.post('/api/batch-process', async (req, res) => {
 // スポンサー実行: Suiでのミント処理を代理送信（Walrus.pdf準拠）
 app.post('/api/mint', async (req, res) => {
   try {
-    const { eventId, recipient, moveCall, imageCid, imageMimeType, eventName, eventDate } = req.body || {};
+    const { eventId, recipient, moveCall, imageCid, imageMimeType, eventName, eventDescription, eventDate } = req.body || {};
     if (!eventId || !recipient || !moveCall?.target) {
       return res.status(400).json({ success: false, error: 'Missing eventId/recipient/moveCall.target' });
     }
@@ -621,14 +581,14 @@ app.post('/api/mint', async (req, res) => {
           }
           return tx.pure.address(recipient);
         }
-        // name, imageCid, imageMimeType, eventDate に対応（Display標準対応）
+        // name, description, imageCid, imageMimeType, eventDate に対応（Display標準対応）
         if (a === '{name}') return tx.pure.string(eventName || 'Event NFT');
+        if (a === '{description}') return tx.pure.string(eventDescription || 'Event NFT');
         if (a === '{imageCid}') return tx.pure.string(imageCid || '');
         if (a === '{imageMimeType}') return tx.pure.string(imageMimeType || '');
         if (a === '{eventDate}') return tx.pure.string(eventDate || new Date().toISOString());
         return tx.pure.string(String(a));
       } catch (argError) {
-        console.error(`Error building argument ${a}:`, argError);
         throw new Error(`Invalid argument template: ${a}`);
       }
     });
@@ -663,7 +623,6 @@ app.post('/api/mint', async (req, res) => {
 
     return res.json({ success: true, txDigest: result.digest });
   } catch (e: any) {
-    console.error('Sponsor mint failed:', e);
     return res.status(500).json({ success: false, error: e?.message || 'Sponsor mint failed' });
   }
 });
@@ -712,7 +671,6 @@ app.get('/api/display/publisher/:packageId', async (req, res) => {
 
     return res.status(404).json({ success: false, error: 'Publisher object not found for this package' });
   } catch (e: any) {
-    console.error('Publisher lookup failed:', e);
     return res.status(500).json({ success: false, error: e?.message || 'Publisher lookup failed' });
   }
 });
@@ -753,7 +711,6 @@ app.post('/api/display/setup', async (req, res) => {
     const valuesVector = tx.pure.vector('string', values);
     
     // デバッグ情報を追加
-    console.log('Display setup debug:', {
       type,
       publisherId,
       keys,
@@ -790,7 +747,6 @@ app.post('/api/display/setup', async (req, res) => {
 
     return res.json({ success: true, txDigest: result.digest, result });
   } catch (e: any) {
-    console.error('Display setup failed:', e);
     return res.status(500).json({ success: false, error: e?.message || 'display setup failed' });
   }
 });
@@ -830,7 +786,6 @@ app.post('/api/move-call', async (req, res) => {
         // リテラル
         return tx.pure.string(String(a));
       } catch (e) {
-        console.error('move-call arg build error:', e);
         throw e;
       }
     });
@@ -860,7 +815,6 @@ app.post('/api/move-call', async (req, res) => {
 
     return res.json({ success: true, txDigest: result.digest, result });
   } catch (e: any) {
-    console.error('Generic move-call failed:', e);
     return res.status(500).json({ success: false, error: e?.message || 'move-call failed' });
   }
 });
@@ -874,8 +828,6 @@ app.post('/api/walrus/sponsor-upload', async (req, res) => {
     if (!dataBase64) return res.status(400).json({ success: false, error: 'dataBase64 is required' });
     
     const buf = Buffer.from(String(dataBase64), 'base64');
-    console.log(`Processing upload with Walrus SDK: size=${buf.length} bytes`);
-
     // 必要なモジュールをimport
     const { WalrusClient } = await import('@mysten/walrus');
     const { Transaction } = await import('@mysten/sui/transactions');
@@ -896,8 +848,6 @@ app.post('/api/walrus/sponsor-upload', async (req, res) => {
     });
 
     // 公式Walrus SDKを使用（WAL必要）
-    console.log('Using official Walrus SDK implementation');
-    
     // 公式Walrus SDK実装（リトライ機能付き）
     let result;
     let lastError;
@@ -906,8 +856,6 @@ app.post('/api/walrus/sponsor-upload', async (req, res) => {
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        console.log(`Walrus upload attempt ${attempt}/${maxRetries}`);
-        
         result = await walrusClient.writeBlob({
           blob: new Uint8Array(buf),
           deletable: false,
@@ -915,7 +863,6 @@ app.post('/api/walrus/sponsor-upload', async (req, res) => {
           signer: signer
         });
         
-        console.log('Walrus official SDK upload successful:', result.blobId);
         return res.json({ 
           success: true, 
           data: { 
@@ -927,8 +874,6 @@ app.post('/api/walrus/sponsor-upload', async (req, res) => {
         });
       } catch (attemptError: any) {
         lastError = attemptError;
-        console.error(`Walrus upload attempt ${attempt} failed:`, attemptError.message);
-        
         // オブジェクトロック競合エラーの場合はリトライ
         if (attemptError.message?.includes('reserved for another transaction') || 
             attemptError.message?.includes('object is locked') ||
@@ -936,7 +881,6 @@ app.post('/api/walrus/sponsor-upload', async (req, res) => {
           
           if (attempt < maxRetries) {
             const delay = baseDelay * Math.pow(2, attempt - 1) + Math.random() * 1000; // 指数バックオフ + ジッター
-            console.log(`Retrying in ${Math.round(delay)}ms due to object lock conflict...`);
             await new Promise(resolve => setTimeout(resolve, delay));
             continue;
           }
@@ -950,7 +894,6 @@ app.post('/api/walrus/sponsor-upload', async (req, res) => {
     // 全てのリトライが失敗した場合
     throw lastError;
   } catch (e: any) {
-    console.error('Walrus SDK upload failed:', e);
     return res.status(500).json({ 
       success: false, 
       error: e?.message || 'Walrus SDK upload error',
@@ -966,8 +909,6 @@ app.post('/api/display/setup-with-image', async (req, res) => {
     if (!type || !publisherId || !imageBase64) {
       return res.status(400).json({ success: false, error: 'Missing type, publisherId, or imageBase64' });
     }
-
-    console.log('Starting image upload + display setup process...');
 
     // 1. 画像をWalrusにアップロード
     const uploadResponse = await fetch(`${req.protocol}://${req.get('host')}/api/walrus/sponsor-upload`, {
@@ -996,8 +937,6 @@ app.post('/api/display/setup-with-image', async (req, res) => {
     }
 
     const imageCid = uploadData.data.blob_id;
-    console.log(`Image uploaded successfully, CID: ${imageCid}`);
-
     // 2. Display設定を実行
     const displayResponse = await fetch(`${req.protocol}://${req.get('host')}/api/display/setup`, {
       method: 'POST',
@@ -1032,8 +971,6 @@ app.post('/api/display/setup-with-image', async (req, res) => {
       });
     }
 
-    console.log('Display setup completed successfully');
-
     return res.json({
       success: true,
       data: {
@@ -1045,7 +982,6 @@ app.post('/api/display/setup-with-image', async (req, res) => {
     });
 
   } catch (e: any) {
-    console.error('Image upload + display setup failed:', e);
     return res.status(500).json({ 
       success: false, 
       error: e?.message || 'Image upload + display setup failed' 
@@ -1062,7 +998,6 @@ app.get('/api/verified-users', async (req, res) => {
       message: 'KV storage integration pending'
     });
   } catch (error) {
-    console.error('Error fetching verified users:', error);
     res.status(500).json({
       success: false,
       error: 'Internal server error'
@@ -1084,14 +1019,12 @@ app.get('/api/roles', async (req, res) => {
     }));
     res.json({ success: true, roles: roleList });
   } catch (error) {
-    console.error('Error fetching roles:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch roles' });
   }
 });
 
 export function startApiServer() {
   app.listen(PORT, () => {
-    console.log(`Discord Bot API server running on http://localhost:${PORT}`);
   });
 }
 
@@ -1130,7 +1063,6 @@ app.post('/api/publish', async (req, res) => {
 
     return res.json({ success: true, txDigest: result.digest, result });
   } catch (e: any) {
-    console.error('Publish failed:', e);
     return res.status(500).json({ success: false, error: e?.message || 'Publish failed' });
   }
 });

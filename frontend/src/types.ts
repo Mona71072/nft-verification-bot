@@ -2,6 +2,8 @@
 export interface NFTCollection {
   id: string;
   name: string;
+  symbol?: string;
+  typePath?: string;
   packageId: string;
   roleId: string;
   roleName: string;
@@ -42,6 +44,9 @@ export interface DiscordRole {
 export interface BatchStats {
   totalUsers: number;
   processed: number;
+  success?: number;
+  failed?: number;
+  remaining?: number;
   revoked: number;
   errors: number;
   lastRun: string;
@@ -50,6 +55,11 @@ export interface BatchStats {
 
 // バッチ処理設定型定義
 export interface BatchConfig {
+  batchSize?: number;
+  delayMs?: number;
+  maxRetries?: number;
+  targetCollection?: string;
+  operation?: string;
   enabled: boolean;
   interval: number;
   lastRun: string;
@@ -122,9 +132,34 @@ export interface AdminMintEvent {
     gasBudget?: number;
   };
   totalCap?: number;
+  totalMints?: number;
   createdAt?: string;
   updatedAt?: string;
   mintedCount?: number;
+}
+
+// 表示設定型定義
+export interface DisplaySettings {
+  enabledCollections: string[]; // コレクションIDの配列
+  enabledEvents: string[]; // イベントIDの配列
+  customNFTTypes: string[]; // NFTタイプ（packageId::module::StructName）の配列
+  includeKiosk: boolean; // Kiosk所有NFTを含めるか
+  collectionDisplayNames?: Record<string, string>; // ALLタブ表示名
+  collectionImageUrls?: Record<string, string>; // コレクションごとの画像URL
+  collectionDetailUrls?: Record<string, string>; // コレクションごとの詳細URL
+  collectionLayouts?: Array<{
+    id: string;
+    title: string;
+    subtitle?: string;
+    imageUrl?: string;
+    collectionIds: string[];
+  }>;
+  collectionInfo?: Record<string, { // コレクション情報（キーは正規化されたコレクションID）
+    packageId: string; // パッケージID
+    collectionId: string; // コレクションID（正規化されたID）
+    name: string; // コレクション名
+    nftType: string; // NFTタイプ（packageId::module::StructName）
+  }>;
 }
 
 

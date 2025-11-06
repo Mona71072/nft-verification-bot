@@ -4,19 +4,11 @@ import { Breadcrumb } from '../../components/admin/Breadcrumb';
 import { PageHeader } from '../../components/admin/PageHeader';
 import EventEditor from '../../components/EventEditor';
 import { getImageDisplayUrl } from '../../utils/walrus';
+import { useResponsive, getResponsiveValue } from '../../hooks/useResponsive';
+import { useWalletWithErrorHandling } from '../../hooks/useWallet';
 import type { AdminMintEvent } from '../../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
-
-function getAuthHeaders(): HeadersInit {
-  const addr = typeof window !== 'undefined' 
-    ? localStorage.getItem('currentWalletAddress') || (window as any).currentWalletAddress 
-    : undefined;
-  return {
-    'Content-Type': 'application/json',
-    ...(addr ? { 'X-Admin-Address': addr } : {})
-  };
-}
 
 export default function EventManagement() {
   const [events, setEvents] = useState<AdminMintEvent[]>([]);
@@ -26,6 +18,38 @@ export default function EventManagement() {
   const [eventSortBy, setEventSortBy] = useState<'name' | 'collection' | 'date' | 'mints'>('date');
   const [eventSortOrder, setEventSortOrder] = useState<'asc' | 'desc'>('desc');
   const [message, setMessage] = useState('');
+  
+  // ウォレット接続状態を取得（フックのルールに従って）
+  let walletState;
+  try {
+    walletState = useWalletWithErrorHandling();
+  } catch (error) {
+    walletState = null;
+  }
+  
+  // レスポンシブ対応
+  let deviceType: 'mobile' | 'tablet' | 'desktop' = 'desktop';
+  try {
+    const responsive = useResponsive();
+    deviceType = responsive.deviceType;
+  } catch (error) {
+  }
+  
+  // ウォレット接続状態をメモ化（無限ループを防ぐため）
+  const isWalletConnected = useMemo(() => walletState?.connected || false, [walletState?.connected]);
+  
+  // 認証ヘッダーを生成する関数
+  const getAuthHeaders = useCallback((): HeadersInit => {
+    const addr = typeof window !== 'undefined' 
+      ? localStorage.getItem('currentWalletAddress') || (window as any).currentWalletAddress 
+      : undefined;
+    
+    return {
+      'Content-Type': 'application/json',
+      ...(addr ? { 'X-Admin-Address': addr } : {}),
+      ...(isWalletConnected ? { 'X-Wallet-Connected': 'true' } : {})
+    };
+  }, [isWalletConnected]);
 
   // コレクション作成UI用ステート
   const [createColName, setCreateColName] = useState<string>('');
@@ -37,8 +61,18 @@ export default function EventManagement() {
   const [nowTs, setNowTs] = useState<number>(Date.now());
   useEffect(() => {
     // アクティブなイベントがある場合のみカウントダウンを実行
-    const hasActiveEvents = events.some(event => event.active);
-    if (!hasActiveEvents) return;
+    const hasActiveEvents = events.some(event => {
+      const start = Date.parse(event.startAt);
+      const end = Date.parse(event.endAt);
+      const currentTime = Date.now();
+      return currentTime >= start && currentTime <= end;
+    });
+    
+    if (!hasActiveEvents) {
+      // アクティブなイベントがない場合は現在時刻を更新して終了
+      setNowTs(Date.now());
+      return;
+    }
     
     const id = setInterval(() => setNowTs(Date.now()), 1000);
     return () => clearInterval(id);
@@ -48,11 +82,17 @@ export default function EventManagement() {
     try {
       const res = await fetch(`${API_BASE_URL}/api/admin/events`, { headers: getAuthHeaders() });
       const data = await res.json();
-      if (data.success) setEvents(data.data || []);
-    } catch (e) {
-      console.error('Failed to fetch events', e);
+      if (data.success) {
+        setEvents(data.data || []);
+      } else {
+        console.error('Failed to fetch events:', data.error);
+        setMessage(`エラー: ${data.error || 'イベントの取得に失敗しました'}`);
+      }
+    } catch (e: any) {
+      console.error('Error fetching events:', e);
+      setMessage(`エラー: ${e.message || 'イベントの取得に失敗しました'}`);
     }
-  }, []);
+  }, [getAuthHeaders]);
 
   const fetchMintCollections = useCallback(async () => {
     try {
@@ -60,30 +100,34 @@ export default function EventManagement() {
       const data = await res.json();
       if (data.success) setMintCollections(data.data || []);
     } catch (e) {
-      console.error('Failed to fetch mint collections', e);
     }
   }, []);
 
   useEffect(() => {
     fetchEvents();
     fetchMintCollections();
-  }, [fetchEvents, fetchMintCollections]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // コレクション作成関数
-  const getDefaultTypePath = () => {
-    const defaultMoveTarget = import.meta.env.VITE_DEFAULT_MOVE_TARGET || '0x3d7e20efbd6e4e2ee6369bcf1e9ec8029637c47890d975e74956b4b405cb5f3f::sxt_nft::mint_to';
-    return defaultMoveTarget.replace('::mint_to', '::EventNFT');
-  };
-
   const handleCreateCollectionViaMove = async () => {
     try {
       if (creatingCollection) return;
       setCreatingCollection(true);
       setCreateColMessage('コレクション作成中...');
 
-      const defaultMoveTarget = import.meta.env.VITE_DEFAULT_MOVE_TARGET || '0x3d7e20efbd6e4e2ee6369bcf1e9ec8029637c47890d975e74956b4b405cb5f3f::sxt_nft::mint_to';
+      // バックエンドからmove-targetsを取得（環境変数から取得）
+      const mtResponse = await fetch(`${API_BASE_URL}/api/move-targets`);
+      const mtData = await mtResponse.json();
+      const defaultMoveTarget = mtData?.data?.defaultMoveTarget;
+      
+      if (!defaultMoveTarget) {
+        setCreateColMessage('エラー: DEFAULT_MOVE_TARGETが設定されていません。環境変数を確認してください。');
+        return;
+      }
+
       const packageId = defaultMoveTarget.split('::')[0];
-      const autoTypePath = getDefaultTypePath();
+      const autoTypePath = defaultMoveTarget.replace('::mint_to', '::EventNFT');
       
       const body: any = {
         name: createColName || 'Event Collection',
@@ -132,6 +176,8 @@ export default function EventManagement() {
       }
     } catch (e: any) {
       setMessage(`削除に失敗しました: ${e?.message || 'エラーが発生しました'}`);
+    } finally {
+      setTimeout(() => setMessage(''), 5000);
     }
   };
 
@@ -148,7 +194,7 @@ export default function EventManagement() {
             eventData.moveCall = {
               target,
               typeArguments: [],
-              argumentsTemplate: ['{recipient}', '{name}', '{imageCid}', '{imageMimeType}', '{eventDate}'],
+              argumentsTemplate: ['{recipient}', '{name}', '{description}', '{imageCid}', '{imageMimeType}', '{eventDate}'],
               gasBudget: 50_000_000
             };
           }
@@ -163,24 +209,46 @@ export default function EventManagement() {
       
       const method = eventData.id ? 'PUT' : 'POST';
       const payload = { ...eventData, active: eventData.status === 'published' };
+      const headers = getAuthHeaders();
+      
+      console.log('🔍 Saving event:', { url, method, payload, headers });
       
       const response = await fetch(url, {
         method,
-        headers: getAuthHeaders(),
+        headers,
         body: JSON.stringify(payload)
       });
       
+      console.log('🔍 Response status:', response.status, response.statusText);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { error: errorText || `HTTP ${response.status}: ${response.statusText}` };
+        }
+        console.error('❌ Failed to save event - HTTP error:', response.status, errorData);
+        throw new Error(errorData.error || errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+      }
+      
       const result = await response.json();
+      console.log('🔍 Response data:', result);
       
       if (result.success) {
+        console.log('✅ Event saved successfully:', result.data);
         setMessage(eventData.status === 'draft' ? 'ドラフトを保存しました' : 'イベントを公開しました');
         setIsCreatingEvent(false);
         setEditingEventData(null);
-        fetchEvents();
+        // 保存後にイベントリストを再取得
+        await fetchEvents();
       } else {
-        throw new Error(result.error || '保存に失敗しました');
+        console.error('❌ Failed to save event:', result);
+        throw new Error(result.error || result.details || '保存に失敗しました');
       }
     } catch (e: any) {
+      console.error('❌ Error saving event:', e);
       setMessage(`エラー: ${e.message}`);
       throw e;
     } finally {
@@ -209,6 +277,27 @@ export default function EventManagement() {
     }
   };
 
+  // ソート処理（メモ化） - Hooksは早期リターンの前に呼び出す必要がある
+  const sortedEvents = useMemo(() => {
+    return [...events].sort((a, b) => {
+      let compareValue = 0;
+      
+      if (eventSortBy === 'name') {
+        compareValue = a.name.localeCompare(b.name);
+      } else if (eventSortBy === 'collection') {
+        const collA = mintCollections.find(col => a.collectionId === col.id)?.name || '';
+        const collB = mintCollections.find(col => b.collectionId === col.id)?.name || '';
+        compareValue = collA.localeCompare(collB);
+      } else if (eventSortBy === 'date') {
+        compareValue = new Date(a.startAt).getTime() - new Date(b.startAt).getTime();
+      } else if (eventSortBy === 'mints') {
+        compareValue = (a.mintedCount || 0) - (b.mintedCount || 0);
+      }
+      
+      return eventSortOrder === 'asc' ? compareValue : -compareValue;
+    });
+  }, [events, eventSortBy, eventSortOrder, mintCollections]);
+
   // EventEditor表示時
   if (isCreatingEvent || editingEventData) {
     return (
@@ -230,27 +319,6 @@ export default function EventManagement() {
     );
   }
 
-  // ソート処理（メモ化）
-  const sortedEvents = useMemo(() => {
-    return [...events].sort((a, b) => {
-      let compareValue = 0;
-      
-      if (eventSortBy === 'name') {
-        compareValue = a.name.localeCompare(b.name);
-      } else if (eventSortBy === 'collection') {
-        const collA = mintCollections.find(col => a.collectionId === col.id)?.name || '';
-        const collB = mintCollections.find(col => b.collectionId === col.id)?.name || '';
-        compareValue = collA.localeCompare(collB);
-      } else if (eventSortBy === 'date') {
-        compareValue = new Date(a.startAt).getTime() - new Date(b.startAt).getTime();
-      } else if (eventSortBy === 'mints') {
-        compareValue = (a.mintedCount || 0) - (b.mintedCount || 0);
-      }
-      
-      return eventSortOrder === 'asc' ? compareValue : -compareValue;
-    });
-  }, [events, eventSortBy, eventSortOrder, mintCollections]);
-
   return (
     <AdminLayout currentPath="/admin/mint/events">
       <Breadcrumb items={[
@@ -266,16 +334,17 @@ export default function EventManagement() {
           <button
             onClick={() => setIsCreatingEvent(true)}
             style={{ 
-              padding: '0.75rem 1.5rem', 
+              padding: getResponsiveValue('0.625rem 1rem', '0.6875rem 1.25rem', '0.75rem 1.5rem', deviceType), 
               background: '#10b981', 
               color: 'white', 
               border: 'none', 
-              borderRadius: '8px', 
+              borderRadius: getResponsiveValue('6px', '7px', '8px', deviceType), 
               cursor: 'pointer',
-              fontSize: '0.875rem',
+              fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType),
               fontWeight: 600,
               boxShadow: '0 1px 3px rgba(16, 185, 129, 0.4)',
-              transition: 'all 0.2s'
+              transition: 'all 0.2s',
+              whiteSpace: 'nowrap'
             }}
             onMouseEnter={(e) => e.currentTarget.style.background = '#059669'}
             onMouseLeave={(e) => e.currentTarget.style.background = '#10b981'}
@@ -303,23 +372,48 @@ export default function EventManagement() {
       {/* コレクション作成 */}
       <div style={{
         background: 'white',
-        borderRadius: '12px',
-        padding: '1.5rem',
+        borderRadius: getResponsiveValue('8px', '10px', '12px', deviceType),
+        padding: getResponsiveValue('1rem', '1.25rem', '1.5rem', deviceType),
         boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-        marginBottom: '1.5rem',
+        marginBottom: getResponsiveValue('1rem', '1.25rem', '1.5rem', deviceType),
         border: '1px solid #e5e7eb'
       }}>
-        <div style={{ marginBottom: '1rem' }}>
-          <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#111827' }}>
+        <div style={{ marginBottom: getResponsiveValue('0.75rem', '0.875rem', '1rem', deviceType) }}>
+          <h3 style={{ 
+            margin: 0, 
+            fontSize: getResponsiveValue('0.875rem', '0.9375rem', '1rem', deviceType), 
+            fontWeight: 700, 
+            color: '#111827' 
+          }}>
             ミント用コレクション作成
           </h3>
-          <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem', color: '#6b7280' }}>
+          <p style={{ 
+            margin: '0.25rem 0 0 0', 
+            fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType), 
+            color: '#6b7280' 
+          }}>
             イベントで使用するNFTコレクションを作成します
           </p>
         </div>
-        <div style={{ display: 'grid', gap: '1rem', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', marginBottom: '1rem' }}>
+        <div style={{ 
+          display: 'grid', 
+          gap: getResponsiveValue('0.75rem', '0.875rem', '1rem', deviceType), 
+          gridTemplateColumns: getResponsiveValue(
+            'repeat(1, 1fr)', 
+            'repeat(2, 1fr)', 
+            'repeat(auto-fit, minmax(200px, 1fr))', 
+            deviceType
+          ), 
+          marginBottom: getResponsiveValue('0.75rem', '0.875rem', '1rem', deviceType) 
+        }}>
           <div>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#374151', marginBottom: '0.5rem' }}>
+            <label style={{ 
+              display: 'block', 
+              fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType), 
+              fontWeight: 600, 
+              color: '#374151', 
+              marginBottom: '0.5rem' 
+            }}>
               コレクション名
             </label>
             <input
@@ -329,16 +423,22 @@ export default function EventManagement() {
               placeholder="例: Event Collection"
               style={{
                 width: '100%',
-                padding: '0.625rem',
+                padding: getResponsiveValue('0.5rem', '0.5625rem', '0.625rem', deviceType),
                 border: '1px solid #d1d5db',
-                borderRadius: '8px',
-                fontSize: '0.875rem',
+                borderRadius: getResponsiveValue('6px', '7px', '8px', deviceType),
+                fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType),
                 outline: 'none'
               }}
             />
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#374151', marginBottom: '0.5rem' }}>
+            <label style={{ 
+              display: 'block', 
+              fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType), 
+              fontWeight: 600, 
+              color: '#374151', 
+              marginBottom: '0.5rem' 
+            }}>
               シンボル
             </label>
             <input
@@ -348,73 +448,107 @@ export default function EventManagement() {
               placeholder="例: EVENT"
               style={{
                 width: '100%',
-                padding: '0.625rem',
+                padding: getResponsiveValue('0.5rem', '0.5625rem', '0.625rem', deviceType),
                 border: '1px solid #d1d5db',
-                borderRadius: '8px',
-                fontSize: '0.875rem',
+                borderRadius: getResponsiveValue('6px', '7px', '8px', deviceType),
+                fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType),
                 outline: 'none'
               }}
             />
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div style={{ 
+          display: 'flex', 
+          flexDirection: getResponsiveValue('column', 'row', 'row', deviceType),
+          alignItems: getResponsiveValue('stretch', 'center', 'center', deviceType), 
+          gap: getResponsiveValue('0.75rem', '0.875rem', '1rem', deviceType) 
+        }}>
           <button
             onClick={handleCreateCollectionViaMove}
             disabled={creatingCollection || !createColName}
             style={{
-              padding: '0.625rem 1.5rem',
+              padding: getResponsiveValue('0.5rem 1rem', '0.5625rem 1.25rem', '0.625rem 1.5rem', deviceType),
               background: creatingCollection || !createColName ? '#d1d5db' : '#3b82f6',
               color: 'white',
               border: 'none',
-              borderRadius: '8px',
+              borderRadius: getResponsiveValue('6px', '7px', '8px', deviceType),
               cursor: creatingCollection || !createColName ? 'not-allowed' : 'pointer',
-              fontSize: '0.875rem',
+              fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType),
               fontWeight: 600,
-              transition: 'all 0.2s'
+              transition: 'all 0.2s',
+              whiteSpace: 'nowrap'
             }}
           >
             {creatingCollection ? '作成中...' : 'コレクション作成'}
           </button>
           {createColMessage && (
-            <div style={{ fontSize: '0.875rem', color: '#374151' }}>
+            <div style={{ 
+              fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType), 
+              color: '#374151' 
+            }}>
               {createColMessage}
             </div>
           )}
         </div>
         {mintCollections.length > 0 && (
-          <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#f9fafb', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
-            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', marginBottom: '0.5rem' }}>
+          <div style={{ 
+            marginTop: getResponsiveValue('0.75rem', '0.875rem', '1rem', deviceType), 
+            padding: getResponsiveValue('0.5rem', '0.625rem', '0.75rem', deviceType), 
+            background: '#f9fafb', 
+            borderRadius: getResponsiveValue('6px', '7px', '8px', deviceType), 
+            border: '1px solid #e5e7eb' 
+          }}>
+            <div style={{ 
+              fontSize: getResponsiveValue('0.625rem', '0.6875rem', '0.75rem', deviceType), 
+              fontWeight: 600, 
+              color: '#6b7280', 
+              marginBottom: '0.5rem' 
+            }}>
               登録済みコレクション ({mintCollections.length})
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div style={{ 
+              display: 'flex', 
+              flexDirection: 'column', 
+              gap: getResponsiveValue('0.375rem', '0.4375rem', '0.5rem', deviceType) 
+            }}>
               {mintCollections.map((col) => (
                 <div 
                   key={col.id} 
                   style={{ 
                     display: 'flex', 
+                    flexDirection: getResponsiveValue('column', 'row', 'row', deviceType),
                     justifyContent: 'space-between', 
-                    alignItems: 'center',
-                    padding: '0.5rem',
+                    alignItems: getResponsiveValue('flex-start', 'center', 'center', deviceType),
+                    gap: getResponsiveValue('0.5rem', '0.25rem', '0', deviceType),
+                    padding: getResponsiveValue('0.375rem', '0.4375rem', '0.5rem', deviceType),
                     background: 'white',
-                    borderRadius: '6px',
+                    borderRadius: getResponsiveValue('4px', '5px', '6px', deviceType),
                     border: '1px solid #e5e7eb'
                   }}
                 >
-                  <div style={{ fontSize: '0.8125rem', color: '#374151', fontWeight: 500 }}>
+                  <div style={{ 
+                    fontSize: getResponsiveValue('0.6875rem', '0.75rem', '0.8125rem', deviceType), 
+                    color: '#374151', 
+                    fontWeight: 500,
+                    wordBreak: 'break-all',
+                    flex: 1
+                  }}>
                     {col.name}
                   </div>
                   <button
                     onClick={() => handleDeleteCollection(col.id, col.name)}
                     style={{
-                      padding: '0.25rem 0.75rem',
+                      padding: getResponsiveValue('0.1875rem 0.5rem', '0.21875rem 0.625rem', '0.25rem 0.75rem', deviceType),
                       background: '#ef4444',
                       color: 'white',
                       border: 'none',
-                      borderRadius: '4px',
+                      borderRadius: getResponsiveValue('3px', '4px', '4px', deviceType),
                       cursor: 'pointer',
-                      fontSize: '0.75rem',
+                      fontSize: getResponsiveValue('0.625rem', '0.6875rem', '0.75rem', deviceType),
                       fontWeight: 600,
-                      transition: 'all 0.2s'
+                      transition: 'all 0.2s',
+                      whiteSpace: 'nowrap',
+                      flexShrink: 0
                     }}
                     onMouseEnter={(e) => e.currentTarget.style.background = '#dc2626'}
                     onMouseLeave={(e) => e.currentTarget.style.background = '#ef4444'}
@@ -431,77 +565,114 @@ export default function EventManagement() {
       {/* イベント一覧 */}
       <div style={{
         background: 'white',
-        borderRadius: '12px',
-        padding: '2rem',
+        borderRadius: getResponsiveValue('8px', '10px', '12px', deviceType),
+        padding: getResponsiveValue('1rem', '1.5rem', '2rem', deviceType),
         boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
       }}>
         <div style={{ 
           display: 'flex', 
+          flexDirection: getResponsiveValue('column', 'row', 'row', deviceType),
           justifyContent: 'space-between', 
-          alignItems: 'center', 
-          marginBottom: '1.5rem'
+          alignItems: getResponsiveValue('flex-start', 'center', 'center', deviceType),
+          gap: getResponsiveValue('1rem', '0.75rem', '0', deviceType),
+          marginBottom: getResponsiveValue('1rem', '1.25rem', '1.5rem', deviceType)
         }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 700, color: '#111827' }}>
+            <h2 style={{ 
+              margin: 0, 
+              fontSize: getResponsiveValue('1rem', '1.0625rem', '1.125rem', deviceType), 
+              fontWeight: 700, 
+              color: '#111827' 
+            }}>
               イベント一覧
             </h2>
-            <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem', color: '#6b7280' }}>
+            <p style={{ 
+              margin: '0.25rem 0 0 0', 
+              fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType), 
+              color: '#6b7280' 
+            }}>
               {events.length}件のイベント
             </p>
           </div>
-          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <label style={{ fontSize: '0.875rem', color: '#6b7280', fontWeight: 500 }}>並び順:</label>
-              <select
-                value={eventSortBy}
-                onChange={(e) => setEventSortBy(e.target.value as any)}
-                style={{ 
-                  padding: '0.5rem 0.75rem', 
-                  border: '1px solid #d1d5db', 
-                  borderRadius: '8px', 
-                  fontSize: '0.875rem',
-                  background: 'white',
-                  cursor: 'pointer',
-                  outline: 'none',
-                  transition: 'all 0.2s'
-                }}
-              >
-                <option value="date">開催日時</option>
-                <option value="name">イベント名</option>
-                <option value="collection">コレクション</option>
-                <option value="mints">ミント数</option>
-              </select>
-              <button
-                onClick={() => setEventSortOrder(eventSortOrder === 'asc' ? 'desc' : 'asc')}
-                style={{ 
-                  padding: '0.5rem 0.75rem', 
-                  background: 'white', 
-                  border: '1px solid #d1d5db', 
-                  borderRadius: '8px', 
-                  cursor: 'pointer', 
-                  fontSize: '0.875rem',
-                  fontWeight: 600,
-                  color: '#374151',
-                  transition: 'all 0.2s'
-                }}
-                title={eventSortOrder === 'asc' ? '昇順' : '降順'}
-              >
-                {eventSortOrder === 'asc' ? '昇順 ↑' : '降順 ↓'}
-              </button>
+          <div style={{ 
+            display: 'flex', 
+            flexDirection: getResponsiveValue('column', 'row', 'row', deviceType),
+            gap: getResponsiveValue('0.5rem', '0.75rem', '0.75rem', deviceType), 
+            alignItems: getResponsiveValue('stretch', 'center', 'center', deviceType),
+            width: getResponsiveValue('100%', 'auto', 'auto', deviceType)
+          }}>
+            <div style={{ 
+              display: 'flex', 
+              flexDirection: getResponsiveValue('column', 'row', 'row', deviceType),
+              alignItems: getResponsiveValue('stretch', 'center', 'center', deviceType), 
+              gap: getResponsiveValue('0.5rem', '0.5rem', '0.5rem', deviceType),
+              width: getResponsiveValue('100%', 'auto', 'auto', deviceType)
+            }}>
+              <label style={{ 
+                fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType), 
+                color: '#6b7280', 
+                fontWeight: 500,
+                whiteSpace: 'nowrap'
+              }}>並び順:</label>
+              <div style={{
+                display: 'flex',
+                gap: getResponsiveValue('0.5rem', '0.5rem', '0.5rem', deviceType),
+                width: getResponsiveValue('100%', 'auto', 'auto', deviceType)
+              }}>
+                <select
+                  value={eventSortBy}
+                  onChange={(e) => setEventSortBy(e.target.value as any)}
+                  style={{ 
+                    flex: 1,
+                    padding: getResponsiveValue('0.375rem 0.5rem', '0.4375rem 0.625rem', '0.5rem 0.75rem', deviceType), 
+                    border: '1px solid #d1d5db', 
+                    borderRadius: getResponsiveValue('6px', '7px', '8px', deviceType), 
+                    fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType),
+                    background: 'white',
+                    cursor: 'pointer',
+                    outline: 'none',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <option value="date">開催日時</option>
+                  <option value="name">イベント名</option>
+                  <option value="collection">コレクション</option>
+                  <option value="mints">ミント数</option>
+                </select>
+                <button
+                  onClick={() => setEventSortOrder(eventSortOrder === 'asc' ? 'desc' : 'asc')}
+                  style={{ 
+                    padding: getResponsiveValue('0.375rem 0.5rem', '0.4375rem 0.625rem', '0.5rem 0.75rem', deviceType), 
+                    background: 'white', 
+                    border: '1px solid #d1d5db', 
+                    borderRadius: getResponsiveValue('6px', '7px', '8px', deviceType), 
+                    cursor: 'pointer', 
+                    fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType),
+                    fontWeight: 600,
+                    color: '#374151',
+                    transition: 'all 0.2s',
+                    whiteSpace: 'nowrap'
+                  }}
+                  title={eventSortOrder === 'asc' ? '昇順' : '降順'}
+                >
+                  {eventSortOrder === 'asc' ? '↑' : '↓'}
+                </button>
+              </div>
             </div>
             <button
               onClick={fetchEvents}
               style={{ 
-                padding: '0.5rem 1rem', 
+                padding: getResponsiveValue('0.375rem 0.75rem', '0.4375rem 0.875rem', '0.5rem 1rem', deviceType), 
                 background: '#3b82f6', 
                 color: 'white', 
                 border: 'none', 
-                borderRadius: '8px', 
+                borderRadius: getResponsiveValue('6px', '7px', '8px', deviceType), 
                 cursor: 'pointer', 
-                fontSize: '0.875rem',
+                fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType),
                 fontWeight: 600,
                 boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
-                transition: 'all 0.2s'
+                transition: 'all 0.2s',
+                whiteSpace: 'nowrap'
               }}
               onMouseEnter={(e) => e.currentTarget.style.background = '#2563eb'}
               onMouseLeave={(e) => e.currentTarget.style.background = '#3b82f6'}
@@ -513,42 +684,53 @@ export default function EventManagement() {
 
         {sortedEvents.length === 0 ? (
           <div style={{
-            padding: '4rem 2rem',
+            padding: getResponsiveValue('2rem 1rem', '3rem 1.5rem', '4rem 2rem', deviceType),
             textAlign: 'center',
             background: '#f9fafb',
-            borderRadius: '8px',
+            borderRadius: getResponsiveValue('6px', '7px', '8px', deviceType),
             border: '2px dashed #e5e7eb'
           }}>
             <div style={{ 
-              width: '80px',
-              height: '80px',
+              width: getResponsiveValue('60px', '70px', '80px', deviceType),
+              height: getResponsiveValue('60px', '70px', '80px', deviceType),
               background: '#e5e7eb',
               borderRadius: '50%',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              margin: '0 auto 1.5rem',
-              fontSize: '2rem',
+              margin: '0 auto 1rem',
+              fontSize: getResponsiveValue('1.5rem', '1.75rem', '2rem', deviceType),
               color: '#9ca3af'
             }}>
               +
             </div>
-            <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600, color: '#374151', marginBottom: '0.5rem' }}>
+            <h3 style={{ 
+              margin: 0, 
+              fontSize: getResponsiveValue('1rem', '1.0625rem', '1.125rem', deviceType), 
+              fontWeight: 600, 
+              color: '#374151', 
+              marginBottom: '0.5rem' 
+            }}>
               イベントがありません
             </h3>
-            <p style={{ margin: 0, fontSize: '0.875rem', color: '#9ca3af', marginBottom: '1.5rem' }}>
+            <p style={{ 
+              margin: 0, 
+              fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType), 
+              color: '#9ca3af', 
+              marginBottom: getResponsiveValue('1rem', '1.25rem', '1.5rem', deviceType) 
+            }}>
               新しいイベントを作成してミントページを公開しましょう
             </p>
             <button
               onClick={() => setIsCreatingEvent(true)}
               style={{
-                padding: '0.75rem 1.5rem',
+                padding: getResponsiveValue('0.5rem 1rem', '0.625rem 1.25rem', '0.75rem 1.5rem', deviceType),
                 background: '#10b981',
                 color: 'white',
                 border: 'none',
-                borderRadius: '8px',
+                borderRadius: getResponsiveValue('6px', '7px', '8px', deviceType),
                 cursor: 'pointer',
-                fontSize: '0.875rem',
+                fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType),
                 fontWeight: 600,
                 transition: 'all 0.2s'
               }}
@@ -557,7 +739,7 @@ export default function EventManagement() {
             </button>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: getResponsiveValue('0.75rem', '0.875rem', '1rem', deviceType) }}>
             {sortedEvents.map(ev => {
               const eventCollection = mintCollections.find(col => {
                 const typePath = (col as any).typePath || col.packageId;
@@ -575,8 +757,8 @@ export default function EventManagement() {
                 <div key={ev.id} style={{ 
                   border: '1px solid #e5e7eb', 
                   borderLeft: `3px solid ${isActive ? '#10b981' : isEnded ? '#9ca3af' : '#3b82f6'}`,
-                  padding: '1.25rem', 
-                  borderRadius: '12px', 
+                  padding: getResponsiveValue('0.75rem', '1rem', '1.25rem', deviceType), 
+                  borderRadius: getResponsiveValue('8px', '10px', '12px', deviceType), 
                   background: 'white',
                   boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
                   transition: 'all 0.2s'
@@ -590,15 +772,21 @@ export default function EventManagement() {
                   e.currentTarget.style.transform = 'translateY(0)';
                 }}
                 >
-                  <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'flex-start' }}>
+                  <div style={{ 
+                    display: 'flex', 
+                    flexDirection: getResponsiveValue('column', 'row', 'row', deviceType),
+                    gap: getResponsiveValue('0.75rem', '1rem', '1.25rem', deviceType), 
+                    alignItems: getResponsiveValue('flex-start', 'flex-start', 'flex-start', deviceType) 
+                  }}>
                     {ev.imageUrl && (
                       <div style={{
-                        width: 80,
-                        height: 80,
-                        borderRadius: 8,
+                        width: getResponsiveValue('60px', '70px', '80px', deviceType),
+                        height: getResponsiveValue('60px', '70px', '80px', deviceType),
+                        borderRadius: getResponsiveValue('6px', '7px', '8px', deviceType),
                         overflow: 'hidden',
                         flexShrink: 0,
-                        border: '1px solid #e5e7eb'
+                        border: '1px solid #e5e7eb',
+                        alignSelf: getResponsiveValue('center', 'flex-start', 'flex-start', deviceType)
                       }}>
                         <img 
                           src={getImageDisplayUrl((ev as any).imageCid, ev.imageUrl)} 
@@ -609,45 +797,67 @@ export default function EventManagement() {
                     )}
                     
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-                        <h3 style={{ margin: 0, fontWeight: 600, fontSize: '1.125rem', color: '#111827' }}>
+                      <div style={{ 
+                        display: 'flex', 
+                        flexDirection: getResponsiveValue('column', 'row', 'row', deviceType),
+                        alignItems: getResponsiveValue('flex-start', 'center', 'center', deviceType), 
+                        gap: getResponsiveValue('0.5rem', '0.75rem', '0.75rem', deviceType), 
+                        marginBottom: getResponsiveValue('0.5rem', '0.5rem', '0.5rem', deviceType) 
+                      }}>
+                        <h3 style={{ 
+                          margin: 0, 
+                          fontWeight: 600, 
+                          fontSize: getResponsiveValue('0.875rem', '1rem', '1.125rem', deviceType), 
+                          color: '#111827',
+                          wordBreak: 'break-word'
+                        }}>
                           {ev.name}
                         </h3>
                         <span style={{ 
-                          fontSize: '0.75rem', 
-                          padding: '0.25rem 0.75rem', 
+                          fontSize: getResponsiveValue('0.625rem', '0.6875rem', '0.75rem', deviceType), 
+                          padding: getResponsiveValue('0.1875rem 0.5rem', '0.21875rem 0.625rem', '0.25rem 0.75rem', deviceType), 
                           background: isActive ? '#d1fae5' : isEnded ? '#f3f4f6' : '#dbeafe', 
                           color: isActive ? '#047857' : isEnded ? '#6b7280' : '#1e40af',
-                          borderRadius: '6px',
+                          borderRadius: getResponsiveValue('4px', '5px', '6px', deviceType),
                           fontWeight: 600,
                           letterSpacing: '0.025em',
-                          textTransform: 'uppercase'
+                          textTransform: 'uppercase',
+                          whiteSpace: 'nowrap',
+                          flexShrink: 0
                         }}>
                           {isActive ? 'Active' : isEnded ? 'Ended' : 'Upcoming'}
                         </span>
                       </div>
                       
-                      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+                      <div style={{ 
+                        display: 'flex', 
+                        flexDirection: getResponsiveValue('column', 'row', 'row', deviceType),
+                        gap: getResponsiveValue('0.375rem', '0.5rem', '0.5rem', deviceType), 
+                        marginBottom: getResponsiveValue('0.5rem', '0.625rem', '0.75rem', deviceType), 
+                        flexWrap: 'wrap' 
+                      }}>
                         <div style={{ 
-                          fontSize: '0.8125rem', 
+                          fontSize: getResponsiveValue('0.6875rem', '0.75rem', '0.8125rem', deviceType), 
                           color: '#6b7280', 
                           display: 'inline-block', 
-                          padding: '0.25rem 0.75rem', 
+                          padding: getResponsiveValue('0.1875rem 0.5rem', '0.21875rem 0.625rem', '0.25rem 0.75rem', deviceType), 
                           background: '#f9fafb', 
-                          borderRadius: '6px',
-                          border: '1px solid #e5e7eb'
+                          borderRadius: getResponsiveValue('4px', '5px', '6px', deviceType),
+                          border: '1px solid #e5e7eb',
+                          wordBreak: 'break-word'
                         }}>
                           Collection: {collectionName}
                         </div>
                         <div style={{ 
-                          fontSize: '0.8125rem', 
+                          fontSize: getResponsiveValue('0.6875rem', '0.75rem', '0.8125rem', deviceType), 
                           color: '#4b5563', 
                           display: 'inline-block', 
-                          padding: '0.25rem 0.75rem', 
+                          padding: getResponsiveValue('0.1875rem 0.5rem', '0.21875rem 0.625rem', '0.25rem 0.75rem', deviceType), 
                           background: '#fef3c7', 
-                          borderRadius: '6px',
+                          borderRadius: getResponsiveValue('4px', '5px', '6px', deviceType),
                           border: '1px solid #fcd34d',
-                          fontFamily: 'monospace'
+                          fontFamily: 'monospace',
+                          wordBreak: 'break-all'
                         }}>
                           ID: {ev.id}
                         </div>
@@ -658,7 +868,7 @@ export default function EventManagement() {
                           
                           // 保存期限を取得または推定
                           let expiryDate: Date | null = null;
-                          let epochs = ev.imageStorageEpochs || 26; // デフォルト26 epochs
+                          const epochs = ev.imageStorageEpochs || 26; // デフォルト26 epochs
                           let isEstimated = false;
                           
                           if (ev.imageStorageExpiry) {
@@ -679,14 +889,15 @@ export default function EventManagement() {
                           
                           return (
                             <div style={{ 
-                              fontSize: '0.8125rem', 
+                              fontSize: getResponsiveValue('0.6875rem', '0.75rem', '0.8125rem', deviceType), 
                               color: hasExpired ? '#dc2626' : isExpiringSoon ? '#f59e0b' : '#7c3aed', 
                               display: 'inline-block', 
-                              padding: '0.25rem 0.75rem', 
+                              padding: getResponsiveValue('0.1875rem 0.5rem', '0.21875rem 0.625rem', '0.25rem 0.75rem', deviceType), 
                               background: hasExpired ? '#fee2e2' : isExpiringSoon ? '#fef3c7' : '#faf5ff', 
-                              borderRadius: '6px',
+                              borderRadius: getResponsiveValue('4px', '5px', '6px', deviceType),
                               border: `1px solid ${hasExpired ? '#fca5a5' : isExpiringSoon ? '#fcd34d' : '#c4b5fd'}`,
-                              fontWeight: 500
+                              fontWeight: 500,
+                              wordBreak: 'break-word'
                             }}>
                               📦 画像保存期限: {expiryDate.toLocaleDateString('ja-JP', { year: 'numeric', month: 'short', day: 'numeric' })} まで
                               {` (${epochs} epochs${isEstimated ? '・推定' : ''})`}
@@ -699,29 +910,46 @@ export default function EventManagement() {
                       
                       {ev.description && (
                         <p style={{ 
-                          fontSize: '0.875rem', 
+                          fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType), 
                           color: '#6b7280', 
-                          marginBottom: '0.75rem', 
+                          marginBottom: getResponsiveValue('0.5rem', '0.625rem', '0.75rem', deviceType), 
                           overflow: 'hidden', 
                           textOverflow: 'ellipsis', 
                           whiteSpace: 'nowrap',
-                          margin: '0 0 0.75rem 0'
+                          margin: `0 0 ${getResponsiveValue('0.5rem', '0.625rem', '0.75rem', deviceType)} 0`
                         }}>
                           {ev.description}
                         </p>
                       )}
                       
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', fontSize: '0.8125rem', color: '#4b5563' }}>
+                      <div style={{ 
+                        display: 'flex', 
+                        flexDirection: getResponsiveValue('column', 'row', 'row', deviceType),
+                        flexWrap: 'wrap', 
+                        gap: getResponsiveValue('0.75rem', '1rem', '1.5rem', deviceType), 
+                        fontSize: getResponsiveValue('0.6875rem', '0.75rem', '0.8125rem', deviceType), 
+                        color: '#4b5563' 
+                      }}>
                         <div style={{ display: 'flex', flexDirection: 'column' }}>
-                          <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontWeight: 500, marginBottom: '0.125rem' }}>期間</span>
-                          <span style={{ fontWeight: 500 }}>
+                          <span style={{ 
+                            fontSize: getResponsiveValue('0.625rem', '0.6875rem', '0.75rem', deviceType), 
+                            color: '#9ca3af', 
+                            fontWeight: 500, 
+                            marginBottom: '0.125rem' 
+                          }}>期間</span>
+                          <span style={{ fontWeight: 500, wordBreak: 'break-word' }}>
                             {new Date(ev.startAt).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 
                             {' ~ '}
                             {new Date(ev.endAt).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                           </span>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column' }}>
-                          <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontWeight: 500, marginBottom: '0.125rem' }}>ミント進捗</span>
+                          <span style={{ 
+                            fontSize: getResponsiveValue('0.625rem', '0.6875rem', '0.75rem', deviceType), 
+                            color: '#9ca3af', 
+                            fontWeight: 500, 
+                            marginBottom: '0.125rem' 
+                          }}>ミント進捗</span>
                           <span style={{ fontWeight: 600, color: '#111827' }}>
                             {typeof ev.mintedCount === 'number' ? ev.mintedCount.toLocaleString() : 0}
                             <span style={{ fontWeight: 400, color: '#6b7280' }}>
@@ -731,7 +959,12 @@ export default function EventManagement() {
                         </div>
                         {(isActive || isUpcoming) && (
                           <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontWeight: 500, marginBottom: '0.125rem' }}>
+                            <span style={{ 
+                              fontSize: getResponsiveValue('0.625rem', '0.6875rem', '0.75rem', deviceType), 
+                              color: '#9ca3af', 
+                              fontWeight: 500, 
+                              marginBottom: '0.125rem' 
+                            }}>
                               {isActive ? '終了まで' : '開始まで'}
                             </span>
                             <span style={{ fontWeight: 600, color: isActive ? '#10b981' : '#3b82f6' }}>
@@ -748,7 +981,13 @@ export default function EventManagement() {
                       </div>
                     </div>
                     
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flexShrink: 0 }}>
+                    <div style={{ 
+                      display: 'flex', 
+                      flexDirection: getResponsiveValue('row', 'column', 'column', deviceType),
+                      gap: getResponsiveValue('0.5rem', '0.5rem', '0.5rem', deviceType), 
+                      flexShrink: 0,
+                      marginTop: getResponsiveValue('0.75rem', '0', '0', deviceType)
+                    }}>
                       <button
                         onClick={async () => {
                           const url = `${window.location.origin}/mint/${ev.id}`;
@@ -761,16 +1000,17 @@ export default function EventManagement() {
                           }
                         }}
                         style={{ 
-                          padding: '0.5rem 1rem', 
+                          padding: getResponsiveValue('0.375rem 0.75rem', '0.4375rem 0.875rem', '0.5rem 1rem', deviceType), 
                           background: '#10b981', 
                           color: 'white', 
                           border: 'none', 
-                          borderRadius: '6px', 
+                          borderRadius: getResponsiveValue('4px', '5px', '6px', deviceType), 
                           cursor: 'pointer', 
-                          fontSize: '0.8125rem', 
+                          fontSize: getResponsiveValue('0.6875rem', '0.75rem', '0.8125rem', deviceType), 
                           fontWeight: 600,
                           whiteSpace: 'nowrap',
-                          transition: 'all 0.2s'
+                          transition: 'all 0.2s',
+                          flex: getResponsiveValue('1', 'none', 'none', deviceType)
                         }}
                         onMouseEnter={(e) => e.currentTarget.style.background = '#059669'}
                         onMouseLeave={(e) => e.currentTarget.style.background = '#10b981'}
@@ -780,15 +1020,16 @@ export default function EventManagement() {
                       <button 
                         onClick={() => setEditingEventData(ev)} 
                         style={{ 
-                          padding: '0.5rem 1rem', 
+                          padding: getResponsiveValue('0.375rem 0.75rem', '0.4375rem 0.875rem', '0.5rem 1rem', deviceType), 
                           background: '#3b82f6', 
                           color: 'white', 
                           border: 'none', 
-                          borderRadius: '6px', 
+                          borderRadius: getResponsiveValue('4px', '5px', '6px', deviceType), 
                           cursor: 'pointer', 
-                          fontSize: '0.8125rem',
+                          fontSize: getResponsiveValue('0.6875rem', '0.75rem', '0.8125rem', deviceType),
                           fontWeight: 600,
-                          transition: 'all 0.2s'
+                          transition: 'all 0.2s',
+                          flex: getResponsiveValue('1', 'none', 'none', deviceType)
                         }}
                         onMouseEnter={(e) => e.currentTarget.style.background = '#2563eb'}
                         onMouseLeave={(e) => e.currentTarget.style.background = '#3b82f6'}

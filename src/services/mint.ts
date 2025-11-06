@@ -4,7 +4,7 @@
  */
 
 import { verifyPersonalMessageSignature } from '@mysten/sui/verify';
-// import { verifySignedMessage } from '../utils/signature';
+import { verifySignedMessage } from '../utils/signature';
 import { logError, logWarning } from '../utils/logger';
 
 export interface MintRequest {
@@ -25,6 +25,7 @@ export interface MintResult {
 export interface EventData {
   id: string;
   name?: string;
+  description?: string;
   active: boolean;
   startAt: string;
   endAt: string;
@@ -42,10 +43,30 @@ export interface EventData {
  * @returns 検証成功かどうか
  */
 export async function verifySignature(request: MintRequest): Promise<boolean> {
-  const { signature, bytes, authMessage } = request;
+  const { signature, bytes, authMessage, address } = request;
   
+  // 基本的なバリデーション
+  if (!signature || !bytes || !address) {
+    logWarning('Missing required fields for signature verification', {
+      hasSignature: !!signature,
+      hasBytes: !!bytes,
+      hasAddress: !!address
+    });
+    return false;
+  }
+
   // bytesをUint8Arrayに変換
-  const receivedBytes = new Uint8Array(bytes);
+  let receivedBytes: Uint8Array;
+  try {
+    receivedBytes = new Uint8Array(bytes);
+    if (receivedBytes.length === 0) {
+      logWarning('Empty bytes array');
+      return false;
+    }
+  } catch (e: any) {
+    logError('Failed to convert bytes to Uint8Array', e);
+    return false;
+  }
   
   // 受信メッセージを復元
   let decodedMessage = '';
@@ -55,9 +76,13 @@ export async function verifySignature(request: MintRequest): Promise<boolean> {
     decodedMessage = typeof authMessage === 'string' ? authMessage : '';
   }
 
+  if (!decodedMessage) {
+    logWarning('Failed to decode message');
+    return false;
+  }
+
   // カノニカルメッセージを再生成
   const lines = (decodedMessage || '').split('\n');
-  const header = lines[0] || '';
   const kvPairs = lines.slice(1).map((l) => l.trim()).filter(Boolean);
   const kv: Record<string, string> = {};
   
@@ -71,41 +96,58 @@ export async function verifySignature(request: MintRequest): Promise<boolean> {
   }
 
   const msgAddress = kv['address'] || '';
-  const msgEventId = kv['eventId'] || '';
-  const msgNonce = kv['nonce'] || '';
-  const msgTimestamp = kv['timestamp'] || '';
-
-  const canonicalHeader = 'SXT Event Mint';
-  const canonicalMessage = [
-    canonicalHeader,
-    `address=${msgAddress}`,
-    `eventId=${msgEventId}`,
-    `nonce=${msgNonce}`,
-    `timestamp=${msgTimestamp}`
-  ].join('\n');
-
-  const expectedBytes = new TextEncoder().encode(canonicalMessage);
-
-  // Sui SDKでの検証を優先
-  try {
-    if (typeof signature === 'string') {
-      await verifyPersonalMessageSignature(receivedBytes, signature);
-      return true;
-    }
-  } catch (e) {
-    logWarning('Sui signature verification failed, trying fallback', e);
+  
+  // アドレスが一致するか確認
+  if (msgAddress.toLowerCase() !== address.toLowerCase()) {
+    logWarning('Address mismatch in message', {
+      messageAddress: msgAddress,
+      requestAddress: address
+    });
+    return false;
   }
 
-  // フォールバック検証（一時的に無効化）
+  // Sui SDKでの検証を試行（Cloudflare Workers環境では動作しない可能性があるため、フォールバックあり）
+  let useSuiSDK = false;
   try {
-    // return await verifySignedMessage(
-    //   { signature, bytes: receivedBytes, publicKey: request.publicKey },
-    //   expectedBytes
-    // );
-    logWarning('Fallback signature verification temporarily disabled');
-    return false;
-  } catch (e) {
-    logError('All signature verification methods failed', e);
+    if (typeof signature === 'string' && signature.length > 0) {
+      // verifyPersonalMessageSignatureを試行
+      // Cloudflare Workers環境では動作しない可能性があるため、エラーをキャッチ
+      await verifyPersonalMessageSignature(receivedBytes, signature);
+      useSuiSDK = true;
+      return true;
+    }
+  } catch (e: any) {
+    // Sui SDKが使用できない場合（Cloudflare Workers環境など）は、フォールバック検証を使用
+    logWarning('Sui SDK verification not available, using fallback', {
+      error: e?.message,
+      name: e?.name
+    });
+    useSuiSDK = false;
+  }
+
+  // フォールバック検証（Cloudflare Workers環境で動作する）
+  try {
+    // verifySignedMessageを使用（@noble/ed25519ベース）
+    const signatureData = {
+      signature: signature,
+      bytes: receivedBytes,
+      publicKey: request.publicKey
+    };
+    
+    const isValid = await verifySignedMessage(signatureData, receivedBytes);
+    if (isValid) {
+      return true;
+    } else {
+      logWarning('Fallback signature verification failed');
+      return false;
+    }
+  } catch (e: any) {
+    logError('All signature verification methods failed', {
+      error: e?.message,
+      name: e?.name,
+      signatureLength: signature?.length,
+      bytesLength: receivedBytes.length
+    });
     return false;
   }
 }
@@ -193,27 +235,98 @@ export async function delegateToSponsor(
     imageMimeType: event.imageMimeType,
     collectionId: event.collectionId,
     eventName: event.name || 'Event NFT',
+    eventDescription: event.description || 'Event NFT',
     eventDate: event.eventDate || event.startAt || new Date().toISOString()
   };
 
-  const response = await fetch(`${sponsorUrl}/api/mint`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 28000); // 28秒タイムアウト（Cloudflare Workersの30秒制限を考慮）
 
-    const result = await response.json().catch(() => null) as any;
+    console.log('[DELEGATE] Sending request to sponsor API', { 
+      sponsorUrl, 
+      eventId: payload.eventId,
+      recipient: payload.recipient 
+    });
     
-    if (!response.ok || !result?.success) {
-      throw new Error(result?.error || `Sponsor mint failed (${response.status})`);
+    let response: Response;
+    const startTime = Date.now();
+    try {
+      response = await fetch(`${sponsorUrl}/api/mint`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'User-Agent': 'NFT-Verification-Worker/1.0'
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+      const elapsed = Date.now() - startTime;
+      console.log('[DELEGATE] Sponsor API response received', { 
+        status: response.status, 
+        elapsed: `${elapsed}ms` 
+      });
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+      const elapsed = Date.now() - startTime;
+      console.error('[DELEGATE] Sponsor API request failed', {
+        error: fetchError?.message,
+        name: fetchError?.name,
+        elapsed: `${elapsed}ms`,
+        aborted: controller.signal.aborted
+      });
+      if (fetchError.name === 'AbortError' || controller.signal.aborted) {
+        throw new Error(`Sponsor API request timeout after ${elapsed}ms. The sponsor service may be slow or unavailable.`);
+      }
+      throw new Error(`Sponsor API request failed: ${fetchError.message || 'Network error'}`);
+    } finally {
+      clearTimeout(timeoutId);
+    }
+
+    if (controller.signal.aborted) {
+      const elapsed = Date.now() - startTime;
+      throw new Error(`Sponsor API request timeout after ${elapsed}ms`);
+    }
+
+    const result = await response.json().catch((parseError: any) => {
+      console.error('[DELEGATE] Failed to parse sponsor API response', {
+        status: response.status,
+        statusText: response.statusText,
+        parseError: parseError?.message
+      });
+      return null;
+    }) as any;
+    
+    if (!response.ok) {
+      console.error('[DELEGATE] Sponsor API returned error status', {
+        status: response.status,
+        statusText: response.statusText,
+        result
+      });
+      throw new Error(result?.error || `Sponsor mint failed (${response.status}): ${response.statusText}`);
+    }
+
+    if (!result?.success) {
+      console.error('[DELEGATE] Sponsor API returned unsuccessful result', { result });
+      throw new Error(result?.error || 'Sponsor mint failed: Unknown error');
     }
 
     const txDigest = result.txDigest || result.data?.txDigest;
-  if (!txDigest) {
-    throw new Error('No transaction digest returned from sponsor');
-  }
+    if (!txDigest) {
+      console.error('[DELEGATE] No transaction digest in sponsor API response', { result });
+      throw new Error('No transaction digest returned from sponsor');
+    }
 
-  return { txDigest, success: true };
+    console.log('[DELEGATE] Sponsor API mint successful', { txDigest });
+    return { txDigest, success: true };
+  } catch (error: any) {
+    if (error.name === 'AbortError' || error.message?.includes('timeout')) {
+      const elapsed = error.message?.match(/\d+ms/) || ['unknown'];
+      throw new Error(`Sponsor API request timeout (${elapsed[0]}). The sponsor service may be slow or unavailable. Please try again.`);
+    }
+    // エラーメッセージをそのまま伝播
+    throw error;
+  }
 }
 
 /**

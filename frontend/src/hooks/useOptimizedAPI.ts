@@ -19,8 +19,8 @@ export function useOptimizedAPI<T>(
   options: UseOptimizedAPIOptions = {}
 ) {
   const {
-    staleTime = 5 * 60 * 1000, // 5分
-    retryCount = 3,
+    staleTime = 15 * 60 * 1000, // 15分（リクエスト削減のため延長）
+    retryCount = 2, // リクエスト削減のため削減（3→2）
     retryDelay = 1000,
     enabled = true
   } = options;
@@ -34,6 +34,8 @@ export function useOptimizedAPI<T>(
 
   const retryTimeoutRef = useRef<number | undefined>(undefined);
   const isStaleRef = useRef(false);
+  const lastErrorRef = useRef<number>(0); // 最後にエラーが発生した時刻を記録
+  const errorRetryDelay = 30 * 1000; // エラー後は30秒間は再試行しない（無限ループ防止）
 
   const isStale = useCallback(() => {
     return Date.now() - state.lastFetch > staleTime;
@@ -53,12 +55,15 @@ export function useOptimizedAPI<T>(
         lastFetch: Date.now()
       });
       isStaleRef.current = false;
+      lastErrorRef.current = 0; // 成功時はエラー時刻をリセット
     } catch (error) {
       if (retryAttempt < retryCount) {
         retryTimeoutRef.current = window.setTimeout(() => {
           fetchData(retryAttempt + 1);
         }, retryDelay * Math.pow(2, retryAttempt));
       } else {
+        const now = Date.now();
+        lastErrorRef.current = now; // エラー時刻を記録
         setState(prev => ({
           ...prev,
           loading: false,
@@ -75,13 +80,25 @@ export function useOptimizedAPI<T>(
   const invalidate = useCallback(() => {
     setState(prev => ({ ...prev, lastFetch: 0 }));
     isStaleRef.current = true;
+    lastErrorRef.current = 0; // 無効化時はエラー時刻もリセット
   }, []);
 
   useEffect(() => {
-    if (enabled && (state.data === null || isStale())) {
+    if (!enabled) return;
+    
+    // エラー後の短期間は再試行しない（無限ループ防止）
+    const now = Date.now();
+    const timeSinceLastError = now - lastErrorRef.current;
+    if (lastErrorRef.current > 0 && timeSinceLastError < errorRetryDelay) {
+      return; // エラー後30秒以内は再試行しない
+    }
+    
+    // データが存在しないか、古くなっている場合のみ実行
+    // エラー状態の場合は再試行しない（無限ループ防止）
+    if (state.data === null || (isStale() && !state.error)) {
       fetchData();
     }
-  }, [enabled, fetchData, isStale, state.data]);
+  }, [enabled, fetchData, isStale, state.data, state.error]);
 
   useEffect(() => {
     return () => {
