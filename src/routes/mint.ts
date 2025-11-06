@@ -77,36 +77,22 @@ app.get('/api/mints/check', async (c) => {
  */
 app.post('/api/mint', async (c) => {
   try {
-    // リクエスト開始をログに記録
-    console.log('[MINT] Request received');
-    
     const eventStore = c.env.EVENT_STORE as KVNamespace;
     const mintedStore = c.env.MINTED_STORE as KVNamespace;
     
     if (!eventStore) {
-      console.error('[MINT] EVENT_STORE is not available');
       return c.json({ success: false, error: 'EVENT_STORE is not available' }, 503);
     }
     if (!mintedStore) {
-      console.error('[MINT] MINTED_STORE is not available');
       return c.json({ success: false, error: 'MINTED_STORE is not available' }, 503);
     }
 
     const body = await c.req.json().catch(() => ({}));
     const { eventId, address, signature, bytes, publicKey, authMessage } = body || {};
-    
-    console.log('[MINT] Request body parsed', {
-      hasEventId: !!eventId,
-      hasAddress: !!address,
-      hasSignature: !!signature,
-      hasBytes: !!bytes,
-      hasAuthMessage: !!authMessage
-    });
 
     // 必須フィールドの検証
     const missing = ['eventId', 'address', 'signature', 'authMessage'].filter((k) => !(body && body[k]));
     if (missing.length) {
-      console.error('[MINT] Missing required fields', { missing });
       return c.json({ success: false, error: `Missing: ${missing.join(', ')}` }, 400);
     }
 
@@ -116,17 +102,13 @@ app.post('/api/mint', async (c) => {
     }
 
     // イベント取得
-    console.log('[MINT] Fetching event', { eventId });
     const listStr = await eventStore.get('events');
     const list = listStr ? JSON.parse(listStr) : [];
     const ev = Array.isArray(list) ? list.find((e: any) => e && e.id === eventId) : null;
     
     if (!ev) {
-      console.error('[MINT] Event not found', { eventId });
       return c.json({ success: false, error: 'Event not found' }, 404);
     }
-    
-    console.log('[MINT] Event found', { eventId: ev.id, active: ev.active });
 
     // イベント期間チェック
     if (!isEventActive(ev)) {
@@ -143,8 +125,7 @@ app.post('/api/mint', async (c) => {
       return c.json({ success: false, error: 'Mint cap reached for this event' }, 400);
     }
 
-    // 署名検証（エラーを投げずにfalseを返すように変更）
-    console.log('[MINT] Verifying signature');
+    // 署名検証
     const isValidSignature = await verifySignature({
       eventId,
       address,
@@ -155,11 +136,8 @@ app.post('/api/mint', async (c) => {
     });
 
     if (!isValidSignature) {
-      console.error('[MINT] Signature verification failed');
       return c.json({ success: false, error: 'Invalid signature' }, 400);
     }
-    
-    console.log('[MINT] Signature verified successfully');
 
     // スポンサーAPI URL取得
     const sponsorUrl = c.env.MINT_SPONSOR_API_URL || c.env.DISCORD_BOT_API_URL;
@@ -167,20 +145,12 @@ app.post('/api/mint', async (c) => {
       return c.json({ success: false, error: 'Sponsor API URL is not configured' }, 500);
     }
 
-    // スポンサーAPIへ委譲（タイムアウトはdelegateToSponsor内で処理）
-    console.log('[MINT] Delegating to sponsor API', { sponsorUrl });
+    // スポンサーAPIへ委譲
     let mintResult;
     try {
       mintResult = await delegateToSponsor(ev, address, sponsorUrl);
-      console.log('[MINT] Sponsor API success', { txDigest: mintResult.txDigest });
     } catch (sponsorError: any) {
-      console.error('[MINT] Sponsor API delegation failed', {
-        error: sponsorError?.message,
-        name: sponsorError?.name,
-        stack: sponsorError?.stack
-      });
       logError('Sponsor API delegation failed', sponsorError);
-      // スポンサーAPIのエラーは詳細を返す
       const errorMsg = sponsorError?.message || 'Unknown error';
       return c.json({ 
         success: false, 
@@ -222,14 +192,8 @@ app.post('/api/mint', async (c) => {
     });
 
   } catch (error: any) {
-    console.error('[MINT] Unhandled error', {
-      error: error?.message,
-      name: error?.name,
-      stack: error?.stack
-    });
     logError('Mint API error', error);
     const errorMessage = error?.message || 'Unknown error';
-    // 本番環境ではスタックトレースを含めない（セキュリティ上の理由）
     return c.json({ 
       success: false, 
       error: `Mint API error: ${errorMessage}` 

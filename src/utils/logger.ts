@@ -16,21 +16,21 @@ export function logSuccess(message: string, data?: any): void {
 }
 
 export function logWarning(message: string, data?: any): void {
-  // 一時的にログを有効化（デバッグ用）
-  try {
-    if (data) {
-      const dataInfo = typeof data === 'object' ? JSON.stringify(data) : String(data);
-      console.warn(`[WARNING] ${message}`, dataInfo);
-    } else {
-      console.warn(`[WARNING] ${message}`);
-    }
-  } catch (e) {
-    console.warn(`[WARNING] ${message}`, String(data));
-  }
+  // 本番環境では警告ログを無効化（必要に応じて有効化）
+  // try {
+  //   if (data) {
+  //     const dataInfo = typeof data === 'object' ? JSON.stringify(data) : String(data);
+  //     console.warn(`[WARNING] ${message}`, dataInfo);
+  //   } else {
+  //     console.warn(`[WARNING] ${message}`);
+  //   }
+  // } catch (e) {
+  //   console.warn(`[WARNING] ${message}`, String(data));
+  // }
 }
 
 export function logError(message: string, error?: any): void {
-  // 一時的にログを有効化（デバッグ用）
+  // エラーログは本番環境でも有効（問題の特定に必要）
   try {
     if (error) {
       const errorInfo = {

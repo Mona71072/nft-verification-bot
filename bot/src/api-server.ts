@@ -710,6 +710,15 @@ app.post('/api/display/setup', async (req, res) => {
     const keysVector = tx.pure.vector('string', keys);
     const valuesVector = tx.pure.vector('string', values);
     
+    // デバッグ情報を追加
+      type,
+      publisherId,
+      keys,
+      values,
+      keysVector: keysVector,
+      valuesVector: valuesVector
+    });
+    
     // 0x2::display::new_with_fields<T>(publisher, keys, values)
     // モナさんの指摘通り、Publisherオブジェクトを使用
     tx.moveCall({

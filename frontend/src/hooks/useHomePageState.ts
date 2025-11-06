@@ -617,17 +617,16 @@ export function useHomePageState() {
       return [];
     }
     
-    // enabledEventsに含まれるイベントのcollectionIdと名前を取得
-    const enabledEventCollectionIds = new Set<string>();
-    const enabledEventNames = new Set<string>();
+    // enabledEventsに含まれるイベントのcollectionIdと名前のペアを取得
+    const enabledEventMatches: Array<{ collectionId: string; name: string }> = [];
     if (rawEvents && Array.isArray(rawEvents) && enabledEventSet.size > 0) {
       rawEvents.forEach(event => {
         if (enabledEventSet.has(event.id)) {
-          if (event.collectionId) {
-            enabledEventCollectionIds.add(event.collectionId.trim());
-          }
-          if (event.name) {
-            enabledEventNames.add(event.name);
+          if (event.collectionId && event.name) {
+            enabledEventMatches.push({
+              collectionId: event.collectionId.trim(),
+              name: event.name
+            });
           }
         }
       });
@@ -648,19 +647,14 @@ export function useHomePageState() {
       
       const nftType = nft.type.trim();
       
-      // 1. enabledEvents: イベントのcollectionIdとNFTのtypeが一致、またはNFTの名前とイベントの名前が一致
+      // 1. enabledEvents: イベントのcollectionIdとNFTのtypeが一致 **かつ** NFTの名前とイベントの名前が一致
       // Kiosk所有NFTでもtypeは同じなので、このマッチングは正常に動作する
-      // コレクションIDの一致チェック
-      for (const eventCollectionId of enabledEventCollectionIds) {
-        if (nftType === eventCollectionId) {
-          return true;
-        }
-      }
-      // イベント名とNFT名の一致チェック
-      if (enabledEventNames.size > 0 && nft.display?.name) {
+      if (enabledEventMatches.length > 0 && nft.display?.name) {
         const nftName = nft.display.name;
-        if (enabledEventNames.has(nftName)) {
-          return true;
+        for (const eventMatch of enabledEventMatches) {
+          if (nftType === eventMatch.collectionId && nftName === eventMatch.name) {
+            return true;
+          }
         }
       }
       

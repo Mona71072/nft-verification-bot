@@ -107,13 +107,9 @@ export async function verifySignature(request: MintRequest): Promise<boolean> {
   }
 
   // Sui SDKでの検証を試行（Cloudflare Workers環境では動作しない可能性があるため、フォールバックあり）
-  let useSuiSDK = false;
   try {
     if (typeof signature === 'string' && signature.length > 0) {
-      // verifyPersonalMessageSignatureを試行
-      // Cloudflare Workers環境では動作しない可能性があるため、エラーをキャッチ
       await verifyPersonalMessageSignature(receivedBytes, signature);
-      useSuiSDK = true;
       return true;
     }
   } catch (e: any) {
@@ -122,7 +118,6 @@ export async function verifySignature(request: MintRequest): Promise<boolean> {
       error: e?.message,
       name: e?.name
     });
-    useSuiSDK = false;
   }
 
   // フォールバック検証（Cloudflare Workers環境で動作する）
@@ -242,15 +237,8 @@ export async function delegateToSponsor(
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 28000); // 28秒タイムアウト（Cloudflare Workersの30秒制限を考慮）
-
-    console.log('[DELEGATE] Sending request to sponsor API', { 
-      sponsorUrl, 
-      eventId: payload.eventId,
-      recipient: payload.recipient 
-    });
     
     let response: Response;
-    const startTime = Date.now();
     try {
       response = await fetch(`${sponsorUrl}/api/mint`, {
         method: 'POST',
@@ -261,22 +249,10 @@ export async function delegateToSponsor(
         body: JSON.stringify(payload),
         signal: controller.signal
       });
-      const elapsed = Date.now() - startTime;
-      console.log('[DELEGATE] Sponsor API response received', { 
-        status: response.status, 
-        elapsed: `${elapsed}ms` 
-      });
     } catch (fetchError: any) {
       clearTimeout(timeoutId);
-      const elapsed = Date.now() - startTime;
-      console.error('[DELEGATE] Sponsor API request failed', {
-        error: fetchError?.message,
-        name: fetchError?.name,
-        elapsed: `${elapsed}ms`,
-        aborted: controller.signal.aborted
-      });
       if (fetchError.name === 'AbortError' || controller.signal.aborted) {
-        throw new Error(`Sponsor API request timeout after ${elapsed}ms. The sponsor service may be slow or unavailable.`);
+        throw new Error('Sponsor API request timeout. The sponsor service may be slow or unavailable.');
       }
       throw new Error(`Sponsor API request failed: ${fetchError.message || 'Network error'}`);
     } finally {
@@ -284,47 +260,33 @@ export async function delegateToSponsor(
     }
 
     if (controller.signal.aborted) {
-      const elapsed = Date.now() - startTime;
-      throw new Error(`Sponsor API request timeout after ${elapsed}ms`);
+      throw new Error('Sponsor API request timeout');
     }
 
-    const result = await response.json().catch((parseError: any) => {
-      console.error('[DELEGATE] Failed to parse sponsor API response', {
-        status: response.status,
-        statusText: response.statusText,
-        parseError: parseError?.message
-      });
-      return null;
-    }) as any;
+    const result = await response.json().catch(() => null) as any;
     
     if (!response.ok) {
-      console.error('[DELEGATE] Sponsor API returned error status', {
-        status: response.status,
-        statusText: response.statusText,
-        result
-      });
+      // 502 Bad Gateway や 504 Gateway Timeout の場合は、より詳細なエラーメッセージを返す
+      if (response.status === 502 || response.status === 504) {
+        throw new Error(`Sponsor service unavailable (${response.status}). The service may be restarting or experiencing high load. Please try again in a moment.`);
+      }
       throw new Error(result?.error || `Sponsor mint failed (${response.status}): ${response.statusText}`);
     }
 
     if (!result?.success) {
-      console.error('[DELEGATE] Sponsor API returned unsuccessful result', { result });
       throw new Error(result?.error || 'Sponsor mint failed: Unknown error');
     }
 
     const txDigest = result.txDigest || result.data?.txDigest;
     if (!txDigest) {
-      console.error('[DELEGATE] No transaction digest in sponsor API response', { result });
       throw new Error('No transaction digest returned from sponsor');
     }
 
-    console.log('[DELEGATE] Sponsor API mint successful', { txDigest });
     return { txDigest, success: true };
   } catch (error: any) {
     if (error.name === 'AbortError' || error.message?.includes('timeout')) {
-      const elapsed = error.message?.match(/\d+ms/) || ['unknown'];
-      throw new Error(`Sponsor API request timeout (${elapsed[0]}). The sponsor service may be slow or unavailable. Please try again.`);
+      throw new Error('Sponsor API request timeout. The sponsor service may be slow or unavailable. Please try again.');
     }
-    // エラーメッセージをそのまま伝播
     throw error;
   }
 }
