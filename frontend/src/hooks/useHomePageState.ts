@@ -672,9 +672,9 @@ export function useHomePageState() {
       if (customNFTTypesSet.has(nftType)) {
         return true;
       }
+      // 正規化された値で再チェック（trimされた値の可能性があるため）
       for (const customType of customNFTTypesSet) {
-        const normalizedCustomType = customType.trim();
-        if (nftType === normalizedCustomType) {
+        if (nftType === customType.trim()) {
           return true;
         }
       }

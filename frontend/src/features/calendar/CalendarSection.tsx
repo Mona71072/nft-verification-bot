@@ -165,12 +165,12 @@ export const CalendarSection: React.FC<Props> = ({
       {/* Month Navigation */}
       <div 
         role="toolbar" 
-        aria-label="カレンダーの月ナビゲーション"
+        aria-label="Calendar month navigation"
         style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}
       >
         <button
           type="button"
-          aria-label="前の月"
+          aria-label="Previous month"
           onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
@@ -204,7 +204,7 @@ export const CalendarSection: React.FC<Props> = ({
         </h3>
         <button
           type="button"
-          aria-label="次の月"
+          aria-label="Next month"
           onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
@@ -253,12 +253,12 @@ export const CalendarSection: React.FC<Props> = ({
         >
           {monthlyStats.totalEvents > 0 && (
             <span style={{ fontWeight: '600', color: '#e0e7ff' }}>
-              参加済み: {monthlyStats.totalEvents}件のイベント日 ({monthlyStats.totalNFTs}個のNFT)
+              Participated: {monthlyStats.totalEvents} event days ({monthlyStats.totalNFTs} NFTs)
             </span>
           )}
           {monthlyStats.totalUpcoming > 0 && (
             <span style={{ fontWeight: '600', color: '#34d399' }}>
-              開催予定: {monthlyStats.totalUpcoming}件のイベント
+              Upcoming: {monthlyStats.totalUpcoming} events
             </span>
           )}
         </div>
@@ -311,7 +311,7 @@ export const CalendarSection: React.FC<Props> = ({
               key={day}
               type="button"
               role="gridcell"
-              aria-label={`${year}年${month + 1}月${day}日${hasEvent ? `、${dayNFTs.length}件の参加済みイベント` : ''}${hasUpcoming ? `、${dayUpcomingEvents.length}件の開催予定イベント` : ''}`}
+              aria-label={`${currentMonth.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}${hasEvent ? `, ${dayNFTs.length} participated events` : ''}${hasUpcoming ? `, ${dayUpcomingEvents.length} upcoming events` : ''}`}
               aria-pressed={expandedEventDates.has(dateStr) ? 'true' : 'false'}
               onClick={handleDateClick}
               onKeyDown={(e) => {
@@ -376,7 +376,7 @@ export const CalendarSection: React.FC<Props> = ({
               {hasEvent && (
                     <div 
                       role="status"
-                      aria-label={`${dayNFTs.length}件の参加済みイベント`}
+                      aria-label={`${dayNFTs.length} participated events`}
                       style={{ 
                         fontSize: getResponsiveValue('0.6rem', '0.7rem', '0.7rem', deviceType), 
                         color: '#c7d2fe', 
@@ -393,7 +393,7 @@ export const CalendarSection: React.FC<Props> = ({
                   {hasUpcoming && (
                     <div 
                       role="status"
-                      aria-label={`${dayUpcomingEvents.length}件の開催予定イベント`}
+                      aria-label={`${dayUpcomingEvents.length} upcoming events`}
                       style={{ 
                         fontSize: getResponsiveValue('0.6rem', '0.7rem', '0.7rem', deviceType), 
                         color: '#065f46', 
@@ -411,7 +411,7 @@ export const CalendarSection: React.FC<Props> = ({
               )}
               {isToday && (
                 <div 
-                  aria-label="今日"
+                  aria-label="Today"
                   style={{
                     position: 'absolute',
                     top: '2px',
@@ -435,7 +435,7 @@ export const CalendarSection: React.FC<Props> = ({
           id="event-list-title"
           style={{ fontSize: getResponsiveValue('0.8125rem', '0.875rem', '0.875rem', deviceType), fontWeight: '600', marginBottom: getResponsiveValue('0.75rem', '1rem', '1rem', deviceType), color: '#a5b4fc', textTransform: 'uppercase', letterSpacing: '0.05em' }}
         >
-          {currentMonthEvents.size > 0 ? `${currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}のイベント` : '今月のイベント'}
+          {currentMonthEvents.size > 0 ? `${currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} Events` : 'This Month\'s Events'}
         </h4>
         {currentMonthEvents.size === 0 && currentMonthUpcomingEvents.size === 0 ? (
           <div 
@@ -453,7 +453,7 @@ export const CalendarSection: React.FC<Props> = ({
           >
             <div style={{ fontSize: getResponsiveValue('1.5rem', '2rem', '2rem', deviceType), marginBottom: '0.5rem' }}>📅</div>
             <div style={{ fontSize: getResponsiveValue('0.875rem', '1rem', '1rem', deviceType), fontWeight: '600', color: '#e0e7ff' }}>
-              今月はイベントがありません
+              No events this month
             </div>
           </div>
         ) : (
@@ -486,7 +486,7 @@ export const CalendarSection: React.FC<Props> = ({
                       type="button"
                       aria-expanded={isExpanded}
                       aria-controls={`upcoming-event-details-${date}`}
-                      aria-label={`${dateObj.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' })}の開催予定イベント（${upcomingEvents.length}件）を${isExpanded ? '折りたたむ' : '展開する'}`}
+                      aria-label={`${dateObj.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })} upcoming events (${upcomingEvents.length}) - ${isExpanded ? 'collapse' : 'expand'}`}
                       onClick={() => {
                         const next = new Set(expandedEventDates);
                         if (isExpanded) next.delete(date); else next.add(date);
@@ -523,7 +523,7 @@ export const CalendarSection: React.FC<Props> = ({
                             flexShrink: 0,
                             boxShadow: '0 0 8px rgba(52, 211, 153, 0.5)'
                           }}
-                          aria-label="開催予定"
+                          aria-label="Upcoming"
                         />
                         <ChevronDown 
                           className="w-4 h-4" 
@@ -532,10 +532,10 @@ export const CalendarSection: React.FC<Props> = ({
                         />
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: getResponsiveValue('0.875rem', '0.9375rem', '0.9375rem', deviceType), fontWeight: '600', color: '#34d399', marginBottom: '0.125rem' }}>
-                            {dateObj.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })} - 開催予定
+                            {dateObj.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })} - Upcoming
                           </div>
                           <div style={{ fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.8125rem', deviceType), color: '#a5b4fc' }}>
-                            {upcomingEvents.length}件のイベント予定
+                            {upcomingEvents.length} scheduled events
                           </div>
                         </div>
                       </div>
@@ -544,7 +544,7 @@ export const CalendarSection: React.FC<Props> = ({
                       <div 
                         id={`upcoming-event-details-${date}`}
                         role="region"
-                        aria-label={`${dateObj.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' })}の開催予定イベント詳細`}
+                        aria-label={`${dateObj.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })} upcoming event details`}
                         style={{ padding: getResponsiveValue('0.75rem 1rem 1rem 3rem', '0.875rem 1.25rem 1rem 3.25rem', '0.875rem 1.25rem 1rem 3.25rem', deviceType), background: 'rgba(52, 211, 153, 0.05)', backdropFilter: 'blur(10px)', borderTop: '1px solid rgba(52, 211, 153, 0.3)' }}
                       >
                         <div style={{ display: 'flex', flexDirection: 'column', gap: getResponsiveValue('0.75rem', '1rem', '1rem', deviceType) }}>
@@ -618,10 +618,10 @@ export const CalendarSection: React.FC<Props> = ({
                                   )}
                                   <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', fontSize: '0.75rem', color: '#a5b4fc' }}>
                                     {event.eventDate && (
-                                      <span>開催日: {new Date(event.eventDate).toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })}</span>
+                                      <span>Event Date: {new Date(event.eventDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })}</span>
                                     )}
                                     {event.startAt && event.endAt && (
-                                      <span style={{ color: '#9ca3af' }}>ミント期間: {new Date(event.startAt).toLocaleString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} ～ {new Date(event.endAt).toLocaleString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                                      <span style={{ color: '#9ca3af' }}>Mint Period: {new Date(event.startAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} - {new Date(event.endAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                                     )}
                                   </div>
                                 </div>
@@ -651,7 +651,7 @@ export const CalendarSection: React.FC<Props> = ({
                       type="button"
                       aria-expanded={isExpanded}
                       aria-controls={`event-details-${date}`}
-                      aria-label={`${dateObj.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' })}のイベント（${nfts.length}件）を${isExpanded ? '折りたたむ' : '展開する'}`}
+                      aria-label={`${dateObj.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })} events (${nfts.length}) - ${isExpanded ? 'collapse' : 'expand'}`}
                       onClick={() => {
                         const next = new Set(expandedEventDates);
                         if (isExpanded) next.delete(date); else next.add(date);
@@ -686,10 +686,10 @@ export const CalendarSection: React.FC<Props> = ({
                         />
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: getResponsiveValue('0.875rem', '0.9375rem', '0.9375rem', deviceType), fontWeight: '600', color: '#e0e7ff', marginBottom: '0.125rem' }}>
-                            {dateObj.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })}
+                            {dateObj.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })}
                           </div>
                           <div style={{ fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.8125rem', deviceType), color: '#a5b4fc' }}>
-                            {nfts.length}件のイベント参加
+                            {nfts.length} event participations
                           </div>
                         </div>
                       </div>
@@ -698,7 +698,7 @@ export const CalendarSection: React.FC<Props> = ({
                       <div 
                         id={`event-details-${date}`}
                         role="region"
-                        aria-label={`${dateObj.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' })}のイベント詳細`}
+                        aria-label={`${dateObj.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })} event details`}
                         style={{ padding: getResponsiveValue('0.75rem 1rem 1rem 3rem', '0.875rem 1.25rem 1rem 3.25rem', '0.875rem 1.25rem 1rem 3.25rem', deviceType), background: 'rgba(30, 27, 75, 0.4)', backdropFilter: 'blur(10px)', borderTop: '1px solid rgba(79, 70, 229, 0.3)' }}
                       >
                       <div style={{ display: 'grid', gridTemplateColumns: getResponsiveValue('1fr', 'repeat(2, 1fr)', 'repeat(2, 1fr)', deviceType), gap: getResponsiveValue('0.75rem', '1rem', '1rem', deviceType) }}>
@@ -775,7 +775,7 @@ export const CalendarSection: React.FC<Props> = ({
                               </div>
                               {eventDate && (
                                 <div style={{ fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.8125rem', deviceType), color: '#34d399', fontWeight: '600', marginBottom: '0.25rem' }}>
-                                  参加日: {new Date(eventDate).toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })}
+                                  Participation Date: {new Date(eventDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })}
                                 </div>
                               )}
                               <div style={{ fontSize: '0.75rem', color: '#a5b4fc', marginBottom: '0.25rem' }}>

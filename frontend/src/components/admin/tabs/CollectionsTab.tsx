@@ -33,11 +33,6 @@ export function CollectionsTab({ apiBaseUrl }: CollectionsTabProps) {
     return ascii.slice(0, 6) || 'EVENT';
   };
 
-  // const getDefaultTypePath = () => {
-  //   const defaultMoveTarget = import.meta.env.VITE_DEFAULT_MOVE_TARGET || '0x3d7e20efbd6e4e2ee6369bcf1e9ec8029637c47890d975e74956b4b405cb5f3f::sxt_nft::mint_to';
-  //   return defaultMoveTarget.replace('::mint_to', '::EventNFT');
-  // };
-
   const handleCreateCollectionViaMove = useCallback(async () => {
     try {
       if (creatingCollection) return;

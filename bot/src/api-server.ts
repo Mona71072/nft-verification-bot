@@ -711,6 +711,7 @@ app.post('/api/display/setup', async (req, res) => {
     const valuesVector = tx.pure.vector('string', values);
     
     // デバッグ情報を追加
+    console.log({
       type,
       publisherId,
       keys,
