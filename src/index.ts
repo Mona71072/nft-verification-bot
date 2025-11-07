@@ -2604,4 +2604,7 @@ export async function scheduled(controller: ScheduledController, env: Env, ctx: 
   }
 }
 
-export default app;
+export default {
+  fetch: app.fetch,
+  scheduled
+};

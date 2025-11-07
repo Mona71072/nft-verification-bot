@@ -18,6 +18,12 @@ interface ActivityData {
   label?: string;
 }
 
+interface DotConfig {
+  radius?: number;
+  activeRadius?: number;
+  strokeWidth?: number;
+}
+
 interface RechartsActivityChartProps {
   data: ActivityData[];
   title: string;
@@ -25,6 +31,8 @@ interface RechartsActivityChartProps {
   height?: number;
   showTrend?: boolean;
   className?: string;
+  isCompact?: boolean;
+  dotConfig?: DotConfig;
 }
 
 export function RechartsActivityChart({
@@ -33,9 +41,11 @@ export function RechartsActivityChart({
   subtitle,
   height = 200,
   showTrend = true,
-  className = ''
+  className = '',
+  isCompact = false,
+  dotConfig
 }: RechartsActivityChartProps) {
-  // トレンド計算
+// Trend calculation
   const trend = React.useMemo(() => {
     if (!data || data.length < 2) return { direction: 'neutral', percentage: 0 };
     
@@ -78,7 +88,7 @@ export function RechartsActivityChart({
     );
   }
 
-  // カスタムツールチップ
+  // Custom tooltip
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
@@ -107,13 +117,24 @@ export function RechartsActivityChart({
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent'
           }}>
-            {payload[0].value} NFTs
+            {payload[0].value} mints
           </p>
         </div>
       );
     }
     return null;
   };
+
+  const denseThreshold = isCompact ? 14 : 20;
+  const isDenseDataset = data.length > denseThreshold;
+  const resolvedStrokeWidth = dotConfig?.strokeWidth ?? (isDenseDataset ? 2 : 3);
+  const resolvedDotRadius = dotConfig?.radius ?? (isDenseDataset ? (isCompact ? 2.5 : 3.5) : 5.5);
+  const resolvedActiveDotRadius = dotConfig?.activeRadius ?? (isDenseDataset ? resolvedDotRadius + 1.5 : resolvedDotRadius + 2);
+  const resolvedXAxisFontSize = isCompact ? 10 : 12;
+  const resolvedYAxisFontSize = isCompact ? 10 : 12;
+  const chartMargin = isCompact
+    ? { top: 12, right: 18, left: 12, bottom: 12 }
+    : { top: 20, right: 30, left: 20, bottom: 20 };
 
   return (
     <div style={{
@@ -127,7 +148,7 @@ export function RechartsActivityChart({
       overflow: 'hidden',
       ...(className ? {} : {})
     }}>
-      {/* 背景装飾 */}
+      {/* Decorative accent */}
       <div style={{
         position: 'absolute',
         top: 0,
@@ -139,7 +160,7 @@ export function RechartsActivityChart({
         animation: 'shimmer 3s ease-in-out infinite'
       }} />
       
-      {/* ヘッダー */}
+      {/* Header */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -228,10 +249,10 @@ export function RechartsActivityChart({
         )}
       </div>
 
-      {/* グラフ */}
+      {/* Chart */}
       <div style={{ height: `${height}px`, position: 'relative' }}>
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+          <AreaChart data={data} margin={chartMargin}>
             <defs>
               <linearGradient id="colorGradient" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4}/>
@@ -254,15 +275,15 @@ export function RechartsActivityChart({
               dataKey="label" 
               axisLine={false}
               tickLine={false}
-              tick={{ fontSize: 12, fill: '#a5b4fc', fontWeight: 500 }}
-              tickMargin={10}
+              tick={{ fontSize: resolvedXAxisFontSize, fill: '#a5b4fc', fontWeight: 500 }}
+              tickMargin={isCompact ? 6 : 10}
             />
             
             <YAxis 
               axisLine={false}
               tickLine={false}
-              tick={{ fontSize: 12, fill: '#a5b4fc', fontWeight: 500 }}
-              tickMargin={10}
+              tick={{ fontSize: resolvedYAxisFontSize, fill: '#a5b4fc', fontWeight: 500 }}
+              tickMargin={isCompact ? 6 : 10}
             />
             
             <Tooltip content={<CustomTooltip />} />
@@ -271,19 +292,19 @@ export function RechartsActivityChart({
               type="monotone"
               dataKey="count"
               stroke="url(#lineGradient)"
-              strokeWidth={3}
+              strokeWidth={resolvedStrokeWidth}
               fill="url(#colorGradient)"
               dot={{
                 fill: '#ffffff',
                 stroke: '#3b82f6',
-                strokeWidth: 3,
-                r: 6,
+                strokeWidth: resolvedStrokeWidth,
+                r: resolvedDotRadius,
                 strokeDasharray: '0'
               }}
               activeDot={{
-                r: 8,
+                r: resolvedActiveDotRadius,
                 stroke: '#3b82f6',
-                strokeWidth: 3,
+                strokeWidth: resolvedStrokeWidth,
                 fill: '#ffffff',
                 filter: 'drop-shadow(0 4px 8px rgba(59, 130, 246, 0.3))'
               }}
@@ -303,7 +324,7 @@ export function RechartsActivityChart({
 }
 
 /**
- * トレンドチャートコンポーネント（Recharts版）
+ * Trend chart component (Recharts)
  */
 export function RechartsTrendChart({
   data,
@@ -328,7 +349,7 @@ export function RechartsTrendChart({
       overflow: 'hidden',
       ...(className ? {} : {})
     }}>
-      {/* 装飾的な背景 */}
+      {/* Decorative background */}
       <div style={{
         position: 'absolute',
         top: 0,
