@@ -112,7 +112,8 @@ function CollectionSelect({
         disabled={disabled || loading}
         style={{
           ...baseStyle,
-          backgroundColor: 'white',
+          backgroundColor: '#ffffff',
+          color: '#111827',
           cursor: disabled || loading ? 'not-allowed' : 'pointer',
           appearance: 'auto',
         }}
@@ -601,7 +602,7 @@ function EventEditorInner({ event, collections: externalCollections, onSave, onC
               <DateTimePicker30Min
                 value={formData.eventDate}
                 onChange={(v) => { setFormData(prev => ({ ...prev, eventDate: v })); if (errors.eventDate) setErrors(prev => ({ ...prev, eventDate: '' })); }}
-                onBlur={validateForm}
+                onBlur={() => validateForm()}
                 hasError={!!errors.eventDate}
                 inputStyle={inputStyle}
                 deviceType={deviceType}
@@ -617,7 +618,7 @@ function EventEditorInner({ event, collections: externalCollections, onSave, onC
                   <DateTimePicker30Min
                     value={formData.startAt}
                     onChange={(v) => { setFormData(prev => ({ ...prev, startAt: v })); if (errors.startAt) setErrors(prev => ({ ...prev, startAt: '' })); }}
-                    onBlur={validateForm}
+                    onBlur={() => validateForm()}
                     hasError={!!errors.startAt}
                     inputStyle={inputStyle}
                     deviceType={deviceType}
@@ -629,7 +630,7 @@ function EventEditorInner({ event, collections: externalCollections, onSave, onC
                   <DateTimePicker30Min
                     value={formData.endAt}
                     onChange={(v) => { setFormData(prev => ({ ...prev, endAt: v })); if (errors.endAt) setErrors(prev => ({ ...prev, endAt: '' })); }}
-                    onBlur={validateForm}
+                    onBlur={() => validateForm()}
                     hasError={!!errors.endAt}
                     inputStyle={inputStyle}
                     deviceType={deviceType}
