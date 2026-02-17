@@ -1,10 +1,13 @@
 // ウォレット関連のフックを安全に使用
 import { 
   useCurrentAccount,
+  useCurrentWallet,
+  useWallets,
   useDisconnectWallet,
   useConnectWallet,
   useSignPersonalMessage,
 } from '@mysten/dapp-kit';
+import { useCallback, useMemo } from 'react';
 
 // 署名結果の型定義
 interface SignatureResult {
@@ -14,97 +17,125 @@ interface SignatureResult {
 }
 
 // ウォレット状態の型定義
+type AccountType = ReturnType<typeof useCurrentAccount>;
+type WalletsArray = ReturnType<typeof useWallets>;
+type WalletItem = WalletsArray extends Array<infer Item> ? Item : never;
+
 interface WalletState {
-  account: unknown; // useCurrentAccountの戻り値の型をunknownに変更
+  account: AccountType;
+  currentWallet: WalletItem | null;
+  connectionStatus: 'disconnected' | 'connecting' | 'connected';
   connected: boolean;
-  signPersonalMessage: (params: { message: Uint8Array }) => Promise<SignatureResult>;
   connecting: boolean;
-  select: () => void;
-  disconnect: () => void;
-  wallets: unknown[];
+  signPersonalMessage: (params: { message: Uint8Array }) => Promise<SignatureResult>;
+  select: (wallet?: WalletItem) => Promise<void>;
+  disconnect: () => Promise<void>;
+  wallets: WalletsArray;
 }
 
 // ウォレットエラーハンドリング用のカスタムフック
 export const useWalletWithErrorHandling = (): WalletState => {
   // WalletProviderの存在を確認してからフックを呼び出し
-  let account: unknown = null;
-  let connected = false;
-  let disconnect: () => void = () => {};
-  let connectMutate: (args?: unknown) => void = () => {};
-  let signMutateAsync: (params: { message: Uint8Array }) => Promise<SignatureResult> = async () => ({
-    signature: '',
-    bytes: new Uint8Array(),
-    publicKey: undefined
-  });
-  
+  let account: AccountType = null;
+  let walletInfo:
+    | ReturnType<typeof useCurrentWallet>
+    | null = null;
+  let wallets: WalletsArray = [] as WalletsArray;
+  let connectMutation: ReturnType<typeof useConnectWallet> | null = null;
+  let disconnectMutation: ReturnType<typeof useDisconnectWallet> | null = null;
+  let signMutation: ReturnType<typeof useSignPersonalMessage> | null = null;
+
   try {
-    // WalletProvider内でのみ使用されることを前提とする
     account = useCurrentAccount();
-    connected = !!account;
-    
-    const disconnectResult = useDisconnectWallet();
-    const connectResult = useConnectWallet();
-    const signResult = useSignPersonalMessage();
-    
-    disconnect = disconnectResult?.mutate || (() => {});
-    connectMutate = (args?: unknown) => {
-      try {
-        (connectResult?.mutate as ((args?: unknown) => void) || (() => {}))(args);
-      } catch (error) {
-        // Error handling without logging
-      }
-    };
-    signMutateAsync = async (params: { message: Uint8Array }) => {
-      const result = await (signResult?.mutateAsync || (async () => ({
-        signature: '',
-        bytes: '',
-      })))(params);
-      
-      return {
-        signature: result.signature,
-        bytes: typeof result.bytes === 'string' ? new TextEncoder().encode(result.bytes) : result.bytes,
-        publicKey: undefined
-      };
-    };
+    walletInfo = useCurrentWallet();
+    wallets = useWallets();
+    connectMutation = useConnectWallet();
+    disconnectMutation = useDisconnectWallet();
+    signMutation = useSignPersonalMessage();
   } catch (error) {
-    // エラーが発生してもアプリは継続動作
     account = null;
-    connected = false;
+    walletInfo = null;
+    wallets = [] as WalletsArray;
+    connectMutation = null;
+    disconnectMutation = null;
+    signMutation = null;
   }
 
-  // ウォレット接続用のヘルパー関数
-  const connect = () => {
+  const connectionStatus = walletInfo?.connectionStatus ?? 'disconnected';
+  const currentWallet = walletInfo?.currentWallet ?? null;
+  const connected = connectionStatus === 'connected' && !!account;
+  const isConnecting = walletInfo?.isConnecting ?? connectMutation?.isPending ?? false;
+
+  const connect = useCallback(
+    async (wallet?: WalletItem) => {
+      if (!connectMutation) {
+        throw new Error('Wallet provider is not available.');
+      }
+
+      const targetWallet = wallet ?? wallets[0];
+      if (!targetWallet) {
+        throw new Error('No wallet is available to connect.');
+      }
+
+      await connectMutation.mutateAsync({ wallet: targetWallet });
+    },
+    [connectMutation, wallets]
+  );
+
+  const disconnect = useCallback(async () => {
+    if (!disconnectMutation) {
+      return;
+    }
+
     try {
-      connectMutate({});
+      await disconnectMutation.mutateAsync();
     } catch (error) {
       // Error handling without logging
     }
-  };
+  }, [disconnectMutation]);
 
-  // 署名用のヘルパー関数
-  const signMessage = async ({ message }: { message: Uint8Array }): Promise<SignatureResult> => {
-    try {
-      const result = await signMutateAsync({ message });
-      return result;
-    } catch (error) {
-      throw error;
-    }
-  };
-
-  return {
-    account,
-    connected,
-    signPersonalMessage: signMessage,
-    connecting: false,
-    select: connect,
-    disconnect: () => {
-      try {
-        disconnect();
-      } catch (error) {
-        // Error handling without logging
+  const signPersonalMessage = useCallback(
+    async ({ message }: { message: Uint8Array }): Promise<SignatureResult> => {
+      if (!signMutation) {
+        throw new Error('Wallet provider is not available.');
       }
+
+      const result = await signMutation.mutateAsync({ message });
+      return {
+        signature: result.signature,
+        bytes:
+          typeof result.bytes === 'string'
+            ? new TextEncoder().encode(result.bytes)
+            : result.bytes,
+        publicKey: (result as unknown as { publicKey?: string }).publicKey,
+      };
     },
-    wallets: []
-  };
+    [signMutation]
+  );
+
+  return useMemo(
+    () => ({
+      account,
+      currentWallet,
+      connectionStatus,
+      connected,
+      connecting: isConnecting,
+      signPersonalMessage,
+      select: connect,
+      disconnect,
+      wallets,
+    }),
+    [
+      account,
+      connect,
+      connected,
+      connectionStatus,
+      disconnect,
+      isConnecting,
+      signPersonalMessage,
+      wallets,
+      currentWallet,
+    ]
+  );
 };
 

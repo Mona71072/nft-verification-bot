@@ -16,7 +16,16 @@ interface OwnedNFT {
   owner?: any;
 }
 
-interface Collection { id: string; name: string; packageId?: string; typePath?: string }
+interface Collection {
+  id: string;
+  name: string;
+  packageId?: string;
+  typePath?: string;
+  detailUrl?: string;
+  displayName?: string;
+  originalId?: string;
+  roleId?: string;
+}
 
 interface Props {
   nftLoading: boolean;
@@ -53,6 +62,40 @@ export const OwnedNFTsSection: React.FC<Props> = ({
   const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
   const [selectedDateFilter, setSelectedDateFilter] = useState<string>('');
   const [selectedMonthFilter, setSelectedMonthFilter] = useState<string>('');
+
+  const resolveCollectionForNFT = useMemo(() => {
+    const entries = collections.map(collection => {
+      const synonyms = [
+        collection.id,
+        collection.packageId,
+        collection.typePath,
+        collection.originalId,
+        collection.roleId,
+      ].filter((value): value is string => Boolean(value));
+
+      return { collection, synonyms };
+    });
+
+    return (nftType?: string) => {
+      if (!nftType) {
+        return undefined;
+      }
+
+      for (const { collection, synonyms } of entries) {
+        if (synonyms.includes(nftType)) {
+          return collection;
+        }
+      }
+
+      for (const { collection, synonyms } of entries) {
+        if (synonyms.some(syn => syn && (nftType.includes(syn) || syn.includes(nftType)))) {
+          return collection;
+        }
+      }
+
+      return undefined;
+    };
+  }, [collections]);
 
   // 月選択オプションの生成（NFTのevent_dateから）
   const monthOptions = useMemo(() => {
@@ -213,7 +256,19 @@ export const OwnedNFTsSection: React.FC<Props> = ({
     return `https://suiscan.xyz/mainnet/object/${objectId}`;
   };
 
-  const handleCardClick = (nft: OwnedNFT) => {
+  const handleCardClick = (
+    event: React.MouseEvent<HTMLDivElement, MouseEvent>,
+    nft: OwnedNFT,
+    detailUrl?: string
+  ) => {
+    const normalizedUrl = detailUrl?.trim();
+
+    if (normalizedUrl) {
+      event.stopPropagation();
+      window.open(normalizedUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
     setSelectedNFT(nft);
     setIsDrawerOpen(true);
   };
@@ -506,7 +561,8 @@ export const OwnedNFTsSection: React.FC<Props> = ({
           maxWidth: '100%'
         }}>
           {filteredAndSortedNFTs.map((nft) => {
-        const collection = collections.find(c => c.id === nft.type);
+        const collection = resolveCollectionForNFT(nft.type);
+        const collectionDetailUrl = collection?.detailUrl;
         const isKioskOwned = Boolean(
           nft.owner?.parent?.address ||
           (typeof nft.owner?.parent === 'object' && nft.owner?.parent?.address) ||
@@ -530,7 +586,7 @@ export const OwnedNFTsSection: React.FC<Props> = ({
               maxWidth: '100%',
               width: '100%'
             }}
-            onClick={() => handleCardClick(nft)}
+            onClick={(event) => handleCardClick(event, nft, collectionDetailUrl)}
             onMouseEnter={(e) => {
               e.currentTarget.style.transform = 'translateY(-4px)';
               e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)';

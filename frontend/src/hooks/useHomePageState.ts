@@ -3,7 +3,6 @@ import { useWalletWithErrorHandling } from './useWallet';
 import { useCollections } from './queries/useCollections';
 import { useEvents } from './queries/useEvents';
 import { useOwnedNFTs, useOnchainCounts } from './queries/useNFTs';
-import { useActivityStats, type ActivityStats } from './useActivityStats';
 import { useResponsive } from './useResponsive';
 import { useDisplaySettings } from './useDisplaySettings';
 import type { DisplaySettings } from '../types';
@@ -91,7 +90,7 @@ export function useHomePageState() {
     account = null;
     connected = false;
   }
-  
+
   // タブ管理
   const [activeTab, setActiveTab] = useState<HomeTabType>('all');
   
@@ -212,15 +211,6 @@ export function useHomePageState() {
     });
 
     const layouts = (safeDisplaySettings.collectionLayouts || []).map(layout => {
-      const hasScxtGenesis = (layout.collectionIds || []).some(id => id?.includes('scxt_genesis'));
-      if (hasScxtGenesis) {
-        console.log('[normalizedCollectionLayouts] Processing layout with SCXT Genesis:', {
-          layoutId: layout.id,
-          layoutTitle: layout.title,
-          collectionIds: layout.collectionIds
-        });
-      }
-      
       return {
         id: layout.id || `layout_${(layout.collectionIds || []).join('_')}`,
         title: layout.title || '',
@@ -233,11 +223,7 @@ export function useHomePageState() {
             (col as any).roleId === id ||
             (col as any).originalId === id
           );
-          const result = match ? match.id : id;
-          if (id?.includes('scxt_genesis')) {
-            console.log('[normalizedCollectionLayouts] SCXT Genesis ID mapping:', id, '->', result, 'match found:', !!match);
-          }
-          return result;
+          return match ? match.id : id;
         }))),
         originalCollectionIds: layout.collectionIds || [] // 元の値を保存
       };
@@ -269,9 +255,6 @@ export function useHomePageState() {
         if (id.includes('::') && id.split('::').length >= 3) {
           // packageId::module::StructName 形式と判定
           customTypes.add(id);
-          if (id.includes('scxt_genesis')) {
-            console.log('[effectiveCustomNFTTypes] Added from enabledCollections:', id);
-          }
         }
       });
     // collectionLayoutsのcollectionIdsからも検出
@@ -279,17 +262,10 @@ export function useHomePageState() {
       (layout.collectionIds || []).forEach(id => {
         if (id.includes('::') && id.split('::').length >= 3) {
           customTypes.add(id);
-          if (id.includes('scxt_genesis')) {
-            console.log('[effectiveCustomNFTTypes] Added from collectionLayouts:', id, 'layout:', layout.id);
-          }
         }
       });
     });
-    const result = Array.from(customTypes);
-    if (result.some(id => id.includes('scxt_genesis'))) {
-      console.log('[effectiveCustomNFTTypes] Final result with SCXT Genesis:', result);
-    }
-    return result;
+    return Array.from(customTypes);
   }, [safeDisplaySettings.enabledCollections, safeDisplaySettings.customNFTTypes, safeDisplaySettings.collectionLayouts]);
 
   const enabledCollectionSet = useMemo(() => {
@@ -333,29 +309,29 @@ export function useHomePageState() {
       });
     }
     
-    const result = Array.from(allTypes);
-    const hasScxtGenesis = result.some(id => id.includes('scxt_genesis'));
-    if (hasScxtGenesis) {
-      console.log('[collectionTypes] Including SCXT Genesis:', result.filter(id => id.includes('scxt_genesis')));
-      console.log('[collectionTypes] All types:', result);
-    }
-    return result;
+    return Array.from(allTypes);
   }, [rawCollections, effectiveCustomNFTTypes, rawEvents, enabledEventSet]);
 
-  // オンチェーンカウント
-  const { data: onchainCounts = new Map() } = useOnchainCounts(collectionTypes);
+  const normalizedCollectionTypesForOwned = useMemo(() => {
+    if (!collectionTypes || collectionTypes.length === 0) {
+      return [] as string[];
+    }
+    return Array.from(new Set(collectionTypes.filter(Boolean))).sort();
+  }, [collectionTypes]);
+
+  // オンチェーンカウント（ダッシュボードタブ表示時のみ取得）
+  const shouldLoadOnchainCounts = activeTab === 'dashboard';
+  const { data: onchainCounts = new Map() } = useOnchainCounts(normalizedCollectionTypesForOwned, {
+    enabled: shouldLoadOnchainCounts
+  });
 
 
   // 所有NFT
-  const { data: allOwnedNFTs = [], isLoading: nftLoading, error: nftError } = useOwnedNFTs(account?.address || '', collectionTypes);
-
-
-  // アクティビティ統計（条件付き実行: ウォレット接続時のみ）
-  // 注意: フックは条件付きで呼び出せないため、addressが空の場合は空のcollectionTypesを渡す
-  const activityStats: ActivityStats = useActivityStats(
-    account?.address || '', 
-    account?.address ? collectionTypes : []
+  const { data: allOwnedNFTs = [], isLoading: nftLoading, error: nftError } = useOwnedNFTs(
+    account?.address || '',
+    normalizedCollectionTypesForOwned
   );
+
 
   // ローディング状態
   const loading = collectionsLoading || eventsLoading || nftLoading;
@@ -915,18 +891,6 @@ export function useHomePageState() {
     const assigned = new Set<string>();
 
     const addGroup = (groupId: string, title: string, subtitle: string | undefined, collectionIds: string[], isCollectionGroup: boolean = false, originalCollectionIds?: string[], layoutEvents?: EventConfig[], imageUrl?: string) => {
-      const hasScxtGenesis = originalCollectionIds?.some(id => id?.includes('scxt_genesis')) || collectionIds.some(id => id?.includes('scxt_genesis'));
-      if (hasScxtGenesis) {
-        console.log('[addGroup] Adding group with SCXT Genesis:', {
-          groupId,
-          title,
-          collectionIds,
-          originalCollectionIds,
-          isCollectionGroup,
-          layoutEventsCount: layoutEvents?.length || 0
-        });
-      }
-      
       // collectionLayoutsのコレクショングループの場合、rawCollectionsのコレクションは使用しない
       // collectionIdsには元のNFTタイプが含まれているため、collectionMapから取得しない
       let canonicalIds: string[] = [];
@@ -984,22 +948,6 @@ export function useHomePageState() {
                       collectionDetailUrls[typeParts[0] || nftType];
           }
           
-          if (hasScxtGenesis) {
-            console.log('[addGroup] Creating virtual collection:', {
-              nftType,
-              typeParts,
-              normalizedCollectionName: normalizedCollectionNames[nftType],
-              title,
-              useTitleAsName,
-              displayName,
-              index,
-              imageUrl,
-              detailUrl,
-              collectionImageUrls: Object.keys(collectionImageUrls),
-              collectionDetailUrls: Object.keys(collectionDetailUrls)
-            });
-          }
-          
           return {
             id: nftType,
             name: displayName,
@@ -1013,9 +961,6 @@ export function useHomePageState() {
           } as CollectionConfig;
         });
         
-        if (hasScxtGenesis) {
-          console.log('[addGroup] Creating virtual collections from originalCollectionIds for collectionLayouts group:', originalCollectionIds, 'collections:', groupCollections);
-        }
         // assignedには使用しない（collectionLayoutsのコレクションは除外）
       } else {
         // イベントNFTグループの場合: 既存の挙動を維持
@@ -1025,14 +970,7 @@ export function useHomePageState() {
           }
         });
         
-        if (hasScxtGenesis) {
-          console.log('[addGroup] Canonical IDs:', canonicalIds, 'collectionMap has:', collectionIds.map(id => ({ id, has: collectionMap.has(id) })));
-        }
-        
         if (canonicalIds.length === 0) {
-          if (hasScxtGenesis) {
-            console.warn('[addGroup] No canonical IDs found for SCXT Genesis group:', groupId, title);
-          }
           return;
         }
         
@@ -1049,14 +987,6 @@ export function useHomePageState() {
         // イベントNFTを除外するため、eventNFTsのobjectIdのSetを作成
         const eventNFTIds = new Set(eventNFTs.map(nft => nft.objectId));
         const originalIdsSet = new Set(originalCollectionIds);
-        
-        if (hasScxtGenesis) {
-          console.log('[addGroup] Filtering NFTs for SCXT Genesis:', {
-            originalIdsSet: Array.from(originalIdsSet),
-            allOwnedNFTsCount: allOwnedNFTs.length,
-            eventNFTsCount: eventNFTs.length
-          });
-        }
         
         groupNFTs = allOwnedNFTs.filter(nft => {
           if (!nft.type) return false;
@@ -1076,22 +1006,9 @@ export function useHomePageState() {
               }
             }
           }
-          
-          if (hasScxtGenesis && nft.type?.includes('scxt_genesis')) {
-            console.log('[addGroup] SCXT Genesis NFT check:', {
-              nftType: nft.type,
-              matches,
-              inOriginalIdsSet: originalIdsSet.has(nft.type),
-              originalCollectionIds: originalCollectionIds,
-              isKioskOwned: isKioskOwned(nft.owner)
-            });
-          }
           return matches;
         });
         
-        if (hasScxtGenesis) {
-          console.log('[addGroup] Filtered NFTs count:', groupNFTs.length, 'SCXT Genesis NFTs:', groupNFTs.filter(nft => nft.type?.includes('scxt_genesis')).length);
-        }
       } else {
         // イベントNFTグループの場合: 既存の挙動を維持
         groupNFTs = canonicalIds.flatMap(id => nftsByCollection.get(id) ?? []);
@@ -1117,16 +1034,8 @@ export function useHomePageState() {
 
     // normalizedCollectionLayoutsを使用（参照が変わる可能性があるが、内容が同じ場合は問題ない）
     normalizedCollectionLayouts.forEach(layout => {
-      console.log('[collectionGroups] Processing layout:', {
-        id: layout.id,
-        title: layout.title,
-        collectionIds: layout.collectionIds,
-        originalCollectionIds: layout.originalCollectionIds
-      });
-      
       // originalCollectionIdsを使用（仮想コレクションを作成しない）
       if (layout.originalCollectionIds.length === 0) {
-        console.warn('[collectionGroups] Layout has no originalCollectionIds, skipping:', layout.id, layout.title);
         return;
       }
       
@@ -1134,15 +1043,10 @@ export function useHomePageState() {
       // 常に元のNFTタイプをそのまま使用（バックエンドのコレクション登録は無視）
       // これはNFTタイプとして直接使用される
       const processedIds = layout.originalCollectionIds.map(id => {
-        const isScxtGenesis = id?.includes('scxt_genesis');
-        if (isScxtGenesis) {
-          console.log('[collectionGroups] Using original ID as NFT type (ignoring rawCollections):', id);
-        }
         return id;
       });
       
       if (processedIds.length === 0) {
-        console.warn('[collectionGroups] Layout has no processed IDs, skipping:', layout.id, layout.title);
         return;
       }
       
@@ -1427,13 +1331,13 @@ export function useHomePageState() {
     nonEventNFTs,
     ownedTabNFTs,
     onchainCounts,
-    activityStats,
     displaySettings: {
       ...safeDisplaySettings,
       enabledCollections: normalizedEnabledCollections,
       collectionDisplayNames: normalizedCollectionNames,
       collectionLayouts: normalizedCollectionLayouts
     },
+    hasSelectionFilters,
     hasDisplaySettings,
     includeKiosk,
     collectionLayoutGroups,

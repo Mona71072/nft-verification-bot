@@ -41,7 +41,7 @@ app.use((req, res, next) => {
 });
 
 function getSuiClient() {
-  const net = (process.env.SUI_NETWORK || 'mainnet') as 'mainnet' | 'testnet' | 'devnet';
+    const net = (process.env.SUI_NETWORK || 'mainnet') as 'mainnet' | 'testnet' | 'devnet';
   return new SuiClient({ url: getFullnodeUrl(net) });
 }
 
@@ -612,13 +612,13 @@ app.post('/api/mint', async (req, res) => {
     tx.setGasBudget(gasBudget);
 
     const result = await client.signAndExecuteTransaction({ 
-      signer: kp, 
-      transaction: tx, 
-      options: { 
-        showEffects: true,
+        signer: kp, 
+        transaction: tx, 
+        options: { 
+          showEffects: true,
         showEvents: true,
         showObjectChanges: true
-      }
+        }
     });
 
     return res.json({ success: true, txDigest: result.digest });

@@ -142,13 +142,6 @@ export function useUpdateDisplaySettings() {
   
   return useMutation({
     mutationFn: async (settings: DisplaySettings): Promise<DisplaySettings> => {
-      console.log('[useUpdateDisplaySettings] Sending request:', {
-        imageUrlsKeys: Object.keys(settings.collectionImageUrls || {}),
-        imageUrls: settings.collectionImageUrls,
-        detailUrlsKeys: Object.keys(settings.collectionDetailUrls || {}),
-        detailUrls: settings.collectionDetailUrls,
-      });
-      
       const response = await fetch(`${API_BASE_URL}/api/admin/display-settings`, {
         method: 'PUT',
         headers: getAuthHeaders(),
@@ -157,22 +150,12 @@ export function useUpdateDisplaySettings() {
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        console.error('[useUpdateDisplaySettings] Request failed:', errorData);
         throw new Error(errorData.error || 'Failed to save display settings');
       }
       
       const data: DisplaySettingsResponse = await response.json();
       
-      console.log('[useUpdateDisplaySettings] Response received:', {
-        success: data.success,
-        imageUrlsKeys: data.data ? Object.keys(data.data.collectionImageUrls || {}) : 'no data',
-        imageUrls: data.data?.collectionImageUrls,
-        detailUrlsKeys: data.data ? Object.keys(data.data.collectionDetailUrls || {}) : 'no data',
-        detailUrls: data.data?.collectionDetailUrls,
-      });
-      
       if (!data.success || !data.data) {
-        console.error('[useUpdateDisplaySettings] Invalid response:', data);
         throw new Error(data.error || 'Failed to save display settings');
       }
       

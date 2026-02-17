@@ -30,14 +30,18 @@ export function useCollections() {
     queryKey: queryKeys.collections.lists(),
     queryFn: async (): Promise<NFTCollection[]> => {
       try {
-        // ロール管理のコレクション一覧を取得
-        const collectionsRes = await fetch(`${API_BASE_URL}/api/collections`);
-        const collectionsData: CollectionsResponse = await collectionsRes.json();
+        // ロール管理とミント管理のコレクション一覧を並列取得（リクエスト時間短縮）
+        const [collectionsRes, mintCollectionsRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/api/collections`),
+          fetch(`${API_BASE_URL}/api/mint-collections`)
+        ]);
+        
+        const [collectionsData, mintCollectionsData] = await Promise.all([
+          collectionsRes.json() as Promise<CollectionsResponse>,
+          mintCollectionsRes.json() as Promise<CollectionsResponse>
+        ]);
+        
         const roleCollections = collectionsData.success && collectionsData.data ? collectionsData.data : [];
-
-        // ミント管理のコレクション一覧を取得
-        const mintCollectionsRes = await fetch(`${API_BASE_URL}/api/mint-collections`);
-        const mintCollectionsData: CollectionsResponse = await mintCollectionsRes.json();
         const mintCollections = mintCollectionsData.success && mintCollectionsData.data ? mintCollectionsData.data : [];
 
         // 統合処理
@@ -70,7 +74,7 @@ export function useCollections() {
 
         return allCollections;
       } catch (error) {
-        throw new Error('コレクションの取得に失敗しました');
+        throw error instanceof Error ? error : new Error('コレクションの取得に失敗しました');
       }
     },
     // コレクションは頻繁に変更されないため、長めのstaleTimeを設定（リクエスト削減のため延長）

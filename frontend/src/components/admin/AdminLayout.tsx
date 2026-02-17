@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { ChevronDown, ChevronRight, Menu, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronLeft, LayoutDashboard, Shield, Sparkles, Menu, X } from 'lucide-react';
 import { queryClient } from '../../lib/query-client';
 import { useResponsive, getResponsiveValue } from '../../hooks/useResponsive';
 
 interface MenuItem {
   label: string;
   href: string;
+  icon?: React.ReactNode;
   children?: MenuItem[];
 }
 
@@ -19,23 +20,23 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verificat
 export function AdminLayout({ children, currentPath }: AdminLayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['roles', 'mint']));
-  
-  // レスポンシブ対応
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['ロール管理', 'ミント管理']));
+
   let deviceType: 'mobile' | 'tablet' | 'desktop' = 'desktop';
   try {
     const responsive = useResponsive();
     deviceType = responsive.deviceType;
-  } catch (error) {
+  } catch {
+    // fallback
   }
 
-  // 主要データの事前フェッチ（キャッシュが存在する場合はスキップ）
+  const isMobile = deviceType === 'mobile';
+  const isTabletOrMobile = deviceType === 'mobile' || deviceType === 'tablet';
+
   useEffect(() => {
     const prefetchData = async () => {
       try {
-        // コレクションデータの事前フェッチ（キャッシュチェック付き）
-        const collectionsCache = queryClient.getQueryData(['collections']);
-        if (!collectionsCache) {
+        if (!queryClient.getQueryData(['collections'])) {
           await queryClient.prefetchQuery({
             queryKey: ['collections'],
             queryFn: async () => {
@@ -43,13 +44,10 @@ export function AdminLayout({ children, currentPath }: AdminLayoutProps) {
               const data = await res.json();
               return data.success ? data.data || [] : [];
             },
-            staleTime: 15 * 60 * 1000, // リクエスト削減のため延長（5分→15分）
+            staleTime: 15 * 60 * 1000,
           });
         }
-
-        // イベントデータの事前フェッチ（キャッシュチェック付き）
-        const eventsCache = queryClient.getQueryData(['events']);
-        if (!eventsCache) {
+        if (!queryClient.getQueryData(['events'])) {
           await queryClient.prefetchQuery({
             queryKey: ['events'],
             queryFn: async () => {
@@ -57,13 +55,10 @@ export function AdminLayout({ children, currentPath }: AdminLayoutProps) {
               const data = await res.json();
               return data.success ? data.data || [] : [];
             },
-            staleTime: 15 * 60 * 1000, // リクエスト削減のため延長
+            staleTime: 15 * 60 * 1000,
           });
         }
-
-        // ミントコレクションデータの事前フェッチ（キャッシュチェック付き）
-        const mintCollectionsCache = queryClient.getQueryData(['mint-collections']);
-        if (!mintCollectionsCache) {
+        if (!queryClient.getQueryData(['mint-collections'])) {
           await queryClient.prefetchQuery({
             queryKey: ['mint-collections'],
             queryFn: async () => {
@@ -71,29 +66,31 @@ export function AdminLayout({ children, currentPath }: AdminLayoutProps) {
               const data = await res.json();
               return data.success ? data.data || [] : [];
             },
-            staleTime: 20 * 60 * 1000, // リクエスト削減のため延長（5分→20分）
+            staleTime: 20 * 60 * 1000,
           });
         }
-      } catch (error) {
+      } catch {
+        // silent
       }
     };
 
-    // アイドル時に実行（遅延を増やす）
     if ('requestIdleCallback' in window) {
-      requestIdleCallback(prefetchData, { timeout: 5000 }); // タイムアウトを延長
+      requestIdleCallback(prefetchData, { timeout: 5000 });
     } else {
-      setTimeout(prefetchData, 2000); // 遅延を増やす（100ms→2000ms）
+      setTimeout(prefetchData, 2000);
     }
   }, []);
 
   const menuItems: MenuItem[] = [
     {
       label: 'Dashboard',
-      href: '/admin'
+      href: '/admin',
+      icon: <LayoutDashboard size={18} />
     },
     {
       label: 'ロール管理',
       href: '/admin/roles',
+      icon: <Shield size={18} />,
       children: [
         { label: 'コレクション管理', href: '/admin/roles?tab=collections' },
         { label: 'ユーザー管理', href: '/admin/roles?tab=users' },
@@ -104,6 +101,7 @@ export function AdminLayout({ children, currentPath }: AdminLayoutProps) {
     {
       label: 'ミント管理',
       href: '/admin/mint/events',
+      icon: <Sparkles size={18} />,
       children: [
         { label: 'イベント管理', href: '/admin/mint/events' },
         { label: 'ミント履歴', href: '/admin/mint/history' }
@@ -118,106 +116,160 @@ export function AdminLayout({ children, currentPath }: AdminLayoutProps) {
   };
 
   const toggleSection = (label: string) => {
-    const newExpanded = new Set(expandedSections);
-    if (newExpanded.has(label)) {
-      newExpanded.delete(label);
+    const next = new Set(expandedSections);
+    if (next.has(label)) {
+      next.delete(label);
     } else {
-      newExpanded.add(label);
+      next.add(label);
     }
-    setExpandedSections(newExpanded);
+    setExpandedSections(next);
   };
 
   const isActive = (href: string) => {
-    if (href === '/admin') {
-      return currentPath === '/admin';
-    }
-    return currentPath.startsWith(href);
+    if (href === '/admin') return currentPath === '/admin';
+    return currentPath.startsWith(href.split('?')[0]);
   };
+
+  const sidebarWidth = collapsed ? '72px' : '260px';
 
   const sidebarContent = (
     <div style={{
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
-      background: 'white',
+      background: '#ffffff',
       borderRight: '1px solid #e5e7eb'
     }}>
-      <div style={{ 
-        flex: 1, 
-        overflowY: 'auto', 
-        padding: getResponsiveValue('0.75rem', '1rem', '1rem', deviceType)
+      {/* Sidebar header */}
+      <div style={{
+        padding: collapsed ? '1rem 0.5rem' : '1.25rem 1rem',
+        borderBottom: '1px solid #e5e7eb',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: collapsed ? 'center' : 'space-between',
+        minHeight: '56px'
       }}>
-        <nav>
+        {!collapsed && (
+          <span style={{
+            fontSize: '0.9375rem',
+            fontWeight: 700,
+            color: '#111827',
+            letterSpacing: '-0.01em'
+          }}>
+            Admin Panel
+          </span>
+        )}
+        {isTabletOrMobile && (
+          <button
+            onClick={() => setMobileMenuOpen(false)}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '0.25rem',
+              color: '#6b7280',
+              display: 'flex',
+              alignItems: 'center'
+            }}
+          >
+            <X size={20} />
+          </button>
+        )}
+      </div>
+
+      {/* Navigation */}
+      <div style={{
+        flex: 1,
+        overflowY: 'auto',
+        padding: collapsed ? '0.5rem' : '0.75rem'
+      }}>
+        <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.125rem' }}>
           {menuItems.map((item) => (
             <div key={item.label}>
               {item.children ? (
                 <div>
                   <button
-                    onClick={() => toggleSection(item.label)}
+                    onClick={() => {
+                      if (collapsed) {
+                        navigate(item.href);
+                      } else {
+                        toggleSection(item.label);
+                      }
+                    }}
                     style={{
                       width: '100%',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: getResponsiveValue('0.5rem', '0.625rem', '0.75rem', deviceType),
+                      justifyContent: collapsed ? 'center' : 'space-between',
+                      padding: collapsed ? '0.625rem' : '0.625rem 0.75rem',
                       background: 'transparent',
                       border: 'none',
-                      borderRadius: getResponsiveValue('6px', '7px', '8px', deviceType),
+                      borderRadius: '8px',
                       cursor: 'pointer',
-                      fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType),
+                      fontSize: '0.8125rem',
                       fontWeight: 600,
                       color: '#374151',
-                      transition: 'all 0.2s',
-                      marginBottom: getResponsiveValue('0.125rem', '0.1875rem', '0.25rem', deviceType)
+                      transition: 'background 0.15s ease',
+                      marginBottom: '0.125rem'
                     }}
-                    onMouseEnter={(e) => !collapsed && (e.currentTarget.style.background = '#f9fafb')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    title={collapsed ? item.label : undefined}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = '#f3f4f6'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                   >
-                    <div style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: getResponsiveValue('0.5rem', '0.625rem', '0.75rem', deviceType)
-                    }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                      {item.icon && (
+                        <span style={{ color: '#6b7280', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                          {item.icon}
+                        </span>
+                      )}
                       {!collapsed && <span>{item.label}</span>}
                     </div>
                     {!collapsed && (
-                      expandedSections.has(item.label) 
-                        ? <ChevronDown className="w-4 h-4" />
-                        : <ChevronRight className="w-4 h-4" />
+                      expandedSections.has(item.label)
+                        ? <ChevronDown size={16} style={{ color: '#9ca3af' }} />
+                        : <ChevronRight size={16} style={{ color: '#9ca3af' }} />
                     )}
                   </button>
                   {expandedSections.has(item.label) && !collapsed && (
-                    <div style={{ 
-                      marginLeft: getResponsiveValue('0.75rem', '0.875rem', '1rem', deviceType), 
-                      marginBottom: getResponsiveValue('0.375rem', '0.4375rem', '0.5rem', deviceType)
+                    <div style={{
+                      marginLeft: '1rem',
+                      marginBottom: '0.25rem',
+                      borderLeft: '2px solid #e5e7eb',
+                      paddingLeft: '0.5rem'
                     }}>
-                      {item.children.map((child) => (
-                        <button
-                          key={child.href}
-                          onClick={() => navigate(child.href)}
-                          style={{
-                            width: '100%',
-                            display: 'flex',
-                            alignItems: 'center',
-                            padding: getResponsiveValue('0.5rem 0.625rem', '0.5625rem 0.6875rem', '0.625rem 0.75rem', deviceType),
-                            background: isActive(child.href) ? '#eff6ff' : 'transparent',
-                            border: 'none',
-                            borderLeft: isActive(child.href) ? '3px solid #3b82f6' : '3px solid transparent',
-                            borderRadius: getResponsiveValue('4px', '5px', '6px', deviceType),
-                            cursor: 'pointer',
-                            fontSize: getResponsiveValue('0.6875rem', '0.75rem', '0.8125rem', deviceType),
-                            fontWeight: isActive(child.href) ? 600 : 500,
-                            color: isActive(child.href) ? '#1e40af' : '#6b7280',
-                            transition: 'all 0.2s',
-                            textAlign: 'left',
-                            marginBottom: '0.125rem'
-                          }}
-                          onMouseEnter={(e) => !isActive(child.href) && (e.currentTarget.style.background = '#f9fafb')}
-                          onMouseLeave={(e) => !isActive(child.href) && (e.currentTarget.style.background = 'transparent')}
-                        >
-                          {child.label}
-                        </button>
-                      ))}
+                      {item.children.map((child) => {
+                        const active = isActive(child.href);
+                        return (
+                          <button
+                            key={child.href}
+                            onClick={() => navigate(child.href)}
+                            style={{
+                              width: '100%',
+                              display: 'flex',
+                              alignItems: 'center',
+                              padding: '0.5rem 0.75rem',
+                              background: active ? '#eff6ff' : 'transparent',
+                              border: 'none',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              fontSize: '0.8125rem',
+                              fontWeight: active ? 600 : 400,
+                              color: active ? '#1d4ed8' : '#6b7280',
+                              transition: 'all 0.15s ease',
+                              textAlign: 'left',
+                              marginBottom: '0.125rem'
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!active) e.currentTarget.style.background = '#f9fafb';
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!active) e.currentTarget.style.background = 'transparent';
+                            }}
+                          >
+                            {child.label}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -228,22 +280,37 @@ export function AdminLayout({ children, currentPath }: AdminLayoutProps) {
                     width: '100%',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '0.75rem',
-                    padding: '0.75rem',
+                    justifyContent: collapsed ? 'center' : 'flex-start',
+                    gap: '0.625rem',
+                    padding: collapsed ? '0.625rem' : '0.625rem 0.75rem',
                     background: isActive(item.href) ? '#eff6ff' : 'transparent',
                     border: 'none',
-                    borderLeft: isActive(item.href) ? '3px solid #3b82f6' : '3px solid transparent',
                     borderRadius: '8px',
                     cursor: 'pointer',
-                    fontSize: '0.875rem',
+                    fontSize: '0.8125rem',
                     fontWeight: isActive(item.href) ? 600 : 500,
-                    color: isActive(item.href) ? '#1e40af' : '#374151',
-                    transition: 'all 0.2s',
-                    marginBottom: '0.25rem'
+                    color: isActive(item.href) ? '#1d4ed8' : '#374151',
+                    transition: 'all 0.15s ease',
+                    marginBottom: '0.125rem'
                   }}
-                  onMouseEnter={(e) => !isActive(item.href) && (e.currentTarget.style.background = '#f9fafb')}
-                  onMouseLeave={(e) => !isActive(item.href) && (e.currentTarget.style.background = 'transparent')}
+                  title={collapsed ? item.label : undefined}
+                  onMouseEnter={(e) => {
+                    if (!isActive(item.href)) e.currentTarget.style.background = '#f3f4f6';
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isActive(item.href)) e.currentTarget.style.background = isActive(item.href) ? '#eff6ff' : 'transparent';
+                  }}
                 >
+                  {item.icon && (
+                    <span style={{
+                      color: isActive(item.href) ? '#1d4ed8' : '#6b7280',
+                      display: 'flex',
+                      alignItems: 'center',
+                      flexShrink: 0
+                    }}>
+                      {item.icon}
+                    </span>
+                  )}
                   {!collapsed && <span>{item.label}</span>}
                 </button>
               )}
@@ -252,117 +319,142 @@ export function AdminLayout({ children, currentPath }: AdminLayoutProps) {
         </nav>
       </div>
 
-      {/* 折りたたみボタン（デスクトップのみ） */}
-      <div style={{ 
-        padding: getResponsiveValue('0.75rem', '0.875rem', '1rem', deviceType),
-        borderTop: '1px solid #e5e7eb',
-        display: window.innerWidth < 768 ? 'none' : 'block'
-      }}>
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          style={{
-            width: '100%',
-            padding: getResponsiveValue('0.375rem', '0.4375rem', '0.5rem', deviceType),
-            background: '#f9fafb',
-            border: '1px solid #e5e7eb',
-            borderRadius: getResponsiveValue('4px', '5px', '6px', deviceType),
-            cursor: 'pointer',
-            fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType),
-            fontWeight: 500,
-            color: '#6b7280',
-            transition: 'all 0.2s'
-          }}
-        >
-          {collapsed ? '→' : '←'}
-        </button>
-      </div>
+      {/* Collapse toggle - desktop only */}
+      {!isTabletOrMobile && (
+        <div style={{
+          padding: '0.75rem',
+          borderTop: '1px solid #e5e7eb'
+        }}>
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            style={{
+              width: '100%',
+              padding: '0.5rem',
+              background: '#f9fafb',
+              border: '1px solid #e5e7eb',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '0.8125rem',
+              fontWeight: 500,
+              color: '#6b7280',
+              transition: 'all 0.15s ease',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.5rem'
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = '#f3f4f6'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = '#f9fafb'; }}
+          >
+            {collapsed ? (
+              <ChevronRight size={16} />
+            ) : (
+              <>
+                <ChevronLeft size={16} />
+                <span>折りたたむ</span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
     </div>
   );
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#f9fafb' }}>
-      {/* モバイルメニューオーバーレイ */}
-      {mobileMenuOpen && (
+      {/* Mobile overlay */}
+      {mobileMenuOpen && isTabletOrMobile && (
         <div
           onClick={() => setMobileMenuOpen(false)}
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0, 0, 0, 0.5)',
-            zIndex: 999,
-            display: window.innerWidth >= 768 ? 'none' : 'block'
+            background: 'rgba(0, 0, 0, 0.4)',
+            zIndex: 40,
+            transition: 'opacity 0.3s ease'
           }}
         />
       )}
 
-      {/* サイドバー（デスクトップ） */}
-      <aside style={{
-        width: collapsed ? getResponsiveValue('60px', '70px', '80px', deviceType) : getResponsiveValue('240px', '260px', '280px', deviceType),
-        flexShrink: 0,
-        transition: 'width 0.3s ease',
-        height: '100vh',
-        position: 'sticky',
-        top: 0,
-        display: window.innerWidth < 768 ? 'none' : 'block'
-      }}>
-        {sidebarContent}
-      </aside>
-
-      {/* サイドバー（モバイル） */}
-      <aside style={{
-        position: 'fixed',
-        left: mobileMenuOpen ? 0 : '-100%',
-        top: 0,
-        width: getResponsiveValue('240px', '260px', '280px', deviceType),
-        height: '100vh',
-        zIndex: 1000,
-        transition: 'left 0.3s ease',
-        display: window.innerWidth >= 768 ? 'none' : 'block'
-      }}>
-        {sidebarContent}
-      </aside>
-
-      {/* メインコンテンツ */}
-      <main style={{ flex: 1, overflow: 'auto' }}>
-        {/* モバイルヘッダー */}
-        <div style={{
-          display: window.innerWidth >= 768 ? 'none' : 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: getResponsiveValue('0.75rem', '0.875rem', '1rem', deviceType),
-          background: 'white',
-          borderBottom: '1px solid #e5e7eb',
+      {/* Desktop sidebar */}
+      {!isTabletOrMobile && (
+        <aside style={{
+          width: sidebarWidth,
+          flexShrink: 0,
+          transition: 'width 0.2s ease',
+          height: '100vh',
           position: 'sticky',
-          top: 0,
-          zIndex: 998
+          top: 0
         }}>
-          <h2 style={{ 
-            margin: 0, 
-            fontSize: getResponsiveValue('1rem', '1.0625rem', '1.125rem', deviceType), 
-            fontWeight: 700, 
-            color: '#111827' 
-          }}>
-            管理パネル
-          </h2>
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '0.5rem',
-              color: '#374151'
-            }}
-          >
-            {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-          </button>
-        </div>
+          {sidebarContent}
+        </aside>
+      )}
 
-        <div style={{ padding: '2rem' }}>
+      {/* Mobile sidebar */}
+      {isTabletOrMobile && (
+        <aside style={{
+          position: 'fixed',
+          left: mobileMenuOpen ? 0 : '-280px',
+          top: 0,
+          width: '260px',
+          height: '100vh',
+          zIndex: 50,
+          transition: 'left 0.25s ease',
+          boxShadow: mobileMenuOpen ? '4px 0 12px rgba(0, 0, 0, 0.1)' : 'none'
+        }}>
+          {sidebarContent}
+        </aside>
+      )}
+
+      {/* Main content */}
+      <main style={{ flex: 1, minWidth: 0, overflow: 'auto' }}>
+        {/* Mobile header */}
+        {isTabletOrMobile && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: isMobile ? '0.75rem 1rem' : '0.875rem 1.25rem',
+            background: 'white',
+            borderBottom: '1px solid #e5e7eb',
+            position: 'sticky',
+            top: 0,
+            zIndex: 30
+          }}>
+            <h2 style={{
+              margin: 0,
+              fontSize: isMobile ? '1rem' : '1.0625rem',
+              fontWeight: 700,
+              color: '#111827'
+            }}>
+              管理パネル
+            </h2>
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-label={mobileMenuOpen ? 'メニューを閉じる' : 'メニューを開く'}
+              aria-expanded={mobileMenuOpen}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '0.5rem',
+                color: '#374151',
+                display: 'flex',
+                alignItems: 'center'
+              }}
+            >
+              {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+            </button>
+          </div>
+        )}
+
+        <div style={{
+          padding: getResponsiveValue('1rem', '1.5rem', '2rem', deviceType),
+          maxWidth: '1400px'
+        }}>
           {children}
         </div>
       </main>
     </div>
   );
 }
-

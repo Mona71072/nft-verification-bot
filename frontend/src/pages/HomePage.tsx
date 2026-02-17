@@ -1,16 +1,30 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useRef } from 'react';
 import { NFTDetailDrawer } from '../features/owned/NFTDetailDrawer';
-import { useHomePageState } from '../hooks/useHomePageState';
+import { useHomePageState, type HomeTabType } from '../hooks/useHomePageState';
 import { HomePageHeader } from '../components/home/HomePageHeader';
 import { HomeTabNavigation } from '../components/home/HomeTabNavigation';
 import { UnifiedLoadingSpinner } from '../components/ui/UnifiedLoadingSpinner';
 
 // タブコンポーネントを遅延ロード
-const AllTab = lazy(() => import('../components/home/tabs/AllTab').then(m => ({ default: m.AllTab })));
-const OwnedTab = lazy(() => import('../components/home/tabs/OwnedTab').then(m => ({ default: m.OwnedTab })));
-const CalendarTab = lazy(() => import('../components/home/tabs/CalendarTab').then(m => ({ default: m.CalendarTab })));
-const ActivityTab = lazy(() => import('../components/home/tabs/ActivityTab').then(m => ({ default: m.ActivityTab })));
-const DashboardTab = lazy(() => import('../components/home/tabs/DashboardTab').then(m => ({ default: m.DashboardTab })));
+const loadAllTab = () => import('../components/home/tabs/AllTab').then(m => ({ default: m.AllTab }));
+const loadOwnedTab = () => import('../components/home/tabs/OwnedTab').then(m => ({ default: m.OwnedTab }));
+const loadCalendarTab = () => import('../components/home/tabs/CalendarTab').then(m => ({ default: m.CalendarTab }));
+const loadActivityTab = () => import('../components/home/tabs/ActivityTab').then(m => ({ default: m.ActivityTab }));
+const loadDashboardTab = () => import('../components/home/tabs/DashboardTab').then(m => ({ default: m.DashboardTab }));
+
+const AllTab = lazy(loadAllTab);
+const OwnedTab = lazy(loadOwnedTab);
+const CalendarTab = lazy(loadCalendarTab);
+const ActivityTab = lazy(loadActivityTab);
+const DashboardTab = lazy(loadDashboardTab);
+
+const TAB_LOADERS = {
+  all: loadAllTab,
+  owned: loadOwnedTab,
+  calendar: loadCalendarTab,
+  activity: loadActivityTab,
+  dashboard: loadDashboardTab
+} as const;
 
 // タブローディングフォールバック
 const TabFallback = () => (
@@ -76,9 +90,10 @@ const HomePage: React.FC = () => {
     collections,
     events: filteredEvents,
     eventNFTs,
+    nonEventNFTs,
     ownedTabNFTs,
+    hasSelectionFilters,
     onchainCounts,
-    activityStats,
     collectionLayoutGroups,
     eventNFTGroups,
     
@@ -88,13 +103,102 @@ const HomePage: React.FC = () => {
     nftLoading
   } = useHomePageState();
 
-  const renderTabContent = () => {
-    if (loading || hasCriticalErrors) {
-      return null;
+  const prefetchedTabsRef = useRef<Set<HomeTabType>>(new Set(['all']));
+
+  const prefetchTab = useCallback((tab: HomeTabType) => {
+    if (prefetchedTabsRef.current.has(tab)) {
+      return;
     }
 
+    prefetchedTabsRef.current.add(tab);
+
+    const loader = TAB_LOADERS[tab];
+    if (loader) {
+      loader().catch(() => {
+        prefetchedTabsRef.current.delete(tab);
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    prefetchTab(activeTab);
+  }, [activeTab, prefetchTab]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const secondaryTabs: HomeTabType[] = ['dashboard', 'owned', 'calendar', 'activity'];
+
+    const runPrefetch = () => {
+      secondaryTabs.forEach(prefetchTab);
+    };
+
+    const win = window as Window & {
+      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+
+    let idleId: number | undefined;
+    let timeoutId: number | undefined;
+
+    if (typeof win.requestIdleCallback === 'function') {
+      idleId = win.requestIdleCallback(runPrefetch, { timeout: 2000 });
+    } else {
+      timeoutId = window.setTimeout(runPrefetch, 1200);
+    }
+
+    return () => {
+      if (idleId !== undefined && typeof win.cancelIdleCallback === 'function') {
+        win.cancelIdleCallback(idleId);
+      }
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, [prefetchTab]);
+
+  const ownedNFTsForDisplay =
+    ownedTabNFTs.length === 0 &&
+    nonEventNFTs.length > 0 &&
+    !hasSelectionFilters &&
+    !nftLoading
+      ? nonEventNFTs
+      : ownedTabNFTs;
+
+  const renderTabContent = () => {
     const panelId = `${activeTab}-panel`;
     const tabId = `${activeTab}-tab`;
+
+    if (loading) {
+      return (
+        <div role="tabpanel" id={panelId} aria-labelledby={tabId} tabIndex={0}>
+          <TabFallback />
+        </div>
+      );
+    }
+
+    if (hasCriticalErrors) {
+      return (
+        <div role="tabpanel" id={panelId} aria-labelledby={tabId} tabIndex={0}>
+          <div
+            style={{
+              padding: '1.5rem',
+              borderRadius: '12px',
+              border: '1px solid rgba(239, 68, 68, 0.4)',
+              background: 'linear-gradient(135deg, rgba(248, 113, 113, 0.1) 0%, rgba(239, 68, 68, 0.15) 100%)',
+              color: '#fecaca',
+              textAlign: 'center',
+              fontWeight: 500,
+            }}
+            role="alert"
+          >
+            データの読み込みに失敗しました。ページを再読み込みして再試行してください。
+          </div>
+        </div>
+      );
+    }
 
     switch (activeTab) {
       case 'all':
@@ -130,7 +234,7 @@ const HomePage: React.FC = () => {
                <OwnedTab
                  deviceType={deviceType}
                  nftLoading={nftLoading}
-                 allOwnedNFTs={ownedTabNFTs}
+                allOwnedNFTs={ownedNFTsForDisplay}
                  collections={collections}
                  setSelectedNFT={setSelectedNFT}
                  setIsDrawerOpen={setIsDrawerOpen}
@@ -173,11 +277,12 @@ const HomePage: React.FC = () => {
          return (
            <div role="tabpanel" id={panelId} aria-labelledby={tabId} tabIndex={0}>
              <Suspense fallback={<TabFallback />}>
-               <DashboardTab
-                 deviceType={deviceType}
-                 activityStats={activityStats}
-                 allOwnedNFTs={ownedTabNFTs}
-               />
+              <DashboardTab
+                deviceType={deviceType}
+                collections={collections}
+                events={filteredEvents}
+                onchainCounts={onchainCounts instanceof Map ? onchainCounts : new Map<string, number>()}
+              />
              </Suspense>
            </div>
          );
@@ -216,7 +321,11 @@ const HomePage: React.FC = () => {
          {/* タブナビゲーション */}
          <HomeTabNavigation
            activeTab={activeTab}
-           onTabChange={setActiveTab}
+          onTabChange={(tab) => {
+            prefetchTab(tab);
+            setActiveTab(tab);
+          }}
+          onTabPrefetch={prefetchTab}
            deviceType={deviceType}
          />
 

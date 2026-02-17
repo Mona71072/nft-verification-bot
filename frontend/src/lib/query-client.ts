@@ -87,7 +87,24 @@ export const queryKeys = {
   // NFT関連
   nfts: {
     all: ['nfts'] as const,
-    owned: (address: string) => [...queryKeys.nfts.all, 'owned', address] as const,
+    owned: (
+      address: string,
+      options: {
+        network?: string;
+        collectionTypes?: string[];
+      } = {}
+    ) =>
+      [
+        ...queryKeys.nfts.all,
+        'owned',
+        {
+          address,
+          network: options.network ?? 'mainnet',
+          collectionTypes: Array.isArray(options.collectionTypes)
+            ? [...options.collectionTypes]
+            : [],
+        },
+      ] as const,
     collectionCount: (collectionId: string) => [...queryKeys.nfts.all, 'count', collectionId] as const,
   },
   

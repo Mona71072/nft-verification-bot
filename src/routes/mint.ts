@@ -22,6 +22,7 @@ interface Env {
   MINTED_STORE?: KVNamespace;
   MINT_SPONSOR_API_URL?: string;
   DISCORD_BOT_API_URL?: string;
+  ADMIN_API_KEY?: string;
   ctx?: ExecutionContext;
   [key: string]: any;
 }

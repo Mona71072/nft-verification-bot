@@ -24,6 +24,7 @@ declare global {
 // 新しいモジュール化されたルート
 import walrusRoutes from './routes/walrus';
 import mintRoutes from './routes/mint';
+import { logDebug } from './utils/logger';
 
 // Cloudflare Workers環境の型定義
 interface Env {
@@ -40,10 +41,28 @@ interface Env {
   WALRUS_AGGREGATOR_BASE?: string;
   WALRUS_DEFAULT_EPOCHS?: string;
   WALRUS_DEFAULT_PERMANENT?: string;
+  ADMIN_API_KEY?: string;
   [key: string]: any;
 }
 
 const app = new Hono<{ Bindings: Env }>();
+
+function getSuiEndpoints(env: Env) {
+  const suiNet = env.SUI_NETWORK || 'mainnet';
+  const graphqlEndpoint = suiNet === 'testnet'
+    ? 'https://sui-testnet.mystenlabs.com/graphql'
+    : suiNet === 'devnet'
+      ? 'https://sui-devnet.mystenlabs.com/graphql'
+      : 'https://sui-mainnet.mystenlabs.com/graphql';
+
+  const fullnode = suiNet === 'testnet'
+    ? 'https://fullnode.testnet.sui.io:443'
+    : suiNet === 'devnet'
+      ? 'https://fullnode.devnet.sui.io:443'
+      : 'https://fullnode.mainnet.sui.io:443';
+
+  return { suiNet, graphqlEndpoint, fullnode };
+}
 
 // カスタムCORSミドルウェア
 app.use('*', async (c, next) => {
@@ -107,16 +126,18 @@ app.get('/api/events', async (c) => {
     const listStr = await store.get('events');
     const list = listStr ? JSON.parse(listStr) : [];
     
-    // 各イベントにmintedCountを追加
+    // 各イベントにmintedCountを並列取得で追加（パフォーマンス最適化）
     const mintedStore = c.env.MINTED_STORE as KVNamespace | undefined;
-    if (mintedStore && Array.isArray(list)) {
-      for (const event of list) {
+    if (mintedStore && Array.isArray(list) && list.length > 0) {
+      const mintedCountPromises = list.map(async (event: any) => {
         if (event && event.id) {
           const mintedCountKey = `minted_count:${event.id}`;
           const mintedCountStr = await mintedStore.get(mintedCountKey);
           event.mintedCount = mintedCountStr ? Number(mintedCountStr) : 0;
         }
-      }
+        return event;
+      });
+      await Promise.all(mintedCountPromises);
     }
     
     return c.json({ success: true, data: list });
@@ -383,6 +404,108 @@ async function resolveFinalOwnerByObjectId(objectId: string, fullnode: string): 
   }
   
   return null;
+}
+
+async function hasOwnedNftForCollection(
+  address: string,
+  collectionType: string,
+  fullnode: string,
+  graphqlEndpoint: string
+): Promise<boolean> {
+  const normalizedAddress = address?.trim().toLowerCase();
+  if (!normalizedAddress || typeof collectionType !== 'string' || !collectionType.includes('::')) {
+    return false;
+  }
+
+  // 直接所有チェック
+  try {
+    const rpcResponse = await fetch(fullnode, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'suix_getOwnedObjects',
+        params: [
+          normalizedAddress,
+          {
+            filter: { StructType: collectionType },
+            options: {
+              showType: false,
+              showOwner: false,
+              showContent: false,
+              showDisplay: false
+            }
+          },
+          null,
+          1
+        ]
+      })
+    });
+
+    const rpcResult = await rpcResponse.json() as any;
+    if (rpcResult?.result?.data?.length > 0) {
+      return true;
+    }
+  } catch (error) {
+    // 続行してフォールバック
+  }
+
+  // Kiosk等の間接所有チェック（GraphQL）
+  try {
+    const query = `
+      query GetObjects($type: String!) {
+        objects(filter: { type: $type }, first: 50) {
+          nodes {
+            owner {
+              __typename
+              ... on AddressOwner {
+                owner {
+                  address
+                }
+              }
+              ... on Parent {
+                parent {
+                  address
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const response = await fetch(graphqlEndpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query,
+        variables: { type: collectionType }
+      })
+    });
+
+    const result = await response.json() as any;
+    const nodes = result?.data?.objects?.nodes || [];
+
+    for (const node of nodes) {
+      const directOwner = node?.owner?.owner?.address;
+      if (directOwner && directOwner.toLowerCase() === normalizedAddress) {
+        return true;
+      }
+
+      const kioskId = node?.owner?.parent?.address;
+      if (kioskId) {
+        const finalOwner = await resolveFinalOwner({ ObjectOwner: kioskId }, fullnode);
+        if (finalOwner && finalOwner.toLowerCase() === normalizedAddress) {
+          return true;
+        }
+      }
+    }
+  } catch (error) {
+    // 失敗した場合は false を返す
+  }
+
+  return false;
 }
 
 // Displayテンプレート文字列をcontent.fieldsの実際の値で置換する関数
@@ -761,6 +884,15 @@ app.get('/api/owned-nfts/:address', async (c) => {
 // 管理者認証チェック（KVストアから取得）
 async function isAdmin(c: any, address: string): Promise<boolean> {
   try {
+    // APIキー検証（環境変数に設定されている場合のみ必須）
+    const adminApiKey = c.env.ADMIN_API_KEY;
+    if (adminApiKey) {
+      const token = c.req.header('X-Admin-Token');
+      if (!token || token !== adminApiKey) {
+        return false;
+      }
+    }
+
     // アドレスを正規化（小文字、トリム）
     const normalizedAddress = address?.trim().toLowerCase();
     if (!normalizedAddress) return false;
@@ -808,6 +940,11 @@ app.get('/api/admin/check/:address', async (c) => {
 // 管理者アドレス設定API（開発用）
 app.post('/api/admin/set-addresses', async (c) => {
   try {
+    const admin = c.req.header('X-Admin-Address');
+    if (!admin || !(await isAdmin(c, admin))) {
+      return c.json({ success: false, error: 'forbidden' }, 403);
+    }
+
     const { addresses } = await c.req.json();
     const store = c.env.COLLECTION_STORE as KVNamespace | undefined;
     
@@ -1115,13 +1252,11 @@ app.put('/api/admin/display-settings', async (c) => {
 
     const { enabledCollections, enabledEvents, customNFTTypes, includeKiosk, collectionDisplayNames, collectionImageUrls, collectionDetailUrls, collectionLayouts, collectionInfo } = await c.req.json();
 
-    // デバッグログ
-    console.log('[PUT /api/admin/display-settings] Received:', {
+    // デバッグログ（本番環境では無効）
+    logDebug('[PUT /api/admin/display-settings] Received:', {
       enabledCollections: Array.isArray(enabledCollections) ? enabledCollections.length : 'not array',
       imageUrlsKeys: collectionImageUrls && typeof collectionImageUrls === 'object' ? Object.keys(collectionImageUrls) : 'invalid',
-      imageUrls: collectionImageUrls,
       detailUrlsKeys: collectionDetailUrls && typeof collectionDetailUrls === 'object' ? Object.keys(collectionDetailUrls) : 'invalid',
-      detailUrls: collectionDetailUrls,
     });
 
     // バリデーション
@@ -1149,16 +1284,14 @@ app.put('/api/admin/display-settings', async (c) => {
       collectionInfo: typeof collectionInfo === 'object' && collectionInfo !== null ? collectionInfo : {}
     };
 
-    console.log('[PUT /api/admin/display-settings] Saving to KV:', {
+    logDebug('[PUT /api/admin/display-settings] Saving to KV:', {
       imageUrlsKeys: Object.keys(settings.collectionImageUrls),
-      imageUrls: settings.collectionImageUrls,
       detailUrlsKeys: Object.keys(settings.collectionDetailUrls),
-      detailUrls: settings.collectionDetailUrls,
     });
 
     await store.put('display_settings', JSON.stringify(settings));
     
-    console.log('[PUT /api/admin/display-settings] Saved successfully');
+    logDebug('[PUT /api/admin/display-settings] Saved successfully');
     return c.json({ success: true, data: settings });
   } catch (error) {
     return c.json({ success: false, error: 'Failed to save display settings' }, 500);
@@ -1672,22 +1805,6 @@ app.put('/api/admin/events/:id', async (c) => {
   }
 });
 
-// 公開DM設定API（Discord Bot用）
-app.get('/api/dm-settings', async (c) => {
-  try {
-    const store = c.env.DM_TEMPLATE_STORE as KVNamespace | undefined;
-    if (!store) {
-      return c.json({ success: true, data: DEFAULT_DM_SETTINGS });
-    }
-
-    const settings = await store.get('dm_settings');
-    const data = settings ? JSON.parse(settings) : DEFAULT_DM_SETTINGS;
-    return c.json({ success: true, data });
-  } catch (error) {
-    return c.json({ success: false, error: 'Failed to get DM settings' }, 500);
-  }
-});
-
 // 管理者用DM設定API
 app.get('/api/admin/dm-settings', async (c) => {
   try {
@@ -2160,19 +2277,102 @@ app.post('/api/verify', async (c) => {
       }
     }
 
-    // コレクション検証（簡易版）
+    // コレクション検証
     const store = c.env.COLLECTION_STORE as KVNamespace | undefined;
     if (!store) {
       return c.json({ success: false, error: 'Collection store not available' }, 500);
     }
 
-    const collectionsData = await store.get('collections');
+    const [collectionsData, mintCollectionsData] = await Promise.all([
+      store.get('collections'),
+      store.get('mint_collections')
+    ]);
     const collections = collectionsData ? JSON.parse(collectionsData) : [];
-    
-    // 選択されたコレクションが存在するかチェック
-    const validCollections = collections.filter((col: any) => collectionIds.includes(col.id));
-    if (validCollections.length === 0) {
-      return c.json({ success: false, error: 'No valid collections found' }, 400);
+    const mintCollections = mintCollectionsData ? JSON.parse(mintCollectionsData) : [];
+
+    const registerCollection = (entry: any, source: 'role' | 'mint', catalog: Map<string, any>) => {
+      if (!entry || typeof entry !== 'object') return;
+      const candidates = [
+        entry.typePath,
+        entry.type_path,
+        entry.packageId,
+        entry.package_id,
+        entry.id
+      ];
+
+      const name = entry.name || entry.displayName || 'NFT Collection';
+      const roleName = entry.roleName || entry.role_name || 'NFT Holder';
+
+      for (const candidate of candidates) {
+        if (typeof candidate === 'string' && candidate.includes('::')) {
+          const key = candidate.trim().toLowerCase();
+          if (!catalog.has(key)) {
+            catalog.set(key, {
+              typePath: candidate,
+              name,
+              roleName,
+              source,
+              raw: entry
+            });
+          }
+        }
+      }
+    };
+
+    const collectionCatalog = new Map<string, any>();
+    collections.forEach((entry: any) => registerCollection(entry, 'role', collectionCatalog));
+    mintCollections.forEach((entry: any) => registerCollection(entry, 'mint', collectionCatalog));
+
+    if (!Array.isArray(collectionIds) || collectionIds.length === 0) {
+      return c.json({ success: false, error: 'collectionIds must be a non-empty array' }, 400);
+    }
+
+    const normalizedRequestedIds = collectionIds
+      .filter((id: any) => typeof id === 'string')
+      .map((id: string) => id.trim())
+      .filter((id: string) => id.length > 0);
+
+    if (normalizedRequestedIds.length === 0) {
+      return c.json({ success: false, error: 'No valid collection identifiers supplied' }, 400);
+    }
+
+    const selectedCollectionMeta: any[] = [];
+    for (const requestedId of normalizedRequestedIds) {
+      const meta = collectionCatalog.get(requestedId.toLowerCase());
+      if (!meta) {
+        return c.json({
+          success: false,
+          error: `Unknown collection identifier: ${requestedId}`,
+          errorCode: 'UNKNOWN_COLLECTION'
+        }, 400);
+      }
+      selectedCollectionMeta.push(meta);
+    }
+
+    const uniqueTypePaths = Array.from(
+      new Set(selectedCollectionMeta.map((meta) => meta.typePath.trim()))
+    );
+
+    if (uniqueTypePaths.length === 0) {
+      return c.json({ success: false, error: 'No canonical collection type paths resolved' }, 400);
+    }
+
+    const { graphqlEndpoint, fullnode } = getSuiEndpoints(c.env);
+    const ownershipChecks = await Promise.all(
+      uniqueTypePaths.map(async (typePath) => ({
+        typePath,
+        owned: await hasOwnedNftForCollection(address, typePath, fullnode, graphqlEndpoint)
+      }))
+    );
+
+    const missingOwnership = ownershipChecks.filter((check) => !check.owned).map((check) => check.typePath);
+    if (missingOwnership.length > 0) {
+      return c.json({
+        success: false,
+        error: 'No NFTs found for the requested collection(s)',
+        errorCode: 'NO_NFTS',
+        missingCollections: missingOwnership
+      }, 400);
     }
 
     // 認証済みユーザーデータを保存
@@ -2181,12 +2381,16 @@ app.post('/api/verify', async (c) => {
       return c.json({ success: false, error: 'Minted store not available' }, 500);
     }
 
+    const primaryCollection = selectedCollectionMeta[0];
+    const primaryRoleName = primaryCollection?.roleName || 'NFT Holder';
+    const primaryCollectionName = primaryCollection?.name || 'NFT Collection';
+
     const userData = {
       discordId,
       address,
-      collectionIds,
+      collectionIds: uniqueTypePaths,
       verifiedAt: new Date().toISOString(),
-      roleName: 'NFT Holder',
+      roleName: primaryRoleName,
       signature,
       nonce,
       lastChecked: new Date().toISOString() // 認証時にチェック済みとする
@@ -2197,11 +2401,7 @@ app.post('/api/verify', async (c) => {
     // Discord Bot APIに通知
     try {
       const botApiUrl = c.env.DISCORD_BOT_API_URL || 'https://nft-verification-bot.onrender.com';
-      
-      // コレクション名を取得
-      const firstCollection = validCollections[0];
-      const collectionName = firstCollection?.name || 'NFT Collection';
-      
+
       await fetch(`${botApiUrl}/api/notify-discord`, {
         method: 'POST',
         headers: {
@@ -2212,9 +2412,9 @@ app.post('/api/verify', async (c) => {
           discordId,
           action: 'grant_roles',
           verificationData: {
-            collectionId: collectionIds[0],
-            collectionName: collectionName,
-            roleName: firstCollection?.roleName || 'NFT Holder',
+            collectionId: primaryCollection?.typePath || uniqueTypePaths[0],
+            collectionName: primaryCollectionName,
+            roleName: primaryRoleName,
             notifyUser: true
           },
           timestamp: new Date().toISOString()
@@ -2227,8 +2427,8 @@ app.post('/api/verify', async (c) => {
     return c.json({
       success: true,
       data: {
-        roleName: 'NFT Holder',
-        collectionIds,
+        roleName: primaryRoleName,
+        collectionIds: uniqueTypePaths,
         verifiedAt: userData.verifiedAt
       }
     });
@@ -2604,7 +2804,4 @@ export async function scheduled(controller: ScheduledController, env: Env, ctx: 
   }
 }
 
-export default {
-  fetch: app.fetch,
-  scheduled
-};
+export default app;

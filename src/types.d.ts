@@ -13,6 +13,7 @@ declare namespace Cloudflare {
     DEFAULT_MOVE_TARGET?: string;
     DEFAULT_COLLECTION_CREATE_TARGET?: string;
     ADMIN_ADDRESSES?: string;
+    ADMIN_API_KEY?: string;
     WALRUS_AGGREGATOR_BASE?: string;
     WALRUS_AGGREGATOR_FALLBACKS?: string;
     WALRUS_PUBLISHER_BASE?: string;

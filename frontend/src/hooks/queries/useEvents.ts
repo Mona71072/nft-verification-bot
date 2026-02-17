@@ -52,10 +52,10 @@ export function useEvents() {
         
         return data.data;
       } catch (error) {
-        throw new Error('イベントの取得に失敗しました');
+        throw error instanceof Error ? error : new Error('イベントの取得に失敗しました');
       }
     },
-    staleTime: 15 * 60 * 1000, // 15 minutes（リクエスト削減のため延長）
+    staleTime: 15 * 60 * 1000,
   });
 }
 
@@ -76,7 +76,7 @@ export function useEventPublic(eventId: string) {
         
         return data.data;
       } catch (error) {
-        throw new Error('イベント情報の取得に失敗しました');
+        throw error instanceof Error ? error : new Error('イベント情報の取得に失敗しました');
       }
     },
     enabled: !!eventId, // eventIdがある場合のみ実行

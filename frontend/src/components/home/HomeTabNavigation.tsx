@@ -7,32 +7,35 @@ interface HomeTabNavigationProps {
   activeTab: HomeTabType;
   onTabChange: (tab: HomeTabType) => void;
   deviceType: 'mobile' | 'tablet' | 'desktop';
+  onTabPrefetch?: (tab: HomeTabType) => void;
 }
 
 const tabConfig: Record<HomeTabType, { label: string; icon: React.ReactNode; disabled?: boolean }> = {
-  all: { 
-    label: 'All', 
-    icon: <LayoutGrid size={14} /> 
+  all: {
+    label: 'All',
+    icon: <LayoutGrid size={14} />
   },
-  owned: { 
-    label: 'Owned', 
+  dashboard: {
+    label: 'Dashboard',
+    icon: <TrendingUp size={14} />
+  },
+  owned: {
+    label: 'Owned',
     icon: <Gem size={14} />
   },
-  calendar: { 
-    label: 'Calendar', 
+  calendar: {
+    label: 'Calendar',
     icon: <CalendarIcon size={14} />
   },
-  activity: { 
-    label: 'Activity', 
+  activity: {
+    label: 'Activity',
     icon: <ActivityIcon size={14} />
-  },
-  dashboard: { 
-    label: 'Dashboard', 
-    icon: <TrendingUp size={14} />
   }
 };
 
-export function HomeTabNavigation({ activeTab, onTabChange, deviceType }: HomeTabNavigationProps) {
+const tabOrder: HomeTabType[] = ['all', 'dashboard', 'owned', 'calendar', 'activity'];
+
+export function HomeTabNavigation({ activeTab, onTabChange, deviceType, onTabPrefetch }: HomeTabNavigationProps) {
   const getTabStyle = (tab: HomeTabType) => {
     // モバイルタッチターゲットの最適化（WCAG推奨44px以上）
     const minTouchSize = deviceType === 'mobile' ? '44px' : 'auto';
@@ -71,7 +74,7 @@ export function HomeTabNavigation({ activeTab, onTabChange, deviceType }: HomeTa
       case 'all':
         return 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)';
       case 'owned':
-        return 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)';
+        return 'linear-gradient(135deg, #1e293b 0%, #334155 100%)';
       case 'calendar':
         return 'linear-gradient(135deg, #1e293b 0%, #334155 100%)';
       case 'activity':
@@ -88,7 +91,7 @@ export function HomeTabNavigation({ activeTab, onTabChange, deviceType }: HomeTa
       case 'all':
         return '#a5b4fc';
       case 'owned':
-        return '#a5b4fc';
+        return '#64748b';
       case 'calendar':
         return '#64748b';
       case 'activity':
@@ -116,7 +119,8 @@ export function HomeTabNavigation({ activeTab, onTabChange, deviceType }: HomeTa
         scrollbarColor: '#cbd5e1 transparent'
       }}
     >
-      {Object.entries(tabConfig).map(([tab, config]) => {
+      {tabOrder.map((tab) => {
+        const config = tabConfig[tab];
         const isActive = activeTab === tab;
         const tabId = `${tab}-tab`;
         const panelId = `${tab}-panel`;
@@ -133,7 +137,7 @@ export function HomeTabNavigation({ activeTab, onTabChange, deviceType }: HomeTa
             onClick={() => onTabChange(tab as HomeTabType)}
             onKeyDown={(e) => {
               // キーボードナビゲーションのサポート
-              const tabs = Object.keys(tabConfig);
+              const tabs = tabOrder;
               const currentIndex = tabs.indexOf(tab);
               
               if (e.key === 'ArrowLeft') {
@@ -152,6 +156,9 @@ export function HomeTabNavigation({ activeTab, onTabChange, deviceType }: HomeTa
                 onTabChange(tabs[tabs.length - 1] as HomeTabType);
               }
             }}
+            onMouseEnter={() => onTabPrefetch?.(tab as HomeTabType)}
+            onFocus={() => onTabPrefetch?.(tab as HomeTabType)}
+            onPointerEnter={() => onTabPrefetch?.(tab as HomeTabType)}
             style={getTabStyle(tab as HomeTabType)}
           >
             {config.icon}

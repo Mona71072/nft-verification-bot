@@ -1,12 +1,14 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
 import { createNetworkConfig, SuiClientProvider, WalletProvider } from '@mysten/dapp-kit'
 import { getFullnodeUrl } from '@mysten/sui/client'
 import { registerSlushWallet } from '@mysten/slush-wallet'
 import '@mysten/dapp-kit/dist/index.css'
 import './index.css'
 import App from './App.tsx'
+import { ErrorBoundary } from './components/ErrorBoundary'
+import { queryClient } from './lib/query-client'
 
 // グローバルエラーハンドリング（最小限・安全）
 window.addEventListener('error', (event) => {
@@ -15,10 +17,6 @@ window.addEventListener('error', (event) => {
     event.preventDefault();
     return false;
   }
-});
-
-window.addEventListener('unhandledrejection', (event) => {
-  // 抑制は行わずログのみ
 });
 
 // エラーハンドリングを追加
@@ -43,13 +41,11 @@ const { networkConfig } = createNetworkConfig({
   testnet: { url: getFullnodeUrl('testnet') },
 });
 
-const queryClient = new QueryClient();
-
-// WalletProviderの初期化エラーをキャッチ
+// WalletProviderの初期化エラーをキャッチするためにErrorBoundaryで囲む
 // Exported as const to satisfy react-refresh rules
 export const AppWithErrorBoundary = () => {
-  try {
-    return (
+  return (
+    <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <SuiClientProvider networks={networkConfig} defaultNetwork="mainnet">
           <WalletProvider 
@@ -61,43 +57,8 @@ export const AppWithErrorBoundary = () => {
           </WalletProvider>
         </SuiClientProvider>
       </QueryClientProvider>
-    );
-  } catch (error) {
-    // フォールバック: エラーメッセージを表示
-    return (
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100vh',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        color: 'white',
-        fontFamily: 'system-ui, -apple-system, sans-serif',
-        textAlign: 'center',
-        padding: '2rem'
-      }}>
-        <div>
-          <h1>ウォレット初期化エラー</h1>
-          <p>ページを再読み込みしてください。</p>
-          <button 
-            onClick={() => window.location.reload()}
-            style={{
-              padding: '0.75rem 1.5rem',
-              background: 'white',
-              color: '#667eea',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontWeight: '600',
-              marginTop: '1rem'
-            }}
-          >
-            再読み込み
-          </button>
-        </div>
-      </div>
-    );
-  }
+    </ErrorBoundary>
+  );
 };
 
 // アプリケーションの初期化
@@ -109,7 +70,7 @@ try {
     </StrictMode>
   );
 } catch (error) {
-  // フォールバック: シンプルなエラーメッセージを表示
+  // フォールバック: シンプルなエラーメッセージを表示（innerHTMLではなくDOM要素で安全に構築）
   const errorDiv = document.createElement('div');
   errorDiv.style.cssText = `
     display: flex;
@@ -122,21 +83,32 @@ try {
     text-align: center;
     padding: 2rem;
   `;
-  errorDiv.innerHTML = `
-    <div>
-      <h1>アプリケーションエラー</h1>
-      <p>ページを再読み込みしてください。</p>
-      <button onclick="window.location.reload()" style="
-        padding: 0.75rem 1.5rem;
-        background: white;
-        color: #667eea;
-        border: none;
-        border-radius: 8px;
-        cursor: pointer;
-        font-weight: 600;
-        margin-top: 1rem;
-      ">再読み込み</button>
-    </div>
+  
+  const container = document.createElement('div');
+  
+  const title = document.createElement('h1');
+  title.textContent = 'アプリケーションエラー';
+  container.appendChild(title);
+  
+  const message = document.createElement('p');
+  message.textContent = 'ページを再読み込みしてください。';
+  container.appendChild(message);
+  
+  const reloadButton = document.createElement('button');
+  reloadButton.textContent = '再読み込み';
+  reloadButton.style.cssText = `
+    padding: 0.75rem 1.5rem;
+    background: white;
+    color: #667eea;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    margin-top: 1rem;
   `;
+  reloadButton.addEventListener('click', () => window.location.reload());
+  container.appendChild(reloadButton);
+  
+  errorDiv.appendChild(container);
   document.body.appendChild(errorDiv);
 }

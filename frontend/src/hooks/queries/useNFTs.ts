@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-client';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
@@ -27,20 +28,35 @@ interface OnchainCountResponse {
   error?: string;
 }
 
+const DEFAULT_NETWORK = 'mainnet';
+
 /**
  * 保有NFT一覧取得フック
  */
-export function useOwnedNFTs(address: string, collectionTypes: string[]) {
+export function useOwnedNFTs(address: string, collectionTypes: string[], network: string = DEFAULT_NETWORK) {
+  const normalizedCollectionTypes = useMemo(() => {
+    if (!Array.isArray(collectionTypes) || collectionTypes.length === 0) {
+      return [] as string[];
+    }
+
+    return Array.from(new Set(collectionTypes.filter(Boolean))).sort();
+  }, [collectionTypes]);
+
   return useQuery({
-    queryKey: queryKeys.nfts.owned(address),
+    queryKey: queryKeys.nfts.owned(address, {
+      network,
+      collectionTypes: normalizedCollectionTypes,
+    }),
     queryFn: async (): Promise<OwnedNFT[]> => {
       try {
-        if (!address || collectionTypes.length === 0) {
+        if (!address || normalizedCollectionTypes.length === 0) {
           return [];
         }
 
         const response = await fetch(
-          `${API_BASE_URL}/api/owned-nfts/${encodeURIComponent(address)}?collectionIds=${collectionTypes.map(encodeURIComponent).join(',')}`
+          `${API_BASE_URL}/api/owned-nfts/${encodeURIComponent(address)}?collectionIds=${normalizedCollectionTypes
+            .map(encodeURIComponent)
+            .join(',')}`
         );
         
         const data = await response.json();
@@ -54,8 +70,9 @@ export function useOwnedNFTs(address: string, collectionTypes: string[]) {
         return [];
       }
     },
-    enabled: !!address && collectionTypes.length > 0,
-    staleTime: 10 * 60 * 1000, // 10 minutes（リクエスト削減のため延長、NFT保有状況は比較的頻繁に変わる可能性があるがキャッシュを優先）
+    enabled: !!address,
+    placeholderData: keepPreviousData,
+    staleTime: 5 * 60 * 1000, // 5 minutes: タブ移動時に更新頻度を高めつつ過剰リクエストを防ぐ
   });
 }
 
@@ -76,7 +93,7 @@ export function useOnchainCount(collectionId: string) {
         
         return data;
       } catch (error) {
-        throw new Error('NFT数の取得に失敗しました');
+        throw error instanceof Error ? error : new Error('NFT数の取得に失敗しました');
       }
     },
     enabled: !!collectionId,
@@ -87,7 +104,13 @@ export function useOnchainCount(collectionId: string) {
 /**
  * 複数コレクションのオンチェーンNFT数を並列取得
  */
-export function useOnchainCounts(collectionIds: string[]) {
+export function useOnchainCounts(
+  collectionIds: string[],
+  options?: {
+    enabled?: boolean;
+    staleTime?: number;
+  }
+) {
   return useQuery({
     queryKey: queryKeys.stats.mintCounts(collectionIds),
     queryFn: async (): Promise<Map<string, number>> => {
@@ -123,7 +146,7 @@ export function useOnchainCounts(collectionIds: string[]) {
         return new Map();
       }
     },
-    enabled: collectionIds.length > 0,
-    staleTime: 15 * 60 * 1000, // 15 minutes（リクエスト削減のため延長）
+    enabled: (options?.enabled ?? true) && collectionIds.length > 0,
+    staleTime: options?.staleTime ?? 15 * 60 * 1000, // 15 minutes（リクエスト削減のため延長）
   });
 }
