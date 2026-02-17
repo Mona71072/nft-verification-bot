@@ -140,8 +140,9 @@ export default function MintPage() {
         return;
       }
 
-      // イベントの有効性チェック
-      if (!event.active) {
+      // イベントの有効性チェック（カウントダウンと同じクライアント側の時間判定を使用）
+      const isCurrentlyActive = countdown ? countdown.status === 'active' : event.active;
+      if (!isCurrentlyActive) {
         setMessage('ERROR: This event is not currently active');
         return;
       }
@@ -196,7 +197,7 @@ export default function MintPage() {
             eventId,
             address: account.address,
             signature: sig.signature,
-            bytes: Array.from(bytes),
+            bytes: Array.from(sig.bytes instanceof Uint8Array ? sig.bytes : new Uint8Array(sig.bytes)),
             publicKey: (sig as any)?.publicKey ?? (account as any)?.publicKey,
             authMessage
           }),
@@ -950,28 +951,32 @@ export default function MintPage() {
         {/* Main Action Section */}
         <div style={{ marginBottom: '24px' }}>
           {connected ? (
-            // Mint Button - Only show when connected
+            (() => {
+              // カウントダウンがあれば時間ベースのアクティブ状態を使用、なければevent.activeを使用（handleMintと同じ判定）
+              const isCurrentlyActive = countdown ? countdown.status === 'active' : event?.active ?? false;
+              const isDisabled = !isCurrentlyActive || minting || alreadyMinted;
+              return (
             <button
               className="mint-button"
               onClick={handleMint}
-              disabled={!event?.active || minting || alreadyMinted}
+              disabled={isDisabled}
               style={{
                 width: '100%',
                 padding: window.innerWidth < 640 ? '22px 32px' : '26px 44px',
-                background: (!event?.active || minting || alreadyMinted) 
+                background: isDisabled 
                   ? 'rgba(60, 60, 80, 0.4)'
                   : 'linear-gradient(135deg, rgba(102, 126, 234, 0.3) 0%, rgba(118, 75, 162, 0.3) 100%)',
                 backdropFilter: 'blur(20px)',
                 WebkitBackdropFilter: 'blur(20px)',
-                color: (!event?.active || minting || alreadyMinted) ? 'rgba(255, 255, 255, 0.4)' : '#ffffff',
-                border: (!event?.active || minting || alreadyMinted)
+                color: isDisabled ? 'rgba(255, 255, 255, 0.4)' : '#ffffff',
+                border: isDisabled
                   ? '1px solid rgba(102, 126, 234, 0.15)'
                   : '1px solid rgba(102, 126, 234, 0.5)',
                 borderRadius: '16px',
-                cursor: (!event?.active || minting || alreadyMinted) ? 'not-allowed' : 'pointer',
+                cursor: isDisabled ? 'not-allowed' : 'pointer',
                 fontWeight: '700',
                 fontSize: window.innerWidth < 640 ? '20px' : '24px',
-                boxShadow: (!event?.active || minting || alreadyMinted)
+                boxShadow: isDisabled
                   ? 'inset 0 2px 4px rgba(0, 0, 0, 0.3)'
                   : '0 8px 32px rgba(102, 126, 234, 0.25), 0 0 60px rgba(102, 126, 234, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
                 textShadow: '0 2px 8px rgba(0, 0, 0, 0.6)',
@@ -1000,6 +1005,8 @@ export default function MintPage() {
                 {minting ? 'Minting...' : alreadyMinted ? 'Already Owned' : 'Mint'}
               </span>
             </button>
+              );
+            })()
           ) : (
             // Wallet Connection - Show when not connected
             <div style={{
@@ -1038,8 +1045,8 @@ export default function MintPage() {
           )}
         </div>
 
-        {/* Dark Status Messages */}
-        {!event?.active && event && (
+        {/* Dark Status Messages - カウントダウンと同じクライアント側の時間判定を使用し、表示を一貫させる */}
+        {event && (countdown ? countdown.status !== 'active' : !event.active) && (
           <div style={{
             background: 'rgba(251, 191, 36, 0.1)',
             backdropFilter: 'blur(15px)',

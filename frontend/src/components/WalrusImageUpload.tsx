@@ -8,11 +8,20 @@ interface WalrusImageUploadProps {
   onMessage?: (message: string, type?: 'info' | 'success' | 'error') => void;
 }
 
+const EPOCH_OPTIONS = [
+  { value: 26, label: '約1年 (26 epochs)', days: 364 },
+  { value: 52, label: '約2年 (52 epochs)', days: 728 },
+  { value: 104, label: '約4年 (104 epochs)', days: 1456 }
+];
+
+const DAYS_PER_EPOCH = 14;
+
 export default function WalrusImageUpload({ imageCid, imageMimeType, onUpload, apiBase, onMessage }: WalrusImageUploadProps) {
   const [uploading, setUploading] = React.useState(false);
   const [dragActive, setDragActive] = React.useState(false);
   const [uploadEnabled, setUploadEnabled] = React.useState(true);
   const [configNotice, setConfigNotice] = React.useState<string | null>(null);
+  const [selectedEpochs, setSelectedEpochs] = React.useState(26);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const API_BASE = apiBase || (import.meta as any).env?.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
@@ -48,9 +57,10 @@ export default function WalrusImageUpload({ imageCid, imageMimeType, onUpload, a
     onMessage?.('Walrusに画像をアップロード中...', 'info');
 
     try {
+      const epochs = selectedEpochs;
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('epochs', '26'); // 約1年保存（26エポック ≈ 52週間）
+      formData.append('epochs', String(epochs));
 
       const response = await fetch(`${API_BASE}/api/walrus/store`, {
         method: 'POST',
@@ -73,13 +83,14 @@ export default function WalrusImageUpload({ imageCid, imageMimeType, onUpload, a
       const { blobId } = result.data || result;
       if (!blobId) throw new Error('Blob IDが返されませんでした');
 
-      // 保存期限を計算（26 epochs = 約52週間 = 約364日）
-      const epochs = 26;
-      const expiryDate = new Date();
-      expiryDate.setDate(expiryDate.getDate() + (epochs * 14)); // 1 epoch = 14日
-      
+      // アップロード日を基準に保存期限を動的計算（1 epoch = 14日）
+      const uploadDate = new Date();
+      const expiryDate = new Date(uploadDate);
+      expiryDate.setDate(expiryDate.getDate() + (epochs * DAYS_PER_EPOCH));
+
       onUpload(blobId, file.type, epochs, expiryDate.toISOString());
-      onMessage?.('画像をアップロードしました（保存期限: 約1年）', 'success');
+      const opt = EPOCH_OPTIONS.find(o => o.value === epochs);
+      onMessage?.(`画像をアップロードしました（保存期限: ${opt?.label || `${epochs} epochs`}）`, 'success');
     } catch (error: any) {
       onMessage?.(`アップロード失敗: ${error.message}`, 'error');
     } finally {
@@ -123,7 +134,34 @@ export default function WalrusImageUpload({ imageCid, imageMimeType, onUpload, a
   return (
     <div>
       <label style={{ display: 'block', marginBottom: 8, fontWeight: 600 }}>画像 (Walrus)</label>
-      
+
+      {/* 保存期間選択（アップロード日基準で動的に計算される） */}
+      <div style={{ marginBottom: 12 }}>
+        <span style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>画像保存期間: </span>
+        <select
+          value={selectedEpochs}
+          onChange={(e) => setSelectedEpochs(Number(e.target.value))}
+          style={{
+            padding: '6px 10px',
+            borderRadius: 6,
+            border: '1px solid #e2e8f0',
+            fontSize: 13,
+            background: 'white',
+            cursor: 'pointer',
+            marginLeft: 8
+          }}
+        >
+          {EPOCH_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+        <span style={{ marginLeft: 8, fontSize: 11, color: '#94a3b8' }}>
+          （アップロード日から{selectedEpochs * DAYS_PER_EPOCH}日間）
+        </span>
+      </div>
+
       {!uploadEnabled && configNotice && (
         <div style={{ 
           marginBottom: 12, 
@@ -222,7 +260,7 @@ export default function WalrusImageUpload({ imageCid, imageMimeType, onUpload, a
             <br />
             • すべてのBlobは公開・探索可能
             <br />
-            • 保存期間: 26エポック（約1年間）
+            • 保存期間: アップロード日から選択したエポック数に応じて動的に計算
           </div>
         </div>
       )}

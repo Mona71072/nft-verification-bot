@@ -108,7 +108,7 @@ function MintFlowPageInner() {
             eventId: selectedEvent.id,
             address: account.address,
             signature: sig.signature,
-            bytes: Array.from(bytes),
+            bytes: Array.from(sig.bytes instanceof Uint8Array ? sig.bytes : new Uint8Array(sig.bytes)),
             publicKey: (sig as any)?.publicKey ?? (account as any)?.publicKey,
             authMessage
           }),

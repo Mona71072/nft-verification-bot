@@ -181,17 +181,30 @@ export default function EventManagement() {
     }
   };
 
+  const toISOUTC = useCallback((s: string | undefined): string | undefined => {
+    if (!s || typeof s !== 'string') return s;
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return s;
+    return d.toISOString();
+  }, []);
+
   const handleSaveEvent = async (eventData: any) => {
     try {
       setMessage('イベントを保存中...');
       
+      // startAt/endAt/eventDate を UTC ISO に変換（datetime-local はローカル時刻のため）
+      const payload = { ...eventData, active: eventData.status === 'published' };
+      if (payload.startAt) payload.startAt = toISOUTC(payload.startAt) ?? payload.startAt;
+      if (payload.endAt) payload.endAt = toISOUTC(payload.endAt) ?? payload.endAt;
+      if (payload.eventDate) payload.eventDate = toISOUTC(payload.eventDate) ?? payload.eventDate;
+      
       // moveCall の自動設定
-      if (!eventData.moveCall || !eventData.moveCall.target) {
+      if (!payload.moveCall || !payload.moveCall.target) {
         try {
           const mt = await fetch(`${API_BASE_URL}/api/move-targets`).then(r => r.json()).catch(() => null);
           const target = mt?.data?.defaultMoveTarget || '';
           if (target) {
-            eventData.moveCall = {
+            payload.moveCall = {
               target,
               typeArguments: [],
               argumentsTemplate: ['{recipient}', '{name}', '{description}', '{imageCid}', '{imageMimeType}', '{eventDate}'],
@@ -203,12 +216,11 @@ export default function EventManagement() {
         }
       }
       
-      const url = eventData.id 
-        ? `${API_BASE_URL}/api/admin/events/${eventData.id}`
+      const url = payload.id 
+        ? `${API_BASE_URL}/api/admin/events/${payload.id}`
         : `${API_BASE_URL}/api/admin/events`;
       
-      const method = eventData.id ? 'PUT' : 'POST';
-      const payload = { ...eventData, active: eventData.status === 'published' };
+      const method = payload.id ? 'PUT' : 'POST';
       const headers = getAuthHeaders();
       
       console.log('🔍 Saving event:', { url, method, payload, headers });
@@ -238,7 +250,7 @@ export default function EventManagement() {
       
       if (result.success) {
         console.log('✅ Event saved successfully:', result.data);
-        setMessage(eventData.status === 'draft' ? 'ドラフトを保存しました' : 'イベントを公開しました');
+        setMessage(payload.status === 'draft' ? 'ドラフトを保存しました' : 'イベントを公開しました');
         setIsCreatingEvent(false);
         setEditingEventData(null);
         // 保存後にイベントリストを再取得
@@ -285,8 +297,8 @@ export default function EventManagement() {
       if (eventSortBy === 'name') {
         compareValue = a.name.localeCompare(b.name);
       } else if (eventSortBy === 'collection') {
-        const collA = mintCollections.find(col => a.collectionId === col.id)?.name || '';
-        const collB = mintCollections.find(col => b.collectionId === col.id)?.name || '';
+        const collA = mintCollections.find(col => a.collectionId === ((col as any).typePath || col.packageId))?.name || '';
+        const collB = mintCollections.find(col => b.collectionId === ((col as any).typePath || col.packageId))?.name || '';
         compareValue = collA.localeCompare(collB);
       } else if (eventSortBy === 'date') {
         compareValue = new Date(a.startAt).getTime() - new Date(b.startAt).getTime();
@@ -307,8 +319,33 @@ export default function EventManagement() {
           { label: 'ミント管理', href: '/admin/mint/events' },
           { label: editingEventData ? 'イベント編集' : '新規イベント作成' }
         ]} />
+        <PageHeader
+          title={editingEventData ? 'イベント編集' : '新規イベント作成'}
+          description="イベント情報を入力してミントページを作成します"
+          action={
+            <button
+              onClick={() => {
+                setIsCreatingEvent(false);
+                setEditingEventData(null);
+              }}
+              style={{
+                padding: getResponsiveValue('0.5rem 1rem', '0.5625rem 1.25rem', '0.625rem 1.5rem', deviceType),
+                borderRadius: getResponsiveValue('6px', '7px', '8px', deviceType),
+                border: '1px solid #d1d5db',
+                background: 'white',
+                color: '#6b7280',
+                cursor: 'pointer',
+                fontWeight: 600,
+                fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType)
+              }}
+            >
+              キャンセル
+            </button>
+          }
+        />
         <EventEditor
           event={editingEventData || undefined}
+          collections={mintCollections}
           onSave={handleSaveEvent}
           onCancel={() => {
             setIsCreatingEvent(false);
@@ -862,38 +899,55 @@ export default function EventManagement() {
                           ID: {ev.id}
                         </div>
                         {(() => {
-                          // 画像が存在するかチェック
+                          // 画像が存在するかチェック（画像が無い場合は保存期限を表示しない）
                           const hasImage = !!(ev.imageUrl || ev.imageCid || (ev as any).imageCid);
                           if (!hasImage) return null;
-                          
-                          // 保存期限を取得または推定
+
+                          // 画像があるが保存期限の設定がない場合は「未設定」を表示
+                          if (!ev.imageStorageExpiry && !ev.imageStorageEpochs) {
+                            return (
+                              <div style={{
+                                fontSize: getResponsiveValue('0.6875rem', '0.75rem', '0.8125rem', deviceType),
+                                color: '#6b7280',
+                                display: 'inline-block',
+                                padding: getResponsiveValue('0.1875rem 0.5rem', '0.21875rem 0.625rem', '0.25rem 0.75rem', deviceType),
+                                background: '#f3f4f6',
+                                borderRadius: getResponsiveValue('4px', '5px', '6px', deviceType),
+                                border: '1px solid #e5e7eb',
+                                fontWeight: 500
+                              }}>
+                                📦 画像保存期限: 未設定
+                              </div>
+                            );
+                          }
+
+                          // 保存期限を表示（imageStorageExpiry があればそれを使用、無ければ作成日から推定）
                           let expiryDate: Date | null = null;
-                          const epochs = ev.imageStorageEpochs || 26; // デフォルト26 epochs
+                          const epochs = ev.imageStorageEpochs ?? 26;
                           let isEstimated = false;
-                          
+
                           if (ev.imageStorageExpiry) {
                             expiryDate = new Date(ev.imageStorageExpiry);
                           } else if (ev.createdAt) {
-                            // 既存イベント：作成日から推定（26 epochs = 364日後）
                             expiryDate = new Date(ev.createdAt);
                             expiryDate.setDate(expiryDate.getDate() + (epochs * 14));
                             isEstimated = true;
                           }
-                          
+
                           if (!expiryDate) return null;
-                          
+
                           const now = new Date();
                           const daysUntilExpiry = Math.floor((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-                          const isExpiringSoon = daysUntilExpiry < 30; // 30日以内
+                          const isExpiringSoon = daysUntilExpiry < 30;
                           const hasExpired = daysUntilExpiry < 0;
-                          
+
                           return (
-                            <div style={{ 
-                              fontSize: getResponsiveValue('0.6875rem', '0.75rem', '0.8125rem', deviceType), 
-                              color: hasExpired ? '#dc2626' : isExpiringSoon ? '#f59e0b' : '#7c3aed', 
-                              display: 'inline-block', 
-                              padding: getResponsiveValue('0.1875rem 0.5rem', '0.21875rem 0.625rem', '0.25rem 0.75rem', deviceType), 
-                              background: hasExpired ? '#fee2e2' : isExpiringSoon ? '#fef3c7' : '#faf5ff', 
+                            <div style={{
+                              fontSize: getResponsiveValue('0.6875rem', '0.75rem', '0.8125rem', deviceType),
+                              color: hasExpired ? '#dc2626' : isExpiringSoon ? '#f59e0b' : '#7c3aed',
+                              display: 'inline-block',
+                              padding: getResponsiveValue('0.1875rem 0.5rem', '0.21875rem 0.625rem', '0.25rem 0.75rem', deviceType),
+                              background: hasExpired ? '#fee2e2' : isExpiringSoon ? '#fef3c7' : '#faf5ff',
                               borderRadius: getResponsiveValue('4px', '5px', '6px', deviceType),
                               border: `1px solid ${hasExpired ? '#fca5a5' : isExpiringSoon ? '#fcd34d' : '#c4b5fd'}`,
                               fontWeight: 500,

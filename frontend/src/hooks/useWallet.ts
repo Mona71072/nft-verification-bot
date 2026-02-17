@@ -101,12 +101,20 @@ export const useWalletWithErrorHandling = (): WalletState => {
       }
 
       const result = await signMutation.mutateAsync({ message });
+      // bytes: ウォレットが署名したメッセージバイト（Base64またはUint8Array）
+      let bytes: Uint8Array;
+      if (typeof result.bytes === 'string') {
+        const bin = atob(result.bytes);
+        bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      } else if (result.bytes instanceof Uint8Array) {
+        bytes = result.bytes;
+      } else {
+        bytes = new Uint8Array(result.bytes);
+      }
       return {
         signature: result.signature,
-        bytes:
-          typeof result.bytes === 'string'
-            ? new TextEncoder().encode(result.bytes)
-            : result.bytes,
+        bytes,
         publicKey: (result as unknown as { publicKey?: string }).publicKey,
       };
     },
