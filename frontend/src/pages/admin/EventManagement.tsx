@@ -57,6 +57,19 @@ export default function EventManagement() {
   const [creatingCollection, setCreatingCollection] = useState<boolean>(false);
   const [createColMessage, setCreateColMessage] = useState<string>('');
 
+  const resolveEventCollection = useCallback((event: Pick<AdminMintEvent, 'collectionId'> & { selectedCollectionId?: string }) => {
+    if (event?.selectedCollectionId) {
+      const byId = mintCollections.find(col => col.id === event.selectedCollectionId);
+      if (byId) return byId;
+    }
+    const eventCollectionId = String(event?.collectionId || '').trim();
+    if (!eventCollectionId) return undefined;
+    return mintCollections.find(col => {
+      const typePath = String(((col as any).typePath || col.packageId || '')).trim();
+      return typePath === eventCollectionId || String(col.id || '').trim() === eventCollectionId;
+    });
+  }, [mintCollections]);
+
   // カウントダウン用（最適化）
   const [nowTs, setNowTs] = useState<number>(Date.now());
   useEffect(() => {
@@ -297,8 +310,8 @@ export default function EventManagement() {
       if (eventSortBy === 'name') {
         compareValue = a.name.localeCompare(b.name);
       } else if (eventSortBy === 'collection') {
-        const collA = mintCollections.find(col => a.collectionId === ((col as any).typePath || col.packageId))?.name || '';
-        const collB = mintCollections.find(col => b.collectionId === ((col as any).typePath || col.packageId))?.name || '';
+        const collA = resolveEventCollection(a)?.name || '';
+        const collB = resolveEventCollection(b)?.name || '';
         compareValue = collA.localeCompare(collB);
       } else if (eventSortBy === 'date') {
         compareValue = new Date(a.startAt).getTime() - new Date(b.startAt).getTime();
@@ -308,7 +321,7 @@ export default function EventManagement() {
       
       return eventSortOrder === 'asc' ? compareValue : -compareValue;
     });
-  }, [events, eventSortBy, eventSortOrder, mintCollections]);
+  }, [events, eventSortBy, eventSortOrder, resolveEventCollection]);
 
   // EventEditor表示時
   if (isCreatingEvent || editingEventData) {
@@ -778,10 +791,7 @@ export default function EventManagement() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: getResponsiveValue('0.75rem', '0.875rem', '1rem', deviceType) }}>
             {sortedEvents.map(ev => {
-              const eventCollection = mintCollections.find(col => {
-                const typePath = (col as any).typePath || col.packageId;
-                return ev.collectionId === typePath;
-              });
+              const eventCollection = resolveEventCollection(ev as any);
               const collectionName = eventCollection?.name || 'コレクション未設定';
               
               const start = Date.parse(ev.startAt);

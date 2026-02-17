@@ -1,9 +1,7 @@
 import React from 'react';
-import { createPortal } from 'react-dom';
 import { ToastProvider, useToast } from './ui/ToastProvider';
 import WalrusImageUpload from './WalrusImageUpload';
 import { getImageDisplayUrl } from '../utils/walrus';
-import { ChevronDown } from 'lucide-react';
 import { useResponsive, getResponsiveValue } from '../hooks/useResponsive';
 
 type EditorTab = 'basic' | 'image' | 'datetime' | 'confirm';
@@ -57,7 +55,7 @@ function isoToDatetimeLocal(iso: string | undefined): string {
 }
 
 function normalizeEventForForm(event: Event | undefined): Event | Record<string, unknown> {
-  if (!event) return { name: '', description: '', imageCid: '', imageMimeType: '', imageUrl: '', moveCall: {}, collectionId: '', startAt: '', endAt: '', eventDate: '', totalCap: undefined, status: 'draft' as const, detailUrl: '' };
+  if (!event) return { name: '', description: '', imageCid: '', imageMimeType: '', imageUrl: '', moveCall: {}, collectionId: '', selectedCollectionId: '', startAt: '', endAt: '', eventDate: '', totalCap: undefined, status: 'draft' as const, detailUrl: '' };
   return {
     ...event,
     startAt: event.startAt ? isoToDatetimeLocal(event.startAt) : '',
@@ -66,12 +64,10 @@ function normalizeEventForForm(event: Event | undefined): Event | Record<string,
   };
 }
 
-function CollectionDropdown({
+function CollectionSelect({
   collections,
-  value,
   selectedCollectionId,
   onChange,
-  onBlur,
   disabled,
   label,
   loading,
@@ -80,10 +76,8 @@ function CollectionDropdown({
   labelStyle
 }: {
   collections: MintCollection[];
-  value: string;
   selectedCollectionId?: string;
   onChange: (typePath: string, collectionId: string) => void;
-  onBlur?: () => void;
   disabled?: boolean;
   label: string;
   loading?: boolean;
@@ -91,139 +85,143 @@ function CollectionDropdown({
   inputStyle: (hasError: boolean) => React.CSSProperties;
   labelStyle: React.CSSProperties;
 }) {
-  const [open, setOpen] = React.useState(false);
-  const triggerRef = React.useRef<HTMLDivElement>(null);
-  const [dropdownRect, setDropdownRect] = React.useState<{ top: number; left: number; width: number } | null>(null);
-
-  const selectedCollection = React.useMemo(() => {
-    const v = (value || '').trim();
-    if (!v && !selectedCollectionId) return null;
-    if (selectedCollectionId) {
-      const byId = collections.find(c => c.id === selectedCollectionId);
-      if (byId) return byId;
+  const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const colId = e.target.value;
+    if (!colId) {
+      onChange('', '');
+      return;
     }
-    if (v) {
-      return collections.find(c => {
-        const tp = ((c as any).typePath || c.packageId || '').trim();
-        return tp === v;
-      });
+    const col = collections.find(c => c.id === colId);
+    if (col) {
+      const typePath = ((col as any).typePath || col.packageId || '').trim();
+      onChange(typePath, col.id);
     }
-    return null;
-  }, [collections, value, selectedCollectionId]);
-
-  React.useEffect(() => {
-    if (!open || !triggerRef.current) return;
-    const rect = triggerRef.current.getBoundingClientRect();
-    setDropdownRect({ top: rect.bottom + 4, left: rect.left, width: rect.width });
-  }, [open]);
-
-  React.useEffect(() => {
-    if (!open) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (triggerRef.current?.contains(target)) return;
-      const portalEl = document.getElementById('collection-dropdown-portal');
-      if (portalEl?.contains(target)) return;
-      setOpen(false);
-      onBlur?.();
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [open, onBlur]);
-
-  const handleSelect = (collection: MintCollection) => {
-    const typePath = (collection as any).typePath || collection.packageId;
-    onChange(typePath, collection.id);
-    setOpen(false);
   };
 
-  const baseInputStyle = inputStyle(!!hasError);
+  const baseStyle = inputStyle(!!hasError);
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div>
       <label style={labelStyle}>
         {label} <span style={{ color: '#ef4444' }}>*</span>
         {loading && <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: '#6b7280' }}>読み込み中...</span>}
       </label>
-      <div
-        ref={triggerRef}
-        role="combobox"
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        onClick={() => !disabled && !loading && setOpen(prev => !prev)}
-        onBlur={onBlur}
+      <select
+        value={selectedCollectionId || ''}
+        onChange={handleChange}
+        disabled={disabled || loading}
         style={{
-          ...baseInputStyle,
+          ...baseStyle,
           backgroundColor: 'white',
           cursor: disabled || loading ? 'not-allowed' : 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          userSelect: 'none'
+          appearance: 'auto',
         }}
       >
-        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {selectedCollection ? `${selectedCollection.name} (${((selectedCollection as any).typePath || selectedCollection.packageId || '').split('::').pop() || ''})` : 'コレクションを選択'}
-        </span>
-        <ChevronDown size={18} style={{ flexShrink: 0, opacity: open ? 0.7 : 0.5, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
-      </div>
-      {open && dropdownRect && typeof document !== 'undefined' &&
-        createPortal(
-          <div
-            id="collection-dropdown-portal"
-            role="listbox"
-            style={{
-              position: 'fixed',
-              top: dropdownRect.top,
-              left: dropdownRect.left,
-              width: Math.max(dropdownRect.width, 200),
-              maxHeight: 280,
-              overflowY: 'auto',
-              background: 'white',
-              border: '1px solid #d1d5db',
-              borderRadius: '8px',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-              zIndex: 9999,
-              padding: '4px 0'
-            }}
-          >
-            {collections.map((collection) => {
-              const typePath = ((collection as any).typePath || collection.packageId || '').trim();
-              if (!typePath) return null;
-              const valTrimmed = (value || '').trim();
-              const isSelected = selectedCollectionId
-                ? collection.id === selectedCollectionId
-                : typePath === valTrimmed;
-              return (
-                <div
-                  key={collection.id}
-                  data-collection-option
-                  role="option"
-                  aria-selected={isSelected}
-                  onClick={() => handleSelect(collection)}
-                  onMouseDown={(e) => e.preventDefault()}
-                  style={{
-                    padding: '0.5rem 1rem',
-                    cursor: 'pointer',
-                    fontSize: '0.875rem',
-                    background: isSelected ? '#eff6ff' : 'transparent',
-                    color: isSelected ? '#1d4ed8' : '#374151'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isSelected) e.currentTarget.style.background = '#f9fafb';
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isSelected) e.currentTarget.style.background = 'transparent';
-                  }}
-                >
-                  {collection.name} ({typePath.split('::').pop() || typePath})
-                </div>
-              );
-            })}
-          </div>,
-          document.body
-        )
-      }
+        <option value="">コレクションを選択</option>
+        {collections.map((collection) => {
+          const typePath = ((collection as any).typePath || collection.packageId || '').trim();
+          const shortType = typePath ? (typePath.split('::').pop() || typePath) : '';
+          return (
+            <option key={collection.id} value={collection.id}>
+              {collection.name}{shortType ? ` (${shortType})` : ''}
+            </option>
+          );
+        })}
+      </select>
+    </div>
+  );
+}
+
+// 30分刻みの時刻オプションを生成
+const TIME_OPTIONS_30MIN: string[] = (() => {
+  const options: string[] = [];
+  for (let h = 0; h < 24; h++) {
+    for (let m = 0; m < 60; m += 30) {
+      options.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+    }
+  }
+  return options;
+})();
+
+// 時刻を30分刻みに丸める
+function roundTo30Min(timeStr: string): string {
+  const [h, m] = timeStr.split(':').map(Number);
+  const rounded = m < 15 ? 0 : m < 45 ? 30 : 0;
+  const adjustedH = m >= 45 ? (h + 1) % 24 : h;
+  return `${String(adjustedH).padStart(2, '0')}:${String(rounded).padStart(2, '0')}`;
+}
+
+// datetime-local 値から日付部分を取得
+function getDatePart(datetimeLocal: string | undefined): string {
+  if (!datetimeLocal) return '';
+  return datetimeLocal.split('T')[0] || '';
+}
+
+// datetime-local 値から時刻部分を取得（30分刻みに丸め）
+function getTimePart(datetimeLocal: string | undefined): string {
+  if (!datetimeLocal) return '00:00';
+  const timePart = datetimeLocal.split('T')[1] || '00:00';
+  return roundTo30Min(timePart.substring(0, 5));
+}
+
+// 日付と時刻を結合して datetime-local 形式にする
+function combineDatetime(date: string, time: string): string {
+  if (!date) return '';
+  return `${date}T${time || '00:00'}`;
+}
+
+// 30分刻み日時ピッカーコンポーネント
+function DateTimePicker30Min({
+  value,
+  onChange,
+  onBlur,
+  hasError,
+  inputStyle,
+  deviceType,
+}: {
+  value: string | undefined;
+  onChange: (newValue: string) => void;
+  onBlur?: () => void;
+  hasError: boolean;
+  inputStyle: (hasError: boolean) => React.CSSProperties;
+  deviceType: 'mobile' | 'tablet' | 'desktop';
+}) {
+  const datePart = getDatePart(value);
+  const timePart = getTimePart(value);
+
+  const baseStyle = inputStyle(hasError);
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: getResponsiveValue('1fr', '1fr 140px', '1fr 160px', deviceType), gap: '0.5rem', alignItems: 'start' }}>
+      <input
+        type="date"
+        value={datePart}
+        onChange={(e) => {
+          onChange(combineDatetime(e.target.value, timePart));
+        }}
+        onBlur={onBlur}
+        style={baseStyle}
+      />
+      <select
+        value={timePart}
+        onChange={(e) => {
+          onChange(combineDatetime(datePart, e.target.value));
+        }}
+        onBlur={onBlur}
+        style={{
+          ...baseStyle,
+          cursor: 'pointer',
+          appearance: 'none',
+          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M3 5l3 3 3-3'/%3E%3C/svg%3E")`,
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: 'right 0.75rem center',
+          paddingRight: '2rem',
+        }}
+      >
+        {TIME_OPTIONS_30MIN.map((t) => (
+          <option key={t} value={t}>{t}</option>
+        ))}
+      </select>
     </div>
   );
 }
@@ -236,7 +234,7 @@ function EventEditorInner({ event, collections: externalCollections, onSave, onC
   const [mintCollections, setMintCollections] = React.useState<MintCollection[]>(externalCollections || []);
   const [loadingCollections, setLoadingCollections] = React.useState(false);
 
-  const initialEvent = React.useMemo(() => normalizeEventForForm(event) as Event, [event?.id, event?.collectionId, event?.startAt, event?.endAt, event?.eventDate]);
+  const initialEvent = React.useMemo(() => normalizeEventForForm(event) as Event, [event?.id, event?.collectionId, event?.selectedCollectionId, event?.startAt, event?.endAt, event?.eventDate]);
   const [formData, setFormData] = React.useState<Event>(initialEvent);
   const [originalData] = React.useState<Event>(initialEvent);
 
@@ -254,29 +252,34 @@ function EventEditorInner({ event, collections: externalCollections, onSave, onC
     return JSON.stringify(formData) !== JSON.stringify(originalData);
   }, [formData, originalData]);
 
-  const validateForm = React.useCallback(() => {
+  const validateForm = React.useCallback((overrideData?: Partial<Event>) => {
+    const data = overrideData ? { ...formData, ...overrideData } : formData;
     const newErrors: Record<string, string> = {};
-    if (!formData.name?.trim()) newErrors.name = 'イベント名は必須です';
-    if (!formData.description?.trim()) newErrors.description = '説明は必須です';
-    if (!formData.collectionId) newErrors.collectionId = 'コレクションを選択してください';
-    if (!formData.eventDate) newErrors.eventDate = 'イベント開催日時は必須です';
-    if (!formData.startAt) newErrors.startAt = '開始日時は必須です';
-    if (!formData.endAt) newErrors.endAt = '終了日時は必須です';
-    if (formData.startAt && formData.endAt && new Date(formData.startAt) >= new Date(formData.endAt)) {
+    if (!data.name?.trim()) newErrors.name = 'イベント名は必須です';
+    if (!data.description?.trim()) newErrors.description = '説明は必須です';
+    if (!data.collectionId && !data.selectedCollectionId) newErrors.collectionId = 'コレクションを選択してください';
+    if (!data.eventDate) newErrors.eventDate = 'イベント開催日時は必須です';
+    if (!data.startAt) newErrors.startAt = '開始日時は必須です';
+    if (!data.endAt) newErrors.endAt = '終了日時は必須です';
+    if (data.startAt && data.endAt && new Date(data.startAt) >= new Date(data.endAt)) {
       newErrors.endAt = '終了日時は開始日時より後に設定してください';
     }
-    if (formData.totalCap && formData.totalCap < 1) newErrors.totalCap = 'ミント上限は1以上で設定してください';
+    if (data.totalCap && data.totalCap < 1) newErrors.totalCap = 'ミント上限は1以上で設定してください';
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   }, [formData]);
 
   const completionPercentage = React.useMemo(() => {
-    const fields = ['name', 'description', 'collectionId', 'eventDate', 'startAt', 'endAt'];
-    const completed = fields.filter(field => {
-      const value = formData[field as keyof Event];
-      return value && String(value).trim() !== '';
-    }).length;
-    return Math.round((completed / fields.length) * 100);
+    const checks = [
+      !!formData.name?.trim(),
+      !!formData.description?.trim(),
+      !!(formData.collectionId || formData.selectedCollectionId),
+      !!formData.eventDate,
+      !!formData.startAt,
+      !!formData.endAt,
+    ];
+    const completed = checks.filter(Boolean).length;
+    return Math.round((completed / checks.length) * 100);
   }, [formData]);
 
   React.useEffect(() => {
@@ -314,44 +317,59 @@ function EventEditorInner({ event, collections: externalCollections, onSave, onC
     fetchMintCollections();
   }, [externalCollections, showToast]);
 
-  // mintCollections が読み込まれた後、編集モードで collectionId のみある場合に selectedCollectionId を補完
+  // mintCollections が読み込まれた後、コレクション情報を補完する
   React.useEffect(() => {
-    if (!event?.id || !event?.collectionId || mintCollections.length === 0) return;
-    const col = mintCollections.find(c => {
-      const tp = ((c as any).typePath || c.packageId || '').trim();
-      return tp === String(event.collectionId || '').trim();
+    if (mintCollections.length === 0) return;
+
+    setFormData(prev => {
+      // 既に selectedCollectionId があり、コレクション一覧に存在する場合は何もしない
+      if (prev.selectedCollectionId) {
+        const exists = mintCollections.find(c => c.id === prev.selectedCollectionId);
+        if (exists) return prev;
+      }
+
+      // collectionId（typePath）から selectedCollectionId を補完
+      if (prev.collectionId) {
+        const cid = String(prev.collectionId).trim();
+        const matched = mintCollections.find(c => {
+          const tp = ((c as any).typePath || c.packageId || '').trim();
+          return tp === cid || c.id === cid;
+        });
+        if (matched) {
+          return { ...prev, selectedCollectionId: matched.id, collectionId: ((matched as any).typePath || matched.packageId || '').trim() };
+        }
+      }
+
+      // 新規作成で未選択の場合 → 最新のコレクションをデフォルト選択
+      if (!event?.id && !prev.collectionId && !prev.selectedCollectionId) {
+        const latest = mintCollections[mintCollections.length - 1];
+        if (latest) {
+          const tp = ((latest as any).typePath || latest.packageId || '').trim();
+          return { ...prev, collectionId: tp, selectedCollectionId: latest.id };
+        }
+      }
+
+      return prev;
     });
-    if (col) {
-      setFormData(prev => {
-        if (prev.selectedCollectionId) return prev;
-        return {
-          ...prev,
-          selectedCollectionId: col.id,
-          collectionId: ((col as any).typePath || col.packageId || '').trim()
-        };
-      });
-    }
-  }, [event?.id, event?.collectionId, mintCollections]);
+  }, [event?.id, mintCollections]);
 
-  const findCollectionByTypePath = React.useCallback((collectionId: string | undefined): MintCollection | undefined => {
-    if (!collectionId) return undefined;
-    const cid = String(collectionId).trim();
-    return mintCollections.find(c => {
-      const tp = ((c as any).typePath || c.packageId || '').trim();
-      return tp === cid;
-    }) || mintCollections.find(c => c.id === cid);
-  }, [mintCollections]);
-
-  const findCollectionForDisplay = React.useCallback((
-    collectionId: string | undefined,
-    selectedCollectionId?: string
+  const resolveCollection = React.useCallback((
+    selectedColId?: string,
+    colId?: string
   ): MintCollection | undefined => {
-    if (selectedCollectionId) {
-      const byId = mintCollections.find(c => c.id === selectedCollectionId);
+    if (selectedColId) {
+      const byId = mintCollections.find(c => c.id === selectedColId);
       if (byId) return byId;
     }
-    return findCollectionByTypePath(collectionId);
-  }, [mintCollections, findCollectionByTypePath]);
+    if (colId) {
+      const cid = String(colId).trim();
+      return mintCollections.find(c => {
+        const tp = ((c as any).typePath || c.packageId || '').trim();
+        return tp === cid;
+      }) || mintCollections.find(c => c.id === cid);
+    }
+    return undefined;
+  }, [mintCollections]);
 
   const handleSave = async (status: 'draft' | 'published') => {
     setIsSaving(true);
@@ -385,7 +403,7 @@ function EventEditorInner({ event, collections: externalCollections, onSave, onC
     await handleSave('published');
   };
 
-  const selectedCollection = findCollectionForDisplay(formData.collectionId, formData.selectedCollectionId);
+  const selectedCollection = resolveCollection(formData.selectedCollectionId, formData.collectionId);
   const previewImageUrl = getImageDisplayUrl(formData.imageCid, formData.imageUrl);
 
   // Shared styles
@@ -488,7 +506,7 @@ function EventEditorInner({ event, collections: externalCollections, onSave, onC
               <label style={labelStyle}>イベント名 <span style={{ color: '#ef4444' }}>*</span></label>
               <input type="text" value={formData.name}
                 onChange={(e) => { setFormData(prev => ({ ...prev, name: e.target.value })); if (errors.name) setErrors(prev => ({ ...prev, name: '' })); }}
-                onBlur={validateForm} placeholder="例: RADCRAFT Tokyo 2025"
+                onBlur={() => validateForm()} placeholder="例: RADCRAFT Tokyo 2025"
                 style={inputStyle(!!errors.name)} />
               {errors.name && <p style={errorStyle}>{errors.name}</p>}
             </div>
@@ -496,7 +514,7 @@ function EventEditorInner({ event, collections: externalCollections, onSave, onC
               <label style={labelStyle}>説明 <span style={{ color: '#ef4444' }}>*</span></label>
               <textarea value={formData.description || ''}
                 onChange={(e) => { setFormData(prev => ({ ...prev, description: e.target.value })); if (errors.description) setErrors(prev => ({ ...prev, description: '' })); }}
-                onBlur={validateForm} placeholder="イベントの詳細を入力してください" rows={3}
+                onBlur={() => validateForm()} placeholder="イベントの詳細を入力してください" rows={3}
                 style={{ ...inputStyle(!!errors.description), resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }} />
               {errors.description && <p style={errorStyle}>{errors.description}</p>}
             </div>
@@ -507,16 +525,13 @@ function EventEditorInner({ event, collections: externalCollections, onSave, onC
                 placeholder="https://example.com/event-details"
                 style={inputStyle(false)} />
             </div>
-            <CollectionDropdown
+            <CollectionSelect
               collections={mintCollections}
-              value={formData.collectionId || ''}
               selectedCollectionId={formData.selectedCollectionId}
               onChange={(typePath, collectionId) => {
                 setFormData(prev => ({ ...prev, collectionId: typePath, selectedCollectionId: collectionId }));
-                if (errors.collectionId) setErrors(prev => ({ ...prev, collectionId: '' }));
-                validateForm();
+                setErrors(prev => ({ ...prev, collectionId: '' }));
               }}
-              onBlur={validateForm}
               disabled={loadingCollections || ((event?.mintedCount ?? 0) > 0)}
               label="ミントコレクション"
               loading={loadingCollections}
@@ -578,13 +593,19 @@ function EventEditorInner({ event, collections: externalCollections, onSave, onC
         {activeTab === 'datetime' && (
         <div style={cardStyle}>
           <h3 style={{ margin: '0 0 1rem 0', fontSize: getResponsiveValue('0.9375rem', '1rem', '1rem', deviceType), fontWeight: 700, color: '#111827' }}>日時・制限設定</h3>
+          <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: '-0.5rem 0 1rem 0' }}>時刻は30分単位で選択できます</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: getResponsiveValue('1rem', '1.25rem', '1.25rem', deviceType) }}>
             <div>
               <label style={labelStyle}>イベント開催日時 <span style={{ color: '#ef4444' }}>*</span></label>
               <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: '0 0 0.375rem 0' }}>NFTに記録される実際のイベント日時</p>
-              <input type="datetime-local" step="1800" value={formData.eventDate || ''}
-                onChange={(e) => { setFormData(prev => ({ ...prev, eventDate: e.target.value })); if (errors.eventDate) setErrors(prev => ({ ...prev, eventDate: '' })); }}
-                onBlur={validateForm} style={inputStyle(!!errors.eventDate)} />
+              <DateTimePicker30Min
+                value={formData.eventDate}
+                onChange={(v) => { setFormData(prev => ({ ...prev, eventDate: v })); if (errors.eventDate) setErrors(prev => ({ ...prev, eventDate: '' })); }}
+                onBlur={validateForm}
+                hasError={!!errors.eventDate}
+                inputStyle={inputStyle}
+                deviceType={deviceType}
+              />
               {errors.eventDate && <p style={errorStyle}>{errors.eventDate}</p>}
             </div>
             <div>
@@ -593,16 +614,26 @@ function EventEditorInner({ event, collections: externalCollections, onSave, onC
               <div style={{ display: 'grid', gridTemplateColumns: getResponsiveValue('1fr', '1fr', '1fr 1fr', deviceType), gap: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.375rem', fontSize: '0.75rem', color: '#6b7280', fontWeight: 500 }}>開始日時</label>
-                  <input type="datetime-local" step="1800" value={formData.startAt || ''}
-                    onChange={(e) => { setFormData(prev => ({ ...prev, startAt: e.target.value })); if (errors.startAt) setErrors(prev => ({ ...prev, startAt: '' })); }}
-                    onBlur={validateForm} style={inputStyle(!!errors.startAt)} />
+                  <DateTimePicker30Min
+                    value={formData.startAt}
+                    onChange={(v) => { setFormData(prev => ({ ...prev, startAt: v })); if (errors.startAt) setErrors(prev => ({ ...prev, startAt: '' })); }}
+                    onBlur={validateForm}
+                    hasError={!!errors.startAt}
+                    inputStyle={inputStyle}
+                    deviceType={deviceType}
+                  />
                   {errors.startAt && <p style={errorStyle}>{errors.startAt}</p>}
                 </div>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.375rem', fontSize: '0.75rem', color: '#6b7280', fontWeight: 500 }}>終了日時</label>
-                  <input type="datetime-local" step="1800" value={formData.endAt || ''}
-                    onChange={(e) => { setFormData(prev => ({ ...prev, endAt: e.target.value })); if (errors.endAt) setErrors(prev => ({ ...prev, endAt: '' })); }}
-                    onBlur={validateForm} style={inputStyle(!!errors.endAt)} />
+                  <DateTimePicker30Min
+                    value={formData.endAt}
+                    onChange={(v) => { setFormData(prev => ({ ...prev, endAt: v })); if (errors.endAt) setErrors(prev => ({ ...prev, endAt: '' })); }}
+                    onBlur={validateForm}
+                    hasError={!!errors.endAt}
+                    inputStyle={inputStyle}
+                    deviceType={deviceType}
+                  />
                   {errors.endAt && <p style={errorStyle}>{errors.endAt}</p>}
                 </div>
               </div>
@@ -612,7 +643,7 @@ function EventEditorInner({ event, collections: externalCollections, onSave, onC
               <label style={labelStyle}>ミント上限（空欄 = 無制限）</label>
               <input type="number" value={formData.totalCap || ''}
                 onChange={(e) => { setFormData(prev => ({ ...prev, totalCap: e.target.value ? Number(e.target.value) : undefined })); if (errors.totalCap) setErrors(prev => ({ ...prev, totalCap: '' })); }}
-                onBlur={validateForm} placeholder="例: 100" min="1"
+                onBlur={() => validateForm()} placeholder="例: 100" min="1"
                 style={inputStyle(!!errors.totalCap)} />
               {errors.totalCap && <p style={errorStyle}>{errors.totalCap}</p>}
             </div>

@@ -1668,7 +1668,7 @@ app.post('/api/admin/events', async (c) => {
     }
 
     const body = await c.req.json();
-    const { name, description, startAt, endAt, eventDate, active = false, imageUrl, imageCid, imageMimeType, imageStorageEpochs, imageStorageExpiry, maxMints, mintPrice, collectionId, roleId, roleName, moveCall, totalCap, detailUrl } = body;
+    const { name, description, startAt, endAt, eventDate, active = false, imageUrl, imageCid, imageMimeType, imageStorageEpochs, imageStorageExpiry, maxMints, mintPrice, collectionId, selectedCollectionId, roleId, roleName, moveCall, totalCap, detailUrl } = body;
 
     // 必須フィールドの検証
     if (!name || !description || !startAt || !endAt) {
@@ -1696,6 +1696,7 @@ app.post('/api/admin/events', async (c) => {
       maxMints: maxMints || null,
       mintPrice: mintPrice || null,
       collectionId: collectionId || '',
+      selectedCollectionId: selectedCollectionId || '',
       roleId: roleId || '',
       roleName: roleName || '',
       moveCall: moveCall || null,
@@ -1757,7 +1758,7 @@ app.put('/api/admin/events/:id', async (c) => {
     }
 
     const body = await c.req.json();
-    const { name, description, startAt, endAt, eventDate, active, imageUrl, imageCid, imageMimeType, imageStorageEpochs, imageStorageExpiry, maxMints, mintPrice, collectionId, roleId, roleName, moveCall, totalCap, detailUrl } = body;
+    const { name, description, startAt, endAt, eventDate, active, imageUrl, imageCid, imageMimeType, imageStorageEpochs, imageStorageExpiry, maxMints, mintPrice, collectionId, selectedCollectionId, roleId, roleName, moveCall, totalCap, detailUrl } = body;
 
     // イベントリストを取得
     const listStr = await store.get('events');
@@ -1786,6 +1787,7 @@ app.put('/api/admin/events/:id', async (c) => {
       ...(maxMints !== undefined && { maxMints }),
       ...(mintPrice !== undefined && { mintPrice }),
       ...(collectionId !== undefined && { collectionId }),
+      ...(selectedCollectionId !== undefined && { selectedCollectionId }),
       ...(roleId !== undefined && { roleId }),
       ...(roleName !== undefined && { roleName }),
       ...(moveCall !== undefined && { moveCall }),
