@@ -87,30 +87,42 @@ export default function MintHistory() {
       const encoded = encodeURIComponent(typePath);
       const eventParam = eventId ? `&eventId=${encodeURIComponent(eventId)}` : '';
       const url = `${API_BASE_URL}/api/mint-collections/${encoded}/mints?limit=${limit}${eventParam}`;
-      
-      // DEBUG: 開発時のみログ出力
-      if (import.meta.env.DEV) {
-      }
-      
+
       const res = await fetch(url);
       const data = await res.json();
-      
-      // DEBUG: 開発時のみログ出力
-      if (import.meta.env.DEV) {
-        
-        // 各アイテムのeventIdをログ出力
-        if (data.data && Array.isArray(data.data)) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        }
-      }
-      
+
       if (data.success) {
-        setHistoryItems(Array.isArray(data.data) ? data.data : []);
+        const items = Array.isArray(data.data) ? data.data : [];
+        setHistoryItems(items);
         const eventName = eventId ? events.find(e => e.id === eventId)?.name : null;
-        const msg = eventName 
-          ? `${eventName}の履歴: ${data.data?.length || 0}件`
-          : `${data.data?.length || 0}件の履歴を取得しました`;
-        setMessage(msg);
+
+        if (items.length === 0) {
+          // 0件の場合、eventId無しでも試みる（インデックスの不一致を考慮）
+          if (eventId) {
+            const fallbackUrl = `${API_BASE_URL}/api/mint-collections/${encoded}/mints?limit=${limit}`;
+            const fallbackRes = await fetch(fallbackUrl);
+            const fallbackData = await fallbackRes.json();
+            if (fallbackData.success && Array.isArray(fallbackData.data) && fallbackData.data.length > 0) {
+              const filtered = fallbackData.data.filter((item: any) => !eventId || item.eventId === eventId);
+              setHistoryItems(filtered.length > 0 ? filtered : fallbackData.data);
+              setMessage(
+                filtered.length > 0
+                  ? `${eventName || 'イベント'}の履歴: ${filtered.length}件`
+                  : `イベント別の履歴は見つかりませんでした。コレクション全体の${fallbackData.data.length}件を表示しています。`
+              );
+              return;
+            }
+          }
+          setMessage(eventName
+            ? `${eventName}のミント履歴はまだありません`
+            : `このコレクションのミント履歴はまだありません`
+          );
+        } else {
+          setMessage(eventName
+            ? `${eventName}の履歴: ${items.length}件`
+            : `${items.length}件の履歴を取得しました`
+          );
+        }
       } else {
         setMessage(`履歴の取得に失敗しました: ${data.error || 'unknown error'}`);
         setHistoryItems([]);
@@ -120,27 +132,46 @@ export default function MintHistory() {
       setHistoryItems([]);
     } finally {
       setHistoryLoading(false);
-      setTimeout(() => setMessage(''), 3000);
+      setTimeout(() => setMessage(''), 5000);
     }
   };
 
-  // 全イベントの履歴を統合取得
+  // 全履歴を統合取得（mintCollections + イベントのcollectionIdの両方を使用）
   const fetchAllEventsHistory = async (limit: number = 100) => {
     setHistoryLoading(true);
-    setMessage('全イベントの履歴を取得中...');
+    setMessage('全履歴を取得中...');
     try {
-      // 全イベントのユニークなcollectionIdを取得
-      const uniqueCollectionIds = Array.from(new Set(events.map(ev => resolveEventTypePath(ev)).filter(Boolean)));
-      
-      // DEBUG: 開発時のみログ出力
-      if (import.meta.env.DEV) {
+      // 検索キーの候補を幅広く収集
+      const keySet = new Set<string>();
+
+      // 1) mintCollections の typePath を追加（最も信頼性が高い）
+      for (const col of mintCollections) {
+        const tp = String((col as any).typePath || col.packageId || '').trim();
+        if (tp) keySet.add(tp);
       }
-      
-      // 各collectionIdの履歴を並列取得
+
+      // 2) イベントの collectionId / selectedCollectionId 経由の typePath も追加
+      for (const ev of events) {
+        const resolved = resolveEventTypePath(ev);
+        if (resolved) keySet.add(resolved);
+        const cid = String(ev.collectionId || '').trim();
+        if (cid) keySet.add(cid);
+      }
+
+      const uniqueKeys = Array.from(keySet);
+
+      if (uniqueKeys.length === 0) {
+        setHistoryItems([]);
+        setHistoryCollection('__ALL__');
+        setMessage('コレクションが見つかりません。先にイベントとコレクションを作成してください。');
+        return;
+      }
+
+      // 全キーの履歴を並列取得（txDigest で重複排除）
       const allHistories = await Promise.all(
-        uniqueCollectionIds.map(async (collectionId) => {
+        uniqueKeys.map(async (key) => {
           try {
-            const encoded = encodeURIComponent(collectionId);
+            const encoded = encodeURIComponent(key);
             const url = `${API_BASE_URL}/api/mint-collections/${encoded}/mints?limit=${limit}`;
             const res = await fetch(url);
             const data = await res.json();
@@ -150,30 +181,40 @@ export default function MintHistory() {
           }
         })
       );
-      
-      // 全ての履歴を統合
-      const combined = allHistories.flat();
-      
-      // DEBUG: 開発時のみログ出力
-      if (import.meta.env.DEV) {
+
+      // 統合 & txDigest で重複排除
+      const seen = new Set<string>();
+      const combined: HistoryItem[] = [];
+      for (const items of allHistories) {
+        for (const item of items) {
+          if (item.txDigest && !seen.has(item.txDigest)) {
+            seen.add(item.txDigest);
+            combined.push(item);
+          }
+        }
       }
-      
+
       // 日付順でソート（新しい順）
       combined.sort((a, b) => {
         const dateA = a.at ? new Date(a.at).getTime() : 0;
         const dateB = b.at ? new Date(b.at).getTime() : 0;
         return dateB - dateA;
       });
-      
+
       setHistoryItems(combined);
-      setHistoryCollection('__ALL__'); // 特殊値で全イベント表示を示す
-      setMessage(`全イベントから${combined.length}件の履歴を取得しました`);
+      setHistoryCollection('__ALL__');
+
+      if (combined.length === 0) {
+        setMessage(`${uniqueKeys.length}件のコレクションを検索しましたが、ミント履歴はまだありません。`);
+      } else {
+        setMessage(`${combined.length}件の履歴を取得しました`);
+      }
     } catch (e) {
       setMessage('履歴の取得に失敗しました');
       setHistoryItems([]);
     } finally {
       setHistoryLoading(false);
-      setTimeout(() => setMessage(''), 3000);
+      setTimeout(() => setMessage(''), 5000);
     }
   };
 
