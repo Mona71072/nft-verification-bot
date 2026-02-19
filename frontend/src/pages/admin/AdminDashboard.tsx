@@ -112,10 +112,9 @@ export default function AdminDashboard() {
     if (!confirm(`管理者を削除しますか？\n${address}`)) return;
     setAdminLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/admin/addresses`, {
+      const res = await fetch(`${API_BASE_URL}/api/admin/addresses/${encodeURIComponent(address)}`, {
         method: 'DELETE',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ address })
+        headers: getAuthHeaders()
       });
       const data = await res.json();
       if (data.success) {

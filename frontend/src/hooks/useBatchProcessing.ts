@@ -1,52 +1,85 @@
 import { useState, useCallback } from 'react';
 import type { BatchConfig, BatchStats } from '../types';
 
+function getAuthHeaders(): HeadersInit {
+  const addr = typeof window !== 'undefined'
+    ? localStorage.getItem('currentWalletAddress') || (window as any).currentWalletAddress
+    : undefined;
+  return {
+    'Content-Type': 'application/json',
+    ...(addr ? { 'X-Admin-Address': addr } : {})
+  };
+}
+
 export function useBatchProcessing() {
   const [batchConfig, setBatchConfig] = useState<BatchConfig | null>(null);
   const [batchStats, setBatchStats] = useState<BatchStats | null>(null);
   const [batchLoading, setBatchLoading] = useState(false);
+  const [isRunning, setIsRunning] = useState(false);
+
+  const fetchBatchConfig = useCallback(async (apiBaseUrl: string) => {
+    try {
+      const res = await fetch(`${apiBaseUrl}/api/admin/batch-config`, { headers: getAuthHeaders() });
+      const data = await res.json();
+      if (data.success && data.data) {
+        setBatchConfig(data.data);
+      }
+    } catch {
+    }
+  }, []);
+
+  const fetchBatchStats = useCallback(async (apiBaseUrl: string) => {
+    try {
+      const res = await fetch(`${apiBaseUrl}/api/admin/batch-stats`, { headers: getAuthHeaders() });
+      const data = await res.json();
+      if (data.success && data.data) {
+        setBatchStats(data.data);
+      }
+    } catch {
+    }
+  }, []);
 
   const startBatchProcessing = useCallback(async (config: BatchConfig, apiBaseUrl: string) => {
     try {
       setBatchLoading(true);
-      setBatchConfig(config);
-      
-      const response = await fetch(`${apiBaseUrl}/api/admin/batch/start`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      setIsRunning(true);
+
+      const configRes = await fetch(`${apiBaseUrl}/api/admin/batch-config`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
         body: JSON.stringify(config)
       });
-      
-      const result = await response.json();
-      
-      if (result.success) {
-        setBatchStats(result.data);
+      const configResult = await configRes.json();
+      if (!configResult.success) {
+        throw new Error(configResult.error || 'バッチ設定の保存に失敗しました');
+      }
+      setBatchConfig(config);
+
+      const execRes = await fetch(`${apiBaseUrl}/api/batch-process`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(config)
+      });
+      const execResult = await execRes.json();
+
+      if (execResult.success) {
+        await fetchBatchStats(apiBaseUrl);
       } else {
-        throw new Error(result.error || 'バッチ処理の開始に失敗しました');
+        throw new Error(execResult.error || 'バッチ処理の実行に失敗しました');
       }
     } catch (error) {
+      setIsRunning(false);
       throw error;
     } finally {
       setBatchLoading(false);
     }
-  }, []);
+  }, [fetchBatchStats]);
 
-  const stopBatchProcessing = useCallback(async (apiBaseUrl: string) => {
+  const stopBatchProcessing = useCallback(async (_apiBaseUrl: string) => {
     try {
       setBatchLoading(true);
-      
-      const response = await fetch(`${apiBaseUrl}/api/admin/batch/stop`, {
-        method: 'POST'
-      });
-      
-      const result = await response.json();
-      
-      if (result.success) {
-        setBatchStats(null);
-        setBatchConfig(null);
-      }
-    } catch (error) {
-      // Error handling without logging
+      setIsRunning(false);
+    } catch {
     } finally {
       setBatchLoading(false);
     }
@@ -63,6 +96,9 @@ export function useBatchProcessing() {
     setBatchStats,
     batchLoading,
     setBatchLoading,
+    isRunning,
+    fetchBatchConfig,
+    fetchBatchStats,
     startBatchProcessing,
     stopBatchProcessing,
     updateBatchStats

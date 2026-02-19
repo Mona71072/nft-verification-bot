@@ -55,21 +55,51 @@ export function EventsTab({ apiBaseUrl }: EventsTabProps) {
 
   const handleSaveEvent = useCallback(async (eventData: AdminMintEvent) => {
     try {
-      if (editingEventData) {
-        updateEvent(eventData.id, eventData);
+      const addr = localStorage.getItem('currentWalletAddress') || (window as any).currentWalletAddress;
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+        ...(addr ? { 'X-Admin-Address': addr } : {})
+      };
+
+      const url = editingEventData
+        ? `${apiBaseUrl}/api/admin/events/${eventData.id}`
+        : `${apiBaseUrl}/api/admin/events`;
+      const method = editingEventData ? 'PUT' : 'POST';
+
+      const response = await fetch(url, {
+        method,
+        headers,
+        body: JSON.stringify(eventData)
+      });
+      const result = await response.json();
+
+      if (result.success) {
+        if (editingEventData) {
+          updateEvent(eventData.id, result.data || eventData);
+        } else {
+          addEvent(result.data || eventData);
+        }
+        setIsCreatingEvent(false);
+        setEditingEventData(null);
+        await fetchEvents(apiBaseUrl);
       } else {
-        addEvent(eventData);
+        throw new Error(result.error || '保存に失敗しました');
       }
-      setIsCreatingEvent(false);
-      setEditingEventData(null);
-    } catch (error) {
+    } catch (error: any) {
+      alert(error?.message || 'イベント保存に失敗しました');
     }
-  }, [editingEventData, updateEvent, addEvent, setIsCreatingEvent, setEditingEventData]);
+  }, [editingEventData, updateEvent, addEvent, setIsCreatingEvent, setEditingEventData, apiBaseUrl, fetchEvents]);
 
   const handleDeleteEvent = useCallback(async (id: string) => {
+    if (!confirm('このイベントを削除しますか？')) return;
     try {
+      const addr = localStorage.getItem('currentWalletAddress') || (window as any).currentWalletAddress;
       const response = await fetch(`${apiBaseUrl}/api/admin/events/${id}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(addr ? { 'X-Admin-Address': addr } : {})
+        }
       });
       
       if (response.ok) {

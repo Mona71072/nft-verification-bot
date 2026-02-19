@@ -29,7 +29,13 @@ export function useEvents() {
 
   const fetchEvents = useCallback(async (apiBaseUrl: string) => {
     try {
-      const res = await fetch(`${apiBaseUrl}/api/admin/events`);
+      const addr = typeof window !== 'undefined'
+        ? localStorage.getItem('currentWalletAddress') || (window as any).currentWalletAddress
+        : undefined;
+      const headers: HeadersInit = {
+        ...(addr ? { 'X-Admin-Address': addr } : {})
+      };
+      const res = await fetch(`${apiBaseUrl}/api/admin/events`, { headers });
       const data = await res.json();
       if (data.success) {
         setEvents(data.data || []);

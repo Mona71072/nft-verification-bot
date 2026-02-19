@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useBatchProcessing } from '../../../hooks/useBatchProcessing';
 import type { BatchConfig } from '../../../types';
 
@@ -12,10 +12,18 @@ export function BatchTab({ apiBaseUrl, mode }: BatchTabProps) {
     batchConfig,
     batchStats,
     batchLoading,
+    isRunning,
+    fetchBatchConfig,
+    fetchBatchStats,
     startBatchProcessing,
     stopBatchProcessing,
     updateBatchStats
   } = useBatchProcessing();
+
+  useEffect(() => {
+    fetchBatchConfig(apiBaseUrl);
+    fetchBatchStats(apiBaseUrl);
+  }, [apiBaseUrl, fetchBatchConfig, fetchBatchStats]);
 
   const [configForm, setConfigForm] = useState<Partial<BatchConfig>>({
     batchSize: 10,
@@ -114,31 +122,31 @@ export function BatchTab({ apiBaseUrl, mode }: BatchTabProps) {
           <div style={{ display: 'flex', gap: '1rem' }}>
             <button
               onClick={handleStartBatch}
-              disabled={batchLoading || batchConfig !== null}
+              disabled={batchLoading || isRunning}
               style={{
                 flex: 1,
                 padding: '0.75rem',
-                background: batchLoading || batchConfig ? '#ccc' : '#28a745',
+                background: batchLoading || isRunning ? '#ccc' : '#28a745',
                 color: 'white',
                 border: 'none',
                 borderRadius: '4px',
-                cursor: batchLoading || batchConfig ? 'not-allowed' : 'pointer'
+                cursor: batchLoading || isRunning ? 'not-allowed' : 'pointer'
               }}
             >
-              {batchLoading ? '開始中...' : 'バッチ処理開始'}
+              {batchLoading ? '実行中...' : 'バッチ処理実行'}
             </button>
             
             <button
               onClick={handleStopBatch}
-              disabled={batchLoading || batchConfig === null}
+              disabled={batchLoading || !isRunning}
               style={{
                 flex: 1,
                 padding: '0.75rem',
-                background: batchLoading || !batchConfig ? '#ccc' : '#dc3545',
+                background: batchLoading || !isRunning ? '#ccc' : '#dc3545',
                 color: 'white',
                 border: 'none',
                 borderRadius: '4px',
-                cursor: batchLoading || !batchConfig ? 'not-allowed' : 'pointer'
+                cursor: batchLoading || !isRunning ? 'not-allowed' : 'pointer'
               }}
             >
               停止
@@ -149,13 +157,13 @@ export function BatchTab({ apiBaseUrl, mode }: BatchTabProps) {
 
       {/* バッチ処理状況 */}
       {batchConfig && (
-        <div style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #28a745', borderRadius: '8px', backgroundColor: '#f8fff9' }}>
-          <h4>バッチ処理実行中</h4>
+        <div style={{ marginBottom: '2rem', padding: '1rem', border: `1px solid ${isRunning ? '#28a745' : '#6c757d'}`, borderRadius: '8px', backgroundColor: isRunning ? '#f8fff9' : '#f8f9fa' }}>
+          <h4>{isRunning ? 'バッチ処理実行中' : '保存済みバッチ設定'}</h4>
           <div style={{ display: 'grid', gap: '0.5rem', fontSize: '0.875rem' }}>
-            <div><strong>バッチサイズ:</strong> {batchConfig.batchSize}</div>
-            <div><strong>遅延時間:</strong> {batchConfig.delayMs}ms</div>
-            <div><strong>最大リトライ:</strong> {batchConfig.maxRetries}</div>
-            <div><strong>操作:</strong> {batchConfig.operation}</div>
+            <div><strong>バッチサイズ:</strong> {batchConfig.batchSize ?? batchConfig.maxUsersPerBatch ?? '-'}</div>
+            <div><strong>リトライ回数:</strong> {batchConfig.maxRetries ?? batchConfig.retryAttempts ?? '-'}</div>
+            <div><strong>有効:</strong> {batchConfig.enabled ? 'はい' : 'いいえ'}</div>
+            {batchConfig.lastRun && <div><strong>最終実行:</strong> {new Date(batchConfig.lastRun).toLocaleString()}</div>}
           </div>
         </div>
       )}
@@ -165,11 +173,15 @@ export function BatchTab({ apiBaseUrl, mode }: BatchTabProps) {
         <div style={{ padding: '1rem', border: '1px solid #007bff', borderRadius: '8px', backgroundColor: '#f0f8ff' }}>
           <h4>処理統計</h4>
           <div style={{ display: 'grid', gap: '0.5rem', fontSize: '0.875rem' }}>
-            <div><strong>処理済み:</strong> {batchStats.processed}</div>
-            <div><strong>成功:</strong> {batchStats.success}</div>
-            <div><strong>失敗:</strong> {batchStats.failed}</div>
-            <div><strong>残り:</strong> {batchStats.remaining}</div>
-            <div><strong>進捗:</strong> {Math.round((batchStats.processed / (batchStats.processed + batchStats.remaining)) * 100)}%</div>
+            <div><strong>合計ユーザー:</strong> {batchStats.totalUsers ?? 0}</div>
+            <div><strong>処理済み:</strong> {batchStats.processed ?? 0}</div>
+            {typeof batchStats.success === 'number' && <div><strong>成功:</strong> {batchStats.success}</div>}
+            <div><strong>エラー:</strong> {batchStats.errors ?? batchStats.failed ?? 0}</div>
+            <div><strong>取消:</strong> {batchStats.revoked ?? 0}</div>
+            {batchStats.lastRun && <div><strong>最終実行:</strong> {new Date(batchStats.lastRun).toLocaleString()}</div>}
+            {typeof batchStats.duration === 'number' && batchStats.duration > 0 && (
+              <div><strong>実行時間:</strong> {(batchStats.duration / 1000).toFixed(1)}秒</div>
+            )}
           </div>
         </div>
       )}

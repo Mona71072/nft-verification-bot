@@ -38,17 +38,55 @@ export function CollectionsTab({ apiBaseUrl }: CollectionsTabProps) {
       if (creatingCollection) return;
       setCreatingCollection(true);
       setCreateColMessage('コレクション作成中...');
-      
-      // コレクション作成ロジック
-      // 実際の実装は元のAdminPanelから移植
-      
-      setCreateColMessage('コレクションが正常に作成されました');
-    } catch (error) {
-      setCreateColMessage('コレクション作成に失敗しました');
+
+      const mtResponse = await fetch(`${apiBaseUrl}/api/move-targets`);
+      const mtData = await mtResponse.json();
+      const defaultMoveTarget = mtData?.data?.defaultMoveTarget;
+
+      if (!defaultMoveTarget) {
+        setCreateColMessage('エラー: DEFAULT_MOVE_TARGETが設定されていません');
+        return;
+      }
+
+      const packageId = defaultMoveTarget.split('::')[0];
+      const autoTypePath = defaultMoveTarget.replace('::mint_to', '::EventNFT');
+
+      const addr = localStorage.getItem('currentWalletAddress') || (window as any).currentWalletAddress;
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+        ...(addr ? { 'X-Admin-Address': addr } : {})
+      };
+
+      const body = {
+        name: createColName || 'Event Collection',
+        packageId,
+        typePath: createColTypePath || autoTypePath,
+        moveTarget: defaultMoveTarget,
+        description: `Symbol: ${createColSymbol || 'EVENT'}`
+      };
+
+      const res = await fetch(`${apiBaseUrl}/api/mint-collections`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+
+      if (data?.success) {
+        setCreateColMessage('コレクションを作成しました');
+        await fetchCollections(apiBaseUrl);
+        setCreateColName('');
+        setCreateColSymbol('');
+        setCreateColTypePath('');
+      } else {
+        setCreateColMessage(data?.error || 'コレクション作成に失敗しました');
+      }
+    } catch (error: any) {
+      setCreateColMessage(error?.message || 'コレクション作成に失敗しました');
     } finally {
       setCreatingCollection(false);
     }
-  }, [creatingCollection]);
+  }, [creatingCollection, apiBaseUrl, createColName, createColSymbol, createColTypePath, fetchCollections]);
 
   return (
     <div>
@@ -143,7 +181,24 @@ export function CollectionsTab({ apiBaseUrl }: CollectionsTabProps) {
                     編集
                   </button>
                   <button
-                    onClick={() => removeCollection(collection.id)}
+                    onClick={async () => {
+                      if (!confirm(`「${collection.name}」を削除しますか？`)) return;
+                      try {
+                        const addr = localStorage.getItem('currentWalletAddress') || (window as any).currentWalletAddress;
+                        const res = await fetch(`${apiBaseUrl}/api/collections/${collection.id}`, {
+                          method: 'DELETE',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            ...(addr ? { 'X-Admin-Address': addr } : {})
+                          }
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                          removeCollection(collection.id);
+                        }
+                      } catch {
+                      }
+                    }}
                     style={{
                       padding: '0.5rem 1rem',
                       background: '#dc3545',

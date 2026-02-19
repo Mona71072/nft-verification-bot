@@ -27,6 +27,7 @@ function AdminMintPageInner() {
       <CollectionTypeFilter
         value={query.collectionType || ''}
         onChange={handleCollectionTypeChange}
+        apiBaseUrl={API_BASE_URL}
       />
 
       <MintManagementSection

@@ -52,7 +52,13 @@ export default function MintHistory() {
 
   const fetchEvents = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/events`);
+      const addr = typeof window !== 'undefined'
+        ? localStorage.getItem('currentWalletAddress') || (window as any).currentWalletAddress
+        : undefined;
+      const headers: HeadersInit = {
+        ...(addr ? { 'X-Admin-Address': addr } : {})
+      };
+      const res = await fetch(`${API_BASE_URL}/api/admin/events`, { headers });
       const data = await res.json();
       if (data.success) setEvents(data.data || []);
     } catch (e) {

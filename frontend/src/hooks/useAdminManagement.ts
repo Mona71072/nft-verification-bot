@@ -1,5 +1,15 @@
 import { useState, useCallback } from 'react';
 
+function getAuthHeaders(): HeadersInit {
+  const addr = typeof window !== 'undefined'
+    ? localStorage.getItem('currentWalletAddress') || (window as any).currentWalletAddress
+    : undefined;
+  return {
+    'Content-Type': 'application/json',
+    ...(addr ? { 'X-Admin-Address': addr } : {})
+  };
+}
+
 export function useAdminManagement() {
   const [adminAddresses, setAdminAddresses] = useState<string[]>([]);
   const [newAdminAddress, setNewAdminAddress] = useState('');
@@ -7,7 +17,7 @@ export function useAdminManagement() {
 
   const fetchAdminAddresses = useCallback(async (apiBaseUrl: string) => {
     try {
-      const res = await fetch(`${apiBaseUrl}/api/admin/addresses`);
+      const res = await fetch(`${apiBaseUrl}/api/admin/addresses`, { headers: getAuthHeaders() });
       const data = await res.json();
       if (data.success) {
         setAdminAddresses(data.data || []);
@@ -22,7 +32,7 @@ export function useAdminManagement() {
       
       const response = await fetch(`${apiBaseUrl}/api/admin/addresses`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ address })
       });
       
@@ -46,8 +56,9 @@ export function useAdminManagement() {
     try {
       setAdminLoading(true);
       
-      const response = await fetch(`${apiBaseUrl}/api/admin/addresses/${address}`, {
-        method: 'DELETE'
+      const response = await fetch(`${apiBaseUrl}/api/admin/addresses/${encodeURIComponent(address)}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
       });
       
       const result = await response.json();
