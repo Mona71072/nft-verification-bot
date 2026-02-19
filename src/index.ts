@@ -50,10 +50,10 @@ const app = new Hono<{ Bindings: Env }>();
 function getSuiEndpoints(env: Env) {
   const suiNet = env.SUI_NETWORK || 'mainnet';
   const graphqlEndpoint = suiNet === 'testnet'
-    ? 'https://sui-testnet.mystenlabs.com/graphql'
+    ? 'https://graphql.testnet.sui.io/graphql'
     : suiNet === 'devnet'
-      ? 'https://sui-devnet.mystenlabs.com/graphql'
-      : 'https://sui-mainnet.mystenlabs.com/graphql';
+      ? 'https://graphql.devnet.sui.io/graphql'
+      : 'https://graphql.mainnet.sui.io/graphql';
 
   const fullnode = suiNet === 'testnet'
     ? 'https://fullnode.testnet.sui.io:443'
@@ -293,10 +293,10 @@ app.get('/api/collection-onchain-count/:collectionId', async (c) => {
     // Sui GraphQL APIエンドポイント
     const suiNet = c.env.SUI_NETWORK || 'mainnet';
     const graphqlEndpoint = suiNet === 'testnet'
-      ? 'https://sui-testnet.mystenlabs.com/graphql'
+      ? 'https://graphql.testnet.sui.io/graphql'
       : suiNet === 'devnet'
-        ? 'https://sui-devnet.mystenlabs.com/graphql'
-        : 'https://sui-mainnet.mystenlabs.com/graphql';
+        ? 'https://graphql.devnet.sui.io/graphql'
+        : 'https://graphql.mainnet.sui.io/graphql';
     
     const fullnode = suiNet === 'testnet'
       ? 'https://fullnode.testnet.sui.io:443'
@@ -304,22 +304,19 @@ app.get('/api/collection-onchain-count/:collectionId', async (c) => {
         ? 'https://fullnode.devnet.sui.io:443'
         : 'https://fullnode.mainnet.sui.io:443';
 
-    // GraphQL query to find all objects of this type
+    // GraphQL query (Beta schema: AddressOwner/ObjectOwner)
     const query = `
       query GetObjects($type: String!) {
         objects(filter: { type: $type }, first: 50) {
           nodes {
             address
             owner {
+              __typename
               ... on AddressOwner {
-                owner {
-                  address
-                }
+                address { address }
               }
-              ... on Parent {
-                parent {
-                  address
-                }
+              ... on ObjectOwner {
+                address { address }
               }
               ... on Shared {
                 initialSharedVersion
@@ -351,17 +348,26 @@ app.get('/api/collection-onchain-count/:collectionId', async (c) => {
         })
       });
 
+      if (!graphqlResponse.ok) {
+        throw new Error(`GraphQL endpoint returned ${graphqlResponse.status}`);
+      }
+
+      const contentType = graphqlResponse.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error(`GraphQL returned non-JSON content-type: ${contentType}`);
+      }
+
       const graphqlResult = await graphqlResponse.json() as any;
       
       if (graphqlResult.errors) {
-        return c.json({
-          success: false,
-          error: 'GraphQL query failed',
-          details: graphqlResult.errors
-        }, 500);
+        throw new Error(`GraphQL query failed: ${JSON.stringify(graphqlResult.errors)}`);
       }
 
-      const objects = graphqlResult.data?.objects?.nodes || [];
+      if (!graphqlResult.data?.objects) {
+        throw new Error('GraphQL returned no data');
+      }
+
+      const objects = graphqlResult.data.objects.nodes || [];
       let activeCount = 0;
       let kioskCount = 0;
       const uniqueOwners = new Set<string>();
@@ -370,21 +376,20 @@ app.get('/api/collection-onchain-count/:collectionId', async (c) => {
         if (obj.owner) {
           activeCount++;
           
-          // AddressOwner
-          if (obj.owner.owner?.address) {
-            uniqueOwners.add(obj.owner.owner.address);
-          }
-          // Parent (Kiosk)
-          else if (obj.owner.parent?.address) {
-            kioskCount++;
-            // Kioskの最終オーナーを解決
-            const kioskId = obj.owner.parent.address;
-            const finalOwner = await resolveFinalOwnerByObjectId(kioskId, fullnode);
-            if (finalOwner) {
-              uniqueOwners.add(finalOwner);
+          // AddressOwner or ObjectOwner (Beta: owner.address.address)
+          const ownerAddr = obj.owner.address?.address;
+          if (ownerAddr) {
+            if (obj.owner.__typename === 'ObjectOwner') {
+              kioskCount++;
+              const finalOwner = await resolveFinalOwnerByObjectId(ownerAddr, fullnode);
+              if (finalOwner) {
+                uniqueOwners.add(finalOwner);
+              }
+            } else {
+              // AddressOwner
+              uniqueOwners.add(ownerAddr);
             }
           }
-          // Shared/Immutableは所有者なし
         }
       }
 
@@ -399,7 +404,37 @@ app.get('/api/collection-onchain-count/:collectionId', async (c) => {
       });
 
     } catch (graphqlError) {
-      // フォールバック: 既知のアドレスがあれば suix_getOwnedObjects を使用
+      // フォールバック: EVENT_STORE + MINTED_STORE からイベント経由のmintedCountを集計
+      try {
+        const eventStore = c.env.EVENT_STORE as KVNamespace | undefined;
+        const mintedStore = c.env.MINTED_STORE as KVNamespace | undefined;
+        if (eventStore && mintedStore) {
+          const eventsStr = await eventStore.get('events');
+          const events: any[] = eventsStr ? JSON.parse(eventsStr) : [];
+          const matchingEvents = events.filter((e: any) => e.collectionId === collectionId);
+          let totalFromEvents = 0;
+          for (const ev of matchingEvents) {
+            if (ev.id) {
+              const countStr = await mintedStore.get(`minted_count:${ev.id}`);
+              totalFromEvents += countStr ? Number(countStr) : 0;
+            }
+          }
+          if (totalFromEvents > 0) {
+            return c.json({
+              success: true,
+              count: totalFromEvents,
+              active: totalFromEvents,
+              burned: 0,
+              inKiosk: 0,
+              uniqueHolders: 0,
+              totalMinted: totalFromEvents,
+              note: 'Fallback from event minted counts (GraphQL unavailable)'
+            });
+          }
+        }
+      } catch (_fallbackError) {
+        // ignore fallback error
+      }
       return c.json({
         success: true,
         count: 0,
@@ -494,7 +529,7 @@ async function hasOwnedNftForCollection(
     // 続行してフォールバック
   }
 
-  // Kiosk等の間接所有チェック（GraphQL）
+  // Kiosk等の間接所有チェック（GraphQL Beta）
   try {
     const query = `
       query GetObjects($type: String!) {
@@ -503,14 +538,10 @@ async function hasOwnedNftForCollection(
             owner {
               __typename
               ... on AddressOwner {
-                owner {
-                  address
-                }
+                address { address }
               }
-              ... on Parent {
-                parent {
-                  address
-                }
+              ... on ObjectOwner {
+                address { address }
               }
             }
           }
@@ -531,13 +562,15 @@ async function hasOwnedNftForCollection(
     const nodes = result?.data?.objects?.nodes || [];
 
     for (const node of nodes) {
-      const directOwner = node?.owner?.owner?.address;
-      if (directOwner && directOwner.toLowerCase() === normalizedAddress) {
+      const ownerAddr = node?.owner?.address?.address;
+      if (!ownerAddr) continue;
+
+      if (node.owner.__typename === 'AddressOwner' && ownerAddr.toLowerCase() === normalizedAddress) {
         return true;
       }
 
-      const kioskId = node?.owner?.parent?.address;
-      if (kioskId) {
+      if (node.owner.__typename === 'ObjectOwner') {
+        const kioskId = ownerAddr;
         const finalOwner = await resolveFinalOwner({ ObjectOwner: kioskId }, fullnode);
         if (finalOwner && finalOwner.toLowerCase() === normalizedAddress) {
           return true;
@@ -556,36 +589,100 @@ function resolveDisplayTemplates(displayData: any, contentFields: any): any {
   if (!displayData || !contentFields) return displayData;
   
   const resolved = { ...displayData };
-  
-  // descriptionのテンプレートを置換
-  if (resolved.description === '{description}' && contentFields.description) {
-    resolved.description = contentFields.description;
-  }
-  
-  // nameのテンプレートを置換
-  if (resolved.name === '{name}' && contentFields.name) {
-    resolved.name = contentFields.name;
-  }
-  
-  // event_dateのテンプレートを置換（{event_date}と{eventDate}の両方をチェック）
-  if (contentFields.event_date) {
-    if (resolved.event_date === '{event_date}' || resolved.event_date === '{eventDate}') {
-      resolved.event_date = contentFields.event_date;
+
+  const toSnakeCase = (value: string): string =>
+    value.replace(/([A-Z])/g, '_$1').toLowerCase();
+  const toCamelCase = (value: string): string =>
+    value.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+  const getTemplateValue = (fieldName: string): unknown => {
+    const candidates = Array.from(
+      new Set([
+        fieldName,
+        fieldName.toLowerCase(),
+        toSnakeCase(fieldName),
+        toCamelCase(fieldName),
+      ])
+    );
+    for (const key of candidates) {
+      if (contentFields[key] !== undefined && contentFields[key] !== null) {
+        return contentFields[key];
+      }
     }
-  }
-  // collection_nameのテンプレートを置換
-  if (contentFields.collection_name) {
-    if (resolved.collection_name === '{collection_name}' || resolved.collection_name === '{collectionName}') {
-      resolved.collection_name = contentFields.collection_name;
-    }
-  }
-  
-  // image_url内の{image_cid}テンプレートを置換（既に完全なURLの場合は置換しない）
-  if (resolved.image_url && typeof resolved.image_url === 'string' && resolved.image_url.includes('{image_cid}') && contentFields.image_cid) {
-    resolved.image_url = resolved.image_url.replace('{image_cid}', contentFields.image_cid);
+    return undefined;
+  };
+
+  for (const [key, value] of Object.entries(resolved)) {
+    if (typeof value !== 'string') continue;
+    resolved[key] = value.replace(/\{([^{}]+)\}/g, (match, rawFieldName: string) => {
+      const fieldName = rawFieldName.trim();
+      const templateValue = getTemplateValue(fieldName);
+      if (templateValue === undefined || templateValue === null) {
+        return match;
+      }
+      if (typeof templateValue === 'string') {
+        return templateValue;
+      }
+      if (typeof templateValue === 'number' || typeof templateValue === 'boolean') {
+        return String(templateValue);
+      }
+      return match;
+    });
   }
   
   return resolved;
+}
+
+function normalizeDisplayImageUrl(displayData: any, contentFields?: any): any {
+  if (!displayData || typeof displayData !== 'object') {
+    return displayData;
+  }
+
+  const normalized = { ...displayData };
+  const rawImageUrl = typeof normalized.image_url === 'string' ? normalized.image_url.trim() : '';
+  const imageCid = (contentFields?.image_cid ?? contentFields?.imageCid) as string | undefined;
+  const imageUrlFromFields = (contentFields?.image_url ?? contentFields?.imageUrl) as string | undefined;
+
+  if (!rawImageUrl) {
+    if (typeof imageUrlFromFields === 'string' && imageUrlFromFields.trim()) {
+      normalized.image_url = imageUrlFromFields.trim();
+      return normalized;
+    }
+    if (typeof imageCid === 'string' && imageCid.trim()) {
+      normalized.image_url = `https://wal-aggregator-mainnet.staketab.org/v1/blobs/${encodeURIComponent(imageCid.trim())}`;
+      return normalized;
+    }
+    return normalized;
+  }
+
+  const hasKnownScheme =
+    rawImageUrl.startsWith('http://') ||
+    rawImageUrl.startsWith('https://') ||
+    rawImageUrl.startsWith('ipfs://') ||
+    rawImageUrl.startsWith('/ipfs/');
+  if (hasKnownScheme) {
+    return normalized;
+  }
+
+  const isCid = /^(Qm[1-9A-HJ-NP-Za-km-z]{44,}|bafy[a-zA-Z0-9]+)$/.test(rawImageUrl);
+  if (isCid) {
+    return normalized;
+  }
+
+  if (typeof imageCid === 'string' && imageCid.trim()) {
+    const trimmedCid = imageCid.trim();
+    if (rawImageUrl === trimmedCid) {
+      normalized.image_url = `https://wal-aggregator-mainnet.staketab.org/v1/blobs/${encodeURIComponent(trimmedCid)}`;
+      return normalized;
+    }
+  }
+
+  // URLスキームを持たないBlob IDらしき値はWalrus公開URLとして扱う
+  const looksLikeWalrusBlobId = /^[a-zA-Z0-9_-]{16,}$/.test(rawImageUrl) && !rawImageUrl.includes('/');
+  if (looksLikeWalrusBlobId) {
+    normalized.image_url = `https://wal-aggregator-mainnet.staketab.org/v1/blobs/${encodeURIComponent(rawImageUrl)}`;
+  }
+
+  return normalized;
 }
 
 // ユーザーが保有しているNFTを取得（Kiosk対応・event_date補完）
@@ -600,10 +697,10 @@ app.get('/api/owned-nfts/:address', async (c) => {
 
     const suiNet = c.env.SUI_NETWORK || 'mainnet';
     const graphqlEndpoint = suiNet === 'testnet'
-      ? 'https://sui-testnet.mystenlabs.com/graphql'
+      ? 'https://graphql.testnet.sui.io/graphql'
       : suiNet === 'devnet'
-        ? 'https://sui-devnet.mystenlabs.com/graphql'
-        : 'https://sui-mainnet.mystenlabs.com/graphql';
+        ? 'https://graphql.devnet.sui.io/graphql'
+        : 'https://graphql.mainnet.sui.io/graphql';
     
     const fullnode = suiNet === 'testnet'
       ? 'https://fullnode.testnet.sui.io:443'
@@ -659,42 +756,67 @@ app.get('/api/owned-nfts/:address', async (c) => {
         const txDigestToNFTs = new Map<string, any[]>();
         
         for (const obj of rpcResult.result.data) {
-          if (obj.data?.display?.data) {
-            let displayData = obj.data.display.data;
-            
-            // content.fieldsから実際の値を取得してテンプレート文字列を置換
-            const contentFields = obj.data.content?.fields;
-            if (contentFields) {
-              displayData = resolveDisplayTemplates(displayData, contentFields);
-            }
-            
-            // event_date補完: display.event_dateがなければまたは{eventDate}テンプレートの場合、イベント名から検索
-            if ((!displayData.event_date || displayData.event_date === '{eventDate}') && displayData.name) {
-              const matchingEvent = events.find((e: any) => e.name === displayData.name);
-              if (matchingEvent) {
-                displayData.event_date = matchingEvent.eventDate || matchingEvent.startAt;
-              }
-            }
-            
-            const nftData: any = {
-              objectId: obj.data.objectId,
-              type: obj.data.type,
-              display: displayData,
-              owner: obj.data.owner
-            };
-            
-            // previousTransactionがあれば、timestamp取得用にマップに追加
-            if (obj.data.previousTransaction) {
-              const txDigest = obj.data.previousTransaction;
-              if (!txDigestToNFTs.has(txDigest)) {
-                txDigestToNFTs.set(txDigest, []);
-              }
-              nftData.previousTransaction = txDigest;
-              txDigestToNFTs.get(txDigest)!.push(nftData);
-            }
-            
-            ownedNFTs.push(nftData);
+          if (!obj.data) {
+            continue;
           }
+
+          let displayData = obj.data?.display?.data ? { ...obj.data.display.data } : {};
+
+          // display.dataが無いNFTでもcontent.fieldsから主要display情報を構築
+          const contentFields = obj.data.content?.fields;
+          if (contentFields) {
+            if (!displayData || Object.keys(displayData).length === 0) {
+              if (contentFields.name) displayData.name = contentFields.name;
+              if (contentFields.description) displayData.description = contentFields.description;
+              if (contentFields.event_date) displayData.event_date = contentFields.event_date;
+              if (contentFields.eventDate) displayData.event_date = contentFields.eventDate;
+              if (contentFields.collection_name) displayData.collection_name = contentFields.collection_name;
+              if (contentFields.collectionName) displayData.collection_name = contentFields.collectionName;
+              if (contentFields.image_url) {
+                displayData.image_url = contentFields.image_url;
+              } else if (contentFields.imageUrl) {
+                displayData.image_url = contentFields.imageUrl;
+              } else if (contentFields.image_cid) {
+                displayData.image_url = `https://wal-aggregator-mainnet.staketab.org/v1/blobs/${encodeURIComponent(contentFields.image_cid)}`;
+              } else if (contentFields.imageCid) {
+                displayData.image_url = `https://wal-aggregator-mainnet.staketab.org/v1/blobs/${encodeURIComponent(contentFields.imageCid)}`;
+              }
+            }
+            displayData = resolveDisplayTemplates(displayData, contentFields);
+            displayData = normalizeDisplayImageUrl(displayData, contentFields);
+          } else {
+            displayData = normalizeDisplayImageUrl(displayData);
+          }
+
+          const unresolvedTemplate = (value: unknown): boolean =>
+            typeof value === 'string' && /\{[^{}]+\}/.test(value);
+
+          // event_date補完: display.event_dateがなければまたは未解決テンプレートの場合、イベント名から検索
+          if ((!displayData.event_date || unresolvedTemplate(displayData.event_date)) && displayData.name) {
+            const matchingEvent = events.find((e: any) => e.name === displayData.name);
+            if (matchingEvent) {
+              displayData.event_date = matchingEvent.eventDate || matchingEvent.startAt;
+            }
+          }
+
+          const nftData: any = {
+            objectId: obj.data.objectId,
+            type: obj.data.type,
+            display: displayData,
+            owner: obj.data.owner
+          };
+
+          // previousTransactionがあれば、timestamp取得用にマップに追加
+          if (obj.data.previousTransaction) {
+            const txDigest = obj.data.previousTransaction;
+            if (!txDigestToNFTs.has(txDigest)) {
+              txDigestToNFTs.set(txDigest, []);
+            }
+            nftData.previousTransaction = txDigest;
+            txDigestToNFTs.get(txDigest)!.push(nftData);
+          }
+
+          ownedNFTs.push(nftData);
         }
         
         // トランザクションのtimestampをバッチで取得（最大10個まで同時実行）
@@ -745,26 +867,19 @@ app.get('/api/owned-nfts/:address', async (c) => {
     // 次にGraphQLで全NFTを検索してKiosk内も確認
     for (const collectionId of collectionIds) {
       try {
+        // Beta schema: Object has no display field; display is resolved later via RPC/content
         const query = `
           query GetObjects($type: String!) {
             objects(filter: { type: $type }, first: 50) {
               nodes {
                 address
-                display {
-                  key
-                  value
-                }
                 owner {
                   __typename
                   ... on AddressOwner {
-                    owner {
-                      address
-                    }
+                    address { address }
                   }
-                  ... on Parent {
-                    parent {
-                      address
-                    }
+                  ... on ObjectOwner {
+                    address { address }
                   }
                 }
               }
@@ -786,14 +901,15 @@ app.get('/api/owned-nfts/:address', async (c) => {
         if (result.data?.objects?.nodes) {
           for (const node of result.data.objects.nodes) {
             let isOwned = false;
-            
-            // 直接所有
-            if (node.owner?.owner?.address?.toLowerCase() === userAddress.toLowerCase()) {
+            const ownerAddr = node.owner?.address?.address;
+
+            // 直接所有（AddressOwner）
+            if (node.owner?.__typename === 'AddressOwner' && ownerAddr?.toLowerCase() === userAddress.toLowerCase()) {
               isOwned = true;
             }
-            // Kiosk経由の所有（Parent形式）
-            else if (node.owner?.parent?.address) {
-              const kioskId = node.owner.parent.address;
+            // Kiosk経由の所有（ObjectOwner）
+            else if (node.owner?.__typename === 'ObjectOwner' && ownerAddr) {
+              const kioskId = ownerAddr;
               
               // Kiosk IDが直接ユーザーアドレスと一致する場合（ObjectOwner形式）
               if (kioskId.toLowerCase() === userAddress.toLowerCase()) {
@@ -852,7 +968,7 @@ app.get('/api/owned-nfts/:address', async (c) => {
         const batch = graphQLNFTs.slice(i, i + 10);
         const batchPromise = Promise.all(batch.map(async (nft) => {
           try {
-            // previousTransactionとcontentを取得
+            // previousTransaction, content, displayを取得（GraphQL Betaはdisplayを返さないためRPCで取得）
             const objResponse = await fetch(fullnode, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -864,19 +980,32 @@ app.get('/api/owned-nfts/:address', async (c) => {
                   nft.objectId,
                   {
                     showPreviousTransaction: true,
-                    showContent: true
+                    showContent: true,
+                    showDisplay: true
                   }
                 ]
               })
             });
             
             const objResult = await objResponse.json() as any;
-            const prevTx = objResult.result?.data?.previousTransaction;
+            const data = objResult.result?.data;
+            const prevTx = data?.previousTransaction;
+
+            // displayが未設定の場合、RPCのdisplayで補完（GraphQL Betaはdisplayを返さない）
+            if (!nft.display || Object.keys(nft.display).length === 0) {
+              const rpcDisplay = data?.display;
+              if (rpcDisplay?.data && typeof rpcDisplay.data === 'object') {
+                nft.display = { ...rpcDisplay.data };
+              }
+            }
             
             // content.fieldsから実際の値を取得してテンプレート文字列を置換
-            const contentFields = objResult.result?.data?.content?.fields;
+            const contentFields = data?.content?.fields;
             if (contentFields && nft.display) {
               nft.display = resolveDisplayTemplates(nft.display, contentFields);
+              nft.display = normalizeDisplayImageUrl(nft.display, contentFields);
+            } else if (nft.display) {
+              nft.display = normalizeDisplayImageUrl(nft.display);
             }
             
             if (prevTx) {

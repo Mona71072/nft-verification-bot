@@ -1,4 +1,5 @@
 import { CollectionsSection } from '../../../features/collections/CollectionsSection';
+import { IpfsImage } from '../../../components/ui/IpfsImage';
 import { getResponsiveValue } from '../../../hooks/useResponsive';
 import type { CollectionConfig, OwnedNFT } from '../../../hooks/useHomePageState';
 
@@ -113,6 +114,25 @@ export function AllTab({
               )}
             </header>
 
+            {group.imageUrl && (
+              <div style={{
+                marginBottom: getResponsiveValue('1.25rem', '1.5rem', '1.75rem', deviceType),
+                borderRadius: '12px',
+                overflow: 'hidden',
+                background: 'rgba(30, 27, 75, 0.4)'
+              }}>
+                <IpfsImage
+                  url={group.imageUrl}
+                  alt={group.title}
+                  style={{
+                    width: '100%',
+                    height: 'auto',
+                    display: 'block'
+                  }}
+                />
+              </div>
+            )}
+
             <CollectionsSection
               deviceType={deviceType}
               searchQuery={searchQuery}
@@ -174,16 +194,13 @@ export function AllTab({
                 overflow: 'hidden',
                 background: 'rgba(30, 27, 75, 0.4)'
               }}>
-                <img
-                  src={convertIpfsUrl(group.imageUrl)}
+                <IpfsImage
+                  url={group.imageUrl}
                   alt={group.title}
                   style={{
                     width: '100%',
                     height: 'auto',
                     display: 'block'
-                  }}
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none';
                   }}
                 />
               </div>

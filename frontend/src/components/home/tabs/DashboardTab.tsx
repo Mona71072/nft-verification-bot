@@ -20,6 +20,8 @@ interface EventSummary {
   mintedCount?: number | null;
   totalCap?: number | null;
   collectionId?: string | null;
+  selectedCollectionId?: string | null;
+  collectionName?: string | null;
   active?: boolean | null;
 }
 

@@ -39,10 +39,11 @@ interface OwnedNFT {
     description?: string;
     image_url?: string;
     event_date?: string;
+    collection_name?: string;
   };
   owner?: unknown;
   previousTransaction?: string;
-  timestamp?: number; // ブロックチェーン上のトランザクションtimestamp（ミリ秒）
+  timestamp?: number;
 }
 
 interface ActivityTabProps {
@@ -54,56 +55,42 @@ interface ActivityTabProps {
 export function ActivityTab({
   deviceType,
   allOwnedNFTs,
-  events: _events
+  events,
 }: ActivityTabProps) {
-  // NFTデータからアクティビティを生成
-  // ownedTabNFTsには既にNFT表示設定でフィルタリングされたNFTが含まれているため、
-  // 追加のフィルタリングは行わず、すべてのNFTをアクティビティとして表示
   const activities = useMemo((): Activity[] => {
     if (!allOwnedNFTs || !Array.isArray(allOwnedNFTs)) {
       return [];
     }
-    
-    // ownedTabNFTsには既にフィルタリングされたNFTが含まれているので、
-    // すべてのNFTをアクティビティとして表示
+
+    const eventNameSet = new Map<string, string>();
+    events.forEach(e => { eventNameSet.set(e.name, e.name); });
+
     return allOwnedNFTs
       .map((nft, index) => {
-        // ブロックチェーン上のtimestampを優先的に使用
-        // timestampがなければevent_dateを使用し、それもなければ現在時刻
-        let timestamp = nft.timestamp || Date.now();
-        
-        if (!nft.timestamp) {
-          const eventDate = nft.display?.event_date;
-          try {
-            if (eventDate && 
-                eventDate !== '{eventDate}' && 
-                eventDate !== 'null' && 
-                eventDate !== 'Unknown' &&
-                !isNaN(new Date(eventDate).getTime())) {
-              timestamp = new Date(eventDate).getTime();
-            }
-          } catch (error) {
-            // エラー時は現在時刻を使用
-          }
-        }
+        const timestamp = nft.timestamp || 0;
+
+        const nftName = nft.display?.name || 'Unnamed NFT';
+        const collectionName = nft.display?.collection_name || '';
+        const matchedEvent = eventNameSet.get(nftName);
 
         return {
           id: `activity-${nft.objectId}-${index}`,
           type: 'mint' as const,
-          timestamp,
-          timestampMs: timestamp,
-          data: { count: 1, label: nft.display?.name || 'NFT' },
+          timestamp: (timestamp && timestamp > 0) ? timestamp : 0,
+          timestampMs: (timestamp && timestamp > 0) ? timestamp : 0,
+          digest: nft.previousTransaction,
+          data: { count: 1, label: nftName },
           mint: {
             objectId: nft.objectId,
-            name: nft.display?.name || 'Unnamed NFT',
+            name: nftName,
             image_url: nft.display?.image_url,
-            collection: nft.type,
-            eventName: nft.display?.description
-          }
+            collection: collectionName,
+            eventName: matchedEvent || undefined,
+          },
         };
       })
       .sort((a, b) => b.timestamp - a.timestamp);
-  }, [allOwnedNFTs]);
+  }, [allOwnedNFTs, events]);
 
   return (
     <div>

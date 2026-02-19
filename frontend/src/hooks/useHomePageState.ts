@@ -586,10 +586,11 @@ export function useHomePageState() {
   }, [allOwnedNFTs, eventNFTs, includeKiosk]);
 
   // OWNEDタブ用のNFT一覧
-  // シンプルなロジック: enabledCollectionsとenabledEventsに基づいて表示
+  // 全保有NFTを表示（イベントNFTも含む）。表示設定がある場合のみフィルタリング。
   const ownedTabNFTs = useMemo(() => {
     if (!hasSelectionFilters) {
-      return nonEventNFTs;
+      if (!allOwnedNFTs || !Array.isArray(allOwnedNFTs)) return [];
+      return allOwnedNFTs.filter(nft => includeKiosk || !isKioskOwned(nft.owner));
     }
     
     if (!allOwnedNFTs || !Array.isArray(allOwnedNFTs)) {
@@ -662,7 +663,7 @@ export function useHomePageState() {
     });
     
     return filtered;
-  }, [hasSelectionFilters, nonEventNFTs, allOwnedNFTs, includeKiosk, enabledEventSet, rawEvents, normalizedEnabledCollections, customNFTTypesSet]);
+  }, [hasSelectionFilters, allOwnedNFTs, includeKiosk, enabledEventSet, rawEvents, normalizedEnabledCollections, customNFTTypesSet]);
 
   const filteredEvents = useMemo(() => {
     if (!rawEvents || !Array.isArray(rawEvents)) {
@@ -821,6 +822,7 @@ export function useHomePageState() {
       collectionMap.set(col.id, { ...col, displayName });
     });
 
+    const synonymToCanonical = new Map<string, string>();
     const synonymCount = new Map<string, number>();
     filteredCollections.forEach(col => {
       const synonyms = [col.id, col.packageId, (col as any).originalId, (col as any).roleId].filter(Boolean) as string[];
@@ -828,7 +830,6 @@ export function useHomePageState() {
         synonymCount.set(value, (synonymCount.get(value) || 0) + 1);
       });
     });
-    const synonymToCanonical = new Map<string, string>();
     filteredCollections.forEach(col => {
       const synonyms = [col.id, col.packageId, (col as any).originalId, (col as any).roleId].filter(Boolean) as string[];
       synonyms.forEach(value => {
@@ -840,15 +841,8 @@ export function useHomePageState() {
 
     const resolveCanonical = (value?: string) => {
       if (!value) return undefined;
-      if (synonymToCanonical.has(value)) {
-        return synonymToCanonical.get(value);
-      }
-      for (const [synonym, canonical] of synonymToCanonical.entries()) {
-        if (value.includes(synonym)) {
-          return canonical;
-        }
-      }
-      return undefined;
+      if (synonymToCanonical.has(value)) return synonymToCanonical.get(value);
+      return collectionMap.has(value) ? value : undefined;
     };
     const resolveCanonicalByCollectionName = (name?: string) => {
       if (!name) return undefined;
@@ -919,7 +913,7 @@ export function useHomePageState() {
 
     const assigned = new Set<string>();
 
-    const addGroup = (groupId: string, title: string, subtitle: string | undefined, collectionIds: string[], isCollectionGroup: boolean = false, originalCollectionIds?: string[], layoutEvents?: EventConfig[], imageUrl?: string) => {
+    const addGroup = (groupId: string, title: string, subtitle: string | undefined, collectionIds: string[], isCollectionGroup: boolean = false, originalCollectionIds?: string[], layoutEvents?: EventConfig[], layoutImageUrl?: string) => {
       // collectionLayoutsのコレクショングループの場合、rawCollectionsのコレクションは使用しない
       // collectionIdsには元のNFTタイプが含まれているため、collectionMapから取得しない
       let canonicalIds: string[] = [];
@@ -971,6 +965,10 @@ export function useHomePageState() {
           if (!imageUrl) {
             imageUrl = collectionImageUrls[nftType] || 
                       collectionImageUrls[typeParts[0] || nftType];
+          }
+          // レイアウトの画像URLをフォールバックに使用（グループの画像URLが各コレクションにも適用される）
+          if (!imageUrl && layoutImageUrl) {
+            imageUrl = layoutImageUrl;
           }
           if (!detailUrl) {
             detailUrl = collectionDetailUrls[nftType] || 
@@ -1053,7 +1051,7 @@ export function useHomePageState() {
         id: groupId,
         title,
         subtitle,
-        imageUrl,
+        imageUrl: layoutImageUrl,
         collectionIds: canonicalIds,
         collections: groupCollections,
         events: groupEvents,
@@ -1171,34 +1169,27 @@ export function useHomePageState() {
       collectionMap.set(col.id, { ...col, displayName });
     });
 
-    const synonymCount = new Map<string, number>();
+    const synonymCount2 = new Map<string, number>();
     filteredCollections.forEach(col => {
       const synonyms = [col.id, col.packageId, (col as any).originalId, (col as any).roleId].filter(Boolean) as string[];
       synonyms.forEach(value => {
-        synonymCount.set(value, (synonymCount.get(value) || 0) + 1);
+        synonymCount2.set(value, (synonymCount2.get(value) || 0) + 1);
       });
     });
-    const synonymToCanonical = new Map<string, string>();
+    const synonymToCanonical2 = new Map<string, string>();
     filteredCollections.forEach(col => {
       const synonyms = [col.id, col.packageId, (col as any).originalId, (col as any).roleId].filter(Boolean) as string[];
       synonyms.forEach(value => {
-        if ((synonymCount.get(value) || 0) === 1) {
-          synonymToCanonical.set(value, col.id);
+        if ((synonymCount2.get(value) || 0) === 1) {
+          synonymToCanonical2.set(value, col.id);
         }
       });
     });
 
     const resolveCanonical = (value?: string) => {
       if (!value) return undefined;
-      if (synonymToCanonical.has(value)) {
-        return synonymToCanonical.get(value);
-      }
-      for (const [synonym, canonical] of synonymToCanonical.entries()) {
-        if (value.includes(synonym)) {
-          return canonical;
-        }
-      }
-      return undefined;
+      if (synonymToCanonical2.has(value)) return synonymToCanonical2.get(value);
+      return collectionMap.has(value) ? value : undefined;
     };
     const resolveCanonicalByCollectionName = (name?: string) => {
       if (!name) return undefined;

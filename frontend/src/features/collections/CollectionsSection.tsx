@@ -2,6 +2,7 @@ import React from 'react';
 import { getResponsiveValue } from '../../hooks/useResponsive';
 import { walrusUrlFromCid } from '../../utils/walrus';
 import { Accordion, RotateIcon } from '../../components/motion/Accordion';
+import { IpfsImage } from '../../components/ui/IpfsImage';
 
 interface Collection { id: string; name: string; packageId?: string; typePath?: string; displayName?: string; imageUrl?: string; detailUrl?: string }
 interface EventItem { id: string; name: string; description?: string; startAt?: string; endAt?: string; eventDate?: string; mintedCount?: number; collectionId?: string; selectedCollectionId?: string; collectionName?: string; detailUrl?: string; imageCid?: string; imageMimeType?: string }
@@ -1319,8 +1320,8 @@ export const CollectionsSection: React.FC<Props> = ({
                     background: 'rgba(79, 70, 229, 0.2)',
                     overflow: 'hidden'
                   }}>
-                    <img
-                      src={convertIpfsUrl(nftWithImage.display.image_url)}
+                    <IpfsImage
+                      url={nftWithImage.display.image_url}
                       alt={collection.displayName || collection.name}
                       style={{
                         width: '100%',
@@ -1328,9 +1329,21 @@ export const CollectionsSection: React.FC<Props> = ({
                         objectFit: 'cover',
                         display: 'block'
                       }}
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                      }}
+                      fallback={
+                        <div style={{
+                          width: '100%',
+                          height: '100%',
+                          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '2rem',
+                          fontWeight: 700,
+                          color: 'white'
+                        }}>
+                          {(collection.displayName || collection.name).charAt(0)}
+                        </div>
+                      }
                     />
                   </div>
                 )}
@@ -1352,18 +1365,15 @@ export const CollectionsSection: React.FC<Props> = ({
                         flexShrink: 0,
                         background: '#f3f4f6'
                       }}>
-                        <img
-                          src={convertIpfsUrl(collection.imageUrl)}
+                        <IpfsImage
+                          url={collection.imageUrl}
                           alt={collection.displayName || collection.name}
                           style={{
                             width: '100%',
                             height: '100%',
                             objectFit: 'cover'
                           }}
-                          onError={(e) => {
-                            e.currentTarget.style.display = 'none';
-                            e.currentTarget.parentElement!.style.display = 'none';
-                          }}
+                          fallbackLetter={collection.displayName || collection.name}
                         />
                       </div>
                     ) : !nftWithImage?.display?.image_url && (

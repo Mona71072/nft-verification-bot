@@ -1,8 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { EmptyNFTs } from '../../components/empty-states/EmptyNFTs';
 import { GridSkeleton } from '../../components/skeletons/GridSkeleton';
 import { getResponsiveValue } from '../../hooks/useResponsive';
-import { RotateIcon } from '../../components/motion/Accordion';
+import { resolveCollectionForNFT, getCollectionDisplayName, type CollectionLike } from '../../utils/resolveCollection';
+import { IpfsImage } from '../../components/ui/IpfsImage';
 
 interface OwnedNFT {
   objectId: string;
@@ -17,20 +18,13 @@ interface OwnedNFT {
   owner?: any;
 }
 
-interface Collection {
-  id: string;
-  name: string;
-  packageId?: string;
-  typePath?: string;
+interface Collection extends CollectionLike {
   detailUrl?: string;
-  displayName?: string;
-  originalId?: string;
-  roleId?: string;
 }
 
 interface Props {
   nftLoading: boolean;
-  nonEventNFTs: OwnedNFT[];
+  nfts: OwnedNFT[];
   collections: Collection[];
   deviceType: 'mobile' | 'tablet' | 'desktop';
   setSelectedNFT: (nft: OwnedNFT | null) => void;
@@ -44,9 +38,20 @@ interface Props {
   setSortOrder: (order: 'asc' | 'desc') => void;
 }
 
+function formatEventDate(dateStr: string | undefined): string | null {
+  if (!dateStr || !dateStr.trim() || dateStr === '{eventDate}' || dateStr === 'null' || dateStr === 'Unknown') return null;
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return null;
+    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  } catch {
+    return null;
+  }
+}
+
 export const OwnedNFTsSection: React.FC<Props> = ({
   nftLoading,
-  nonEventNFTs,
+  nfts: nonEventNFTs,
   collections,
   deviceType,
   setSelectedNFT,
@@ -59,191 +64,74 @@ export const OwnedNFTsSection: React.FC<Props> = ({
   sortOrder,
   setSortOrder,
 }) => {
-  const [expandedNFTs, setExpandedNFTs] = useState<Set<string>>(new Set());
-  const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
-  const [selectedDateFilter, setSelectedDateFilter] = useState<string>('');
-  const [selectedMonthFilter, setSelectedMonthFilter] = useState<string>('');
+  const resolve = useMemo(
+    () => (nft?: OwnedNFT) => resolveCollectionForNFT(nft as any, collections),
+    [collections]
+  );
 
-  const resolveCollectionForNFT = useMemo(() => {
-    const entries = collections.map(collection => {
-      const synonyms = [
-        collection.id,
-        collection.packageId,
-        collection.typePath,
-        collection.originalId,
-        collection.roleId,
-      ].filter((value): value is string => Boolean(value));
+  // Group NFTs by collection
+  const { groups, totalCollections } = useMemo(() => {
+    type Group = { collection: Collection | null; name: string; nfts: OwnedNFT[] };
+    const map = new Map<string, Group>();
 
-      return { collection, synonyms };
-    });
-
-    return (nft?: OwnedNFT) => {
-      const collectionName = nft?.display?.collection_name?.trim();
-      if (collectionName) {
-        for (const { collection } of entries) {
-          const displayName = String(collection.displayName || collection.name || '').trim();
-          if (collection.name === collectionName || displayName === collectionName) {
-            return collection;
-          }
-        }
-      }
-      const nftType = nft?.type;
-      if (!nftType) return undefined;
-
-      for (const { collection, synonyms } of entries) {
-        if (synonyms.includes(nftType)) {
-          return collection;
-        }
-      }
-
-      for (const { collection, synonyms } of entries) {
-        if (synonyms.some(syn => syn && (nftType.includes(syn) || syn.includes(nftType)))) {
-          return collection;
-        }
-      }
-
-      return undefined;
-    };
-  }, [collections]);
-
-  // 月選択オプションの生成（NFTのevent_dateから）
-  const monthOptions = useMemo(() => {
-    const uniqueMonths = new Set<string>();
-    nonEventNFTs.forEach(nft => {
-      const eventDate = nft.display?.event_date;
-      if (eventDate) {
-        try {
-          const date = new Date(eventDate);
-          if (!isNaN(date.getTime())) {
-            const yearMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-            uniqueMonths.add(yearMonth);
-          }
-        } catch (e) {
-          // 日付のパースに失敗した場合はスキップ
-        }
-      }
-    });
-    return Array.from(uniqueMonths).sort().reverse().map(yearMonth => {
-      const [year, month] = yearMonth.split('-').map(Number);
-      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
-                         'July', 'August', 'September', 'October', 'November', 'December'];
-      return (
-        <option key={yearMonth} value={yearMonth}>
-          {monthNames[month - 1]} {year}
-        </option>
-      );
-    });
-  }, [nonEventNFTs]);
-
-  // フィルタリングとソート
-  const filteredAndSortedNFTs = useMemo(() => {
     let filtered = [...nonEventNFTs];
 
-    // 日付フィルタリング（Dateソート選択時）
-    if (sortBy === 'date' && (selectedDateFilter || selectedMonthFilter)) {
-      filtered = filtered.filter(nft => {
-        const eventDate = nft.display?.event_date;
-        if (!eventDate) return false;
-        
-        try {
-          const eventDateObj = new Date(eventDate);
-          if (isNaN(eventDateObj.getTime())) return false;
-          
-          // 特定の日付でフィルター
-          if (selectedDateFilter) {
-            const filterDate = new Date(selectedDateFilter);
-            return eventDateObj.toDateString() === filterDate.toDateString();
-          }
-          
-          // 月でフィルター
-          if (selectedMonthFilter) {
-            const [year, month] = selectedMonthFilter.split('-').map(Number);
-            return eventDateObj.getFullYear() === year && eventDateObj.getMonth() === month - 1;
-          }
-        } catch (e) {
-          return false;
-        }
-        
-        return true;
-      });
-    }
-
-    // 検索フィルタリング（sortByの選択に応じて検索対象を変更）
     if (searchQuery.trim()) {
-      const query = searchQuery.trim().toLowerCase();
+      const q = searchQuery.trim().toLowerCase();
       filtered = filtered.filter(nft => {
-        switch (sortBy) {
-          case 'name':
-            // 名前だけで検索
-            const name = nft.display?.name?.toLowerCase() || '';
-            return name.includes(query);
-          case 'collection':
-            // コレクション名だけで検索
-            const collection = resolveCollectionForNFT(nft);
-            const collectionName = collection?.name?.toLowerCase() || '';
-            return collectionName.includes(query);
-          case 'date':
-            // Dateソート選択時は日付フィルターが優先されるが、検索クエリも使用可能
-            // 日付文字列に含まれるか確認
-            const eventDate = nft.display?.event_date?.toLowerCase() || '';
-            return eventDate.includes(query);
-          default:
-            // デフォルトは名前、説明、コレクション名で検索
-            const defaultName = nft.display?.name?.toLowerCase() || '';
-            const defaultDescription = nft.display?.description?.toLowerCase() || '';
-            const defaultCollection = resolveCollectionForNFT(nft);
-            const defaultCollectionName = defaultCollection?.name?.toLowerCase() || '';
-            return defaultName.includes(query) || defaultDescription.includes(query) || defaultCollectionName.includes(query);
-        }
+        const name = nft.display?.name?.toLowerCase() || '';
+        const colName = (nft.display?.collection_name || resolve(nft)?.name || '').toLowerCase();
+        const desc = nft.display?.description?.toLowerCase() || '';
+        return name.includes(q) || colName.includes(q) || desc.includes(q);
       });
     }
 
-    // ソート
-    filtered.sort((a, b) => {
-      let comparison = 0;
-      
-      switch (sortBy) {
-        case 'name':
-          const nameA = a.display?.name || 'Unnamed NFT';
-          const nameB = b.display?.name || 'Unnamed NFT';
-          comparison = nameA.localeCompare(nameB);
-          break;
-        case 'collection':
-          const collectionA = resolveCollectionForNFT(a)?.name || '';
-          const collectionB = resolveCollectionForNFT(b)?.name || '';
-          comparison = collectionA.localeCompare(collectionB);
-          break;
-        case 'date':
-          // 日付でソート（日付文字列をパースして比較）
-          const dateA = a.display?.event_date || '';
-          const dateB = b.display?.event_date || '';
-          
-          // 日付文字列をDateオブジェクトに変換して比較
-          if (dateA && dateB) {
-            const parsedDateA = new Date(dateA).getTime();
-            const parsedDateB = new Date(dateB).getTime();
-            
-            // 無効な日付の場合は文字列比較にフォールバック
-            if (!isNaN(parsedDateA) && !isNaN(parsedDateB)) {
-              comparison = parsedDateA - parsedDateB;
-            } else {
-              comparison = dateA.localeCompare(dateB);
-            }
-          } else if (dateA && !dateB) {
-            comparison = -1; // dateAがある場合は前に
-          } else if (!dateA && dateB) {
-            comparison = 1; // dateBがある場合は後ろに
-          } else {
-            comparison = 0; // 両方ない場合は等しい
-          }
-          break;
+    filtered.forEach(nft => {
+      const col = resolve(nft);
+      const key = col ? col.id : '__uncategorized__';
+      if (!map.has(key)) {
+        map.set(key, {
+          collection: col || null,
+          name: col ? getCollectionDisplayName(col) : 'Other NFTs',
+          nfts: [],
+        });
       }
-
-      return sortOrder === 'asc' ? comparison : -comparison;
+      map.get(key)!.nfts.push(nft);
     });
 
-    return filtered;
-  }, [nonEventNFTs, searchQuery, sortBy, sortOrder, resolveCollectionForNFT, selectedDateFilter, selectedMonthFilter]);
+    // Sort NFTs within each group
+    for (const group of map.values()) {
+      group.nfts.sort((a, b) => {
+        let cmp = 0;
+        if (sortBy === 'name') {
+          cmp = (a.display?.name || '').localeCompare(b.display?.name || '');
+        } else if (sortBy === 'date') {
+          const da = a.display?.event_date ? new Date(a.display.event_date).getTime() : NaN;
+          const db = b.display?.event_date ? new Date(b.display.event_date).getTime() : NaN;
+          const va = isNaN(da) ? 0 : da;
+          const vb = isNaN(db) ? 0 : db;
+          if (isNaN(da) && !isNaN(db)) cmp = 1;
+          else if (!isNaN(da) && isNaN(db)) cmp = -1;
+          else cmp = va - vb;
+        } else if (sortBy === 'collection') {
+          const ca = (a.display?.collection_name || resolve(a)?.name || '').toLowerCase();
+          const cb = (b.display?.collection_name || resolve(b)?.name || '').toLowerCase();
+          cmp = ca.localeCompare(cb);
+        }
+        return sortOrder === 'asc' ? cmp : -cmp;
+      });
+    }
+
+    const sorted = Array.from(map.values()).sort((a, b) => {
+      if (a.collection && !b.collection) return -1;
+      if (!a.collection && b.collection) return 1;
+      return b.nfts.length - a.nfts.length;
+    });
+
+    return { groups: sorted, totalCollections: map.size - (map.has('__uncategorized__') ? 1 : 0) };
+  }, [nonEventNFTs, collections, searchQuery, sortBy, sortOrder, resolve]);
+
+  const totalNFTs = groups.reduce((sum, g) => sum + g.nfts.length, 0);
 
   if (nftLoading) {
     return <GridSkeleton count={6} columns={{ mobile: 1, tablet: 2, desktop: 3 }} />;
@@ -260,24 +148,19 @@ export const OwnedNFTsSection: React.FC<Props> = ({
     );
   }
 
-  // SUI ScanのURLを生成する関数
-  const getSuiScanUrl = (objectId: string) => {
-    return `https://suiscan.xyz/mainnet/object/${objectId}`;
-  };
+  const getSuiScanUrl = (objectId: string) => `https://suiscan.xyz/mainnet/object/${objectId}`;
 
   const handleCardClick = (
-    event: React.MouseEvent<HTMLDivElement, MouseEvent>,
+    event: React.MouseEvent<HTMLDivElement>,
     nft: OwnedNFT,
     detailUrl?: string
   ) => {
-    const normalizedUrl = detailUrl?.trim();
-
-    if (normalizedUrl) {
+    const url = detailUrl?.trim();
+    if (url) {
       event.stopPropagation();
-      window.open(normalizedUrl, '_blank', 'noopener,noreferrer');
+      window.open(url, '_blank', 'noopener,noreferrer');
       return;
     }
-
     setSelectedNFT(nft);
     setIsDrawerOpen(true);
   };
@@ -287,115 +170,89 @@ export const OwnedNFTsSection: React.FC<Props> = ({
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
-  const handleClearSearch = () => {
-    setSearchQuery('');
-  };
+  const isMobile = deviceType === 'mobile';
 
   return (
     <div>
-      {/* 検索・ソートUI */}
+      {/* Summary + Search bar */}
       <div style={{
         display: 'flex',
-        flexDirection: getResponsiveValue('column', 'row', 'row', deviceType),
-        gap: getResponsiveValue('0.75rem', '1rem', '1rem', deviceType),
-        marginBottom: getResponsiveValue('1rem', '1.25rem', '1.5rem', deviceType),
-        alignItems: getResponsiveValue('stretch', 'center', 'center', deviceType)
+        flexDirection: isMobile ? 'column' : 'row',
+        gap: '0.75rem',
+        marginBottom: '1.25rem',
+        alignItems: isMobile ? 'stretch' : 'center',
       }}>
-        {/* 検索入力（クリアボタン付き） */}
-        <div style={{
-          flex: 1,
-          position: 'relative',
-          display: 'flex',
-          alignItems: 'center'
-        }}>
-          <input
-            type="text"
-            placeholder={
-              sortBy === 'name' 
-                ? 'Search by name...' 
-                : sortBy === 'collection' 
-                ? 'Search by collection...' 
-                : sortBy === 'date'
-                ? 'Search by date...'
-                : 'Search NFTs...'
-            }
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{
-              width: '100%',
-              padding: getResponsiveValue('0.5rem 0.75rem', '0.625rem 0.875rem', '0.75rem 1rem', deviceType),
-              paddingRight: searchQuery ? getResponsiveValue('2.5rem', '2.75rem', '3rem', deviceType) : getResponsiveValue('0.5rem 0.75rem', '0.625rem 0.875rem', '0.75rem 1rem', deviceType),
-              background: 'rgba(30, 27, 75, 0.6)',
-              border: '1px solid rgba(79, 70, 229, 0.3)',
-              borderRadius: getResponsiveValue('8px', '10px', '12px', deviceType),
-              color: '#e0e7ff',
-              fontSize: getResponsiveValue('0.875rem', '0.9375rem', '1rem', deviceType),
-              outline: 'none',
-              transition: 'border-color 0.2s ease'
-            }}
-            onFocus={(e) => {
-              e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.6)';
-            }}
-            onBlur={(e) => {
-              e.currentTarget.style.borderColor = 'rgba(79, 70, 229, 0.3)';
-            }}
-          />
-          {searchQuery && (
-            <button
-              onClick={handleClearSearch}
-              type="button"
-              style={{
-                position: 'absolute',
-                right: getResponsiveValue('0.5rem', '0.625rem', '0.75rem', deviceType),
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: getResponsiveValue('20px', '22px', '24px', deviceType),
-                height: getResponsiveValue('20px', '22px', '24px', deviceType),
-                borderRadius: '50%',
-                color: '#a5b4fc',
-                transition: 'all 0.2s ease',
-                padding: 0
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(139, 92, 246, 0.3)';
-                e.currentTarget.style.color = '#e0e7ff';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = '#a5b4fc';
-              }}
-              title="Clear search"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
+        {/* Summary badges */}
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <span style={{
+            padding: '0.25rem 0.75rem',
+            borderRadius: '20px',
+            fontSize: '0.75rem',
+            fontWeight: 700,
+            background: 'linear-gradient(135deg, rgba(139,92,246,0.35), rgba(79,70,229,0.35))',
+            color: '#e0e7ff',
+            border: '1px solid rgba(139,92,246,0.4)',
+          }}>
+            {totalNFTs} NFT{totalNFTs !== 1 ? 's' : ''}
+          </span>
+          {totalCollections > 0 && (
+            <span style={{
+              padding: '0.25rem 0.75rem',
+              borderRadius: '20px',
+              fontSize: '0.75rem',
+              fontWeight: 700,
+              background: 'linear-gradient(135deg, rgba(59,130,246,0.3), rgba(37,99,235,0.3))',
+              color: '#bfdbfe',
+              border: '1px solid rgba(59,130,246,0.4)',
+            }}>
+              {totalCollections} Collection{totalCollections !== 1 ? 's' : ''}
+            </span>
           )}
         </div>
 
-        {/* ソート選択 */}
-        <div style={{
-          display: 'flex',
-          gap: '0.5rem',
-          alignItems: 'center'
-        }}>
+        {/* Search + Sort */}
+        <div style={{ display: 'flex', flex: 1, gap: '0.5rem', alignItems: 'center' }}>
+          <div style={{ flex: 1, position: 'relative' }}>
+            <input
+              type="text"
+              placeholder="Search NFTs..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '0.5rem 0.75rem',
+                paddingRight: searchQuery ? '2.25rem' : undefined,
+                background: 'rgba(30, 27, 75, 0.6)',
+                border: '1px solid rgba(79, 70, 229, 0.3)',
+                borderRadius: '10px',
+                color: '#e0e7ff',
+                fontSize: '0.875rem',
+                outline: 'none',
+              }}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                style={{
+                  position: 'absolute', right: '0.5rem', top: '50%', transform: 'translateY(-50%)',
+                  background: 'transparent', border: 'none', cursor: 'pointer', color: '#a5b4fc', padding: 0,
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            )}
+          </div>
           <select
             value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as 'name' | 'collection' | 'date')}
+            onChange={(e) => setSortBy(e.target.value as any)}
             style={{
-              padding: getResponsiveValue('0.5rem 0.75rem', '0.625rem 0.875rem', '0.75rem 1rem', deviceType),
+              padding: '0.5rem 0.75rem',
               background: 'rgba(30, 27, 75, 0.6)',
               border: '1px solid rgba(79, 70, 229, 0.3)',
-              borderRadius: getResponsiveValue('8px', '10px', '12px', deviceType),
+              borderRadius: '10px',
               color: '#e0e7ff',
-              fontSize: getResponsiveValue('0.875rem', '0.9375rem', '1rem', deviceType),
-              outline: 'none',
-              cursor: 'pointer'
+              fontSize: '0.875rem',
+              cursor: 'pointer',
             }}
           >
             <option value="name">Name</option>
@@ -405,24 +262,14 @@ export const OwnedNFTsSection: React.FC<Props> = ({
           <button
             onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
             style={{
-              padding: getResponsiveValue('0.5rem', '0.625rem', '0.75rem', deviceType),
+              padding: '0.5rem',
               background: 'rgba(139, 92, 246, 0.3)',
               border: '1px solid rgba(139, 92, 246, 0.5)',
-              borderRadius: getResponsiveValue('8px', '10px', '12px', deviceType),
+              borderRadius: '10px',
               color: '#c7d2fe',
-              fontSize: getResponsiveValue('0.875rem', '0.9375rem', '1rem', deviceType),
               cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              minWidth: getResponsiveValue('36px', '40px', '44px', deviceType),
-              transition: 'background-color 0.2s ease'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'rgba(139, 92, 246, 0.5)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'rgba(139, 92, 246, 0.3)';
+              minWidth: '36px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
             title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
           >
@@ -431,363 +278,247 @@ export const OwnedNFTsSection: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* 日付フィルター（Dateソート選択時のみ表示） */}
-      {sortBy === 'date' && (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: getResponsiveValue('1fr', 'repeat(2, minmax(0, 1fr))', 'repeat(2, minmax(0, 1fr))', deviceType),
-          gap: getResponsiveValue('0.75rem', '1rem', '1rem', deviceType),
-          marginBottom: getResponsiveValue('1rem', '1.25rem', '1.5rem', deviceType),
-          paddingTop: getResponsiveValue('0.75rem', '1rem', '1rem', deviceType),
-          borderTop: '1px solid rgba(79, 70, 229, 0.3)'
-        }}>
-          {/* 月選択 */}
-          <div style={{ minWidth: 0 }}>
-            <label style={{
-              display: 'block',
-              marginBottom: getResponsiveValue('0.375rem', '0.5rem', '0.5rem', deviceType),
-              fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType),
-              color: '#a5b4fc',
-              fontWeight: 600,
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em'
-            }}>
-              Filter by Month
-            </label>
-            <select
-              value={selectedMonthFilter}
-              onChange={(e) => {
-                setSelectedMonthFilter(e.target.value);
-                setSelectedDateFilter(''); // 月を選択したら日付選択をクリア
-              }}
-              style={{
-                width: '100%',
-                padding: getResponsiveValue('0.5rem 0.75rem', '0.625rem 0.875rem', '0.75rem 1rem', deviceType),
-                borderRadius: getResponsiveValue('8px', '10px', '12px', deviceType),
-                border: '1px solid rgba(79, 70, 229, 0.3)',
-                fontSize: getResponsiveValue('0.875rem', '0.9375rem', '1rem', deviceType),
-                outline: 'none',
-                background: 'rgba(30, 27, 75, 0.6)',
-                color: '#e0e7ff',
-                cursor: 'pointer'
-              }}
-            >
-              <option value="">All Months</option>
-              {monthOptions}
-            </select>
-          </div>
-          
-          {/* 日付選択 */}
-          <div style={{ minWidth: 0 }}>
-            <label style={{
-              display: 'block',
-              marginBottom: getResponsiveValue('0.375rem', '0.5rem', '0.5rem', deviceType),
-              fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType),
-              color: '#a5b4fc',
-              fontWeight: 600,
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em'
-            }}>
-              Filter by Date
-            </label>
-            <input
-              type="date"
-              value={selectedDateFilter}
-              onChange={(e) => {
-                setSelectedDateFilter(e.target.value);
-                setSelectedMonthFilter(''); // 日付を選択したら月選択をクリア
-              }}
-              style={{
-                width: '100%',
-                padding: getResponsiveValue('0.5rem 0.75rem', '0.625rem 0.875rem', '0.75rem 1rem', deviceType),
-                borderRadius: getResponsiveValue('8px', '10px', '12px', deviceType),
-                border: '1px solid rgba(79, 70, 229, 0.3)',
-                fontSize: getResponsiveValue('0.875rem', '0.9375rem', '1rem', deviceType),
-                outline: 'none',
-                background: 'rgba(30, 27, 75, 0.6)',
-                color: '#e0e7ff',
-                transition: 'border-color 0.2s ease'
-              }}
-              onFocus={(e) => {
-                e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.6)';
-              }}
-              onBlur={(e) => {
-                e.currentTarget.style.borderColor = 'rgba(79, 70, 229, 0.3)';
-              }}
-            />
-            {(selectedDateFilter || selectedMonthFilter) && (
-              <button
-                onClick={() => {
-                  setSelectedDateFilter('');
-                  setSelectedMonthFilter('');
-                }}
-                style={{
-                  marginTop: getResponsiveValue('0.5rem', '0.625rem', '0.75rem', deviceType),
-                  padding: getResponsiveValue('0.375rem 0.75rem', '0.5rem 1rem', '0.5rem 1rem', deviceType),
-                  borderRadius: getResponsiveValue('6px', '8px', '8px', deviceType),
-                  border: '1px solid rgba(79, 70, 229, 0.4)',
-                  background: 'rgba(139, 92, 246, 0.3)',
-                  color: '#c7d2fe',
-                  fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType),
-                  fontWeight: '500',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(139, 92, 246, 0.5)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'rgba(139, 92, 246, 0.3)';
-                }}
-              >
-                Clear Date Filter
-              </button>
-            )}
-          </div>
-        </div>
+      {/* No results */}
+      {totalNFTs === 0 && searchQuery.trim() && (
+        <EmptyNFTs
+          title="No NFTs Match Your Search"
+          description={`No NFTs found matching "${searchQuery}"`}
+        />
       )}
 
-      {/* 検索結果が0件の場合 */}
-      {filteredAndSortedNFTs.length === 0 && (searchQuery.trim() || selectedDateFilter || selectedMonthFilter) ? (
-        <EmptyNFTs
-          title="No NFTs Match Your Filters"
-          description={
-            searchQuery.trim() && (selectedDateFilter || selectedMonthFilter)
-              ? `No NFTs found matching "${searchQuery}" and the selected date filter`
-              : searchQuery.trim()
-              ? `No NFTs found matching "${searchQuery}"`
-              : selectedDateFilter || selectedMonthFilter
-              ? 'No NFTs found for the selected date'
-              : 'No NFTs found'
-          }
-        />
-      ) : filteredAndSortedNFTs.length === 0 ? null : (
-        /* NFTグリッド */
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: getResponsiveValue('1fr', 'repeat(auto-fill, minmax(250px, 300px))', 'repeat(auto-fill, minmax(280px, 320px))', deviceType),
-          gap: getResponsiveValue('1rem', '1.25rem', '1.5rem', deviceType),
-          maxWidth: '100%'
-        }}>
-          {filteredAndSortedNFTs.map((nft) => {
-        const collection = resolveCollectionForNFT(nft);
-        const collectionDetailUrl = collection?.detailUrl;
-        const isKioskOwned = Boolean(
-          nft.owner?.parent?.address ||
-          (typeof nft.owner?.parent === 'object' && nft.owner?.parent?.address) ||
-          nft.owner?.ObjectOwner
-        );
-        return (
-          <div
-            key={nft.objectId}
-            style={{
-              border: '1px solid rgba(79, 70, 229, 0.3)',
-              borderRadius: getResponsiveValue('10px', '12px', '12px', deviceType),
-              overflow: 'hidden',
-              transition: 'all 0.3s ease',
-              cursor: 'pointer',
-              background: 'rgba(30, 27, 75, 0.6)',
-              backdropFilter: 'blur(10px)',
-              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.3)',
-              display: 'flex',
-              flexDirection: 'column',
-              height: '100%',
-              maxWidth: '100%',
-              width: '100%'
-            }}
-            onClick={(event) => handleCardClick(event, nft, collectionDetailUrl)}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = 'translateY(-4px)';
-              e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'translateY(0)';
-              e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.08)';
-            }}
-          >
+      {/* Collection groups */}
+      {groups.map((group) => (
+        <div key={group.collection?.id || '__uncategorized__'} style={{ marginBottom: '2rem' }}>
+          {/* Collection header */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            marginBottom: '1rem',
+            padding: '0.75rem 1rem',
+            background: 'linear-gradient(135deg, rgba(30, 27, 75, 0.8), rgba(49, 46, 129, 0.5))',
+            borderRadius: '12px',
+            border: '1px solid rgba(79, 70, 229, 0.25)',
+          }}>
+            <div style={{
+              width: '36px', height: '36px',
+              borderRadius: '10px',
+              background: 'linear-gradient(135deg, #667eea, #764ba2)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '1rem', fontWeight: 800, color: 'white',
+              flexShrink: 0,
+            }}>
+              {group.name.charAt(0).toUpperCase()}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{
-                width: '100%',
-                aspectRatio: '1 / 1',
-                background: 'rgba(30, 27, 75, 0.5)',
+                fontSize: isMobile ? '0.9375rem' : '1rem',
+                fontWeight: 700,
+                color: '#e0e7ff',
+                whiteSpace: 'nowrap',
                 overflow: 'hidden',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                position: 'relative'
+                textOverflow: 'ellipsis',
               }}>
-                {nft.display?.image_url && !imageErrors.has(nft.objectId) ? (
-                  <img
-                    src={convertIpfsUrl(nft.display?.image_url)}
-                    alt={nft.display?.name || 'NFT'}
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'cover',
-                      display: 'block'
-                    }}
-                    onError={() => {
-                      setImageErrors(prev => new Set(prev).add(nft.objectId));
-                    }}
-                  />
-                ) : (
-                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#a5b4fc" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                    <circle cx="8.5" cy="8.5" r="1.5"/>
-                    <polyline points="21 15 16 10 5 21"/>
-                  </svg>
-                )}
-              </div>
-              <div style={{ 
-                padding: getResponsiveValue('0.75rem', '1rem', '1rem', deviceType),
-                flex: 1,
-                display: 'flex',
-                flexDirection: 'column'
-              }}>
-                <h3 style={{
-                  fontSize: getResponsiveValue('0.875rem', '1rem', '1rem', deviceType),
-                  fontWeight: 'bold',
-                  color: '#e0e7ff',
-                  marginBottom: '0.5rem'
-                }}>
-                  {nft.display?.name || 'Unnamed NFT'}
-                </h3>
-                {nft.display?.description && (() => {
-                  const description = nft.display.description;
-                  const maxLength = getResponsiveValue(60, 80, 100, deviceType);
-                  const isLong = description.length > maxLength;
-                  const isExpanded = expandedNFTs.has(nft.objectId);
-                  const showDescription = isLong ? (isExpanded ? description : description.slice(0, maxLength) + '...') : description;
-                  
-                  return (
-                    <div style={{ marginBottom: isLong ? '0.5rem' : '0.75rem' }}>
-                      <p style={{
-                        fontSize: getResponsiveValue('0.8rem', '0.875rem', '0.875rem', deviceType),
-                        color: '#c7d2fe',
-                        marginBottom: isLong ? '0.5rem' : '0',
-                        lineHeight: '1.5'
-                      }}>
-                        {showDescription}
-                      </p>
-                      {isLong && (
-                        <>
-                          <button
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              const newExpanded = new Set(expandedNFTs);
-                              if (isExpanded) {
-                                newExpanded.delete(nft.objectId);
-                              } else {
-                                newExpanded.add(nft.objectId);
-                              }
-                              setExpandedNFTs(newExpanded);
-                            }}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: getResponsiveValue('0.25rem', '0.375rem', '0.375rem', deviceType),
-                              padding: getResponsiveValue('0.375rem 0.625rem', '0.5rem 0.75rem', '0.5rem 0.75rem', deviceType),
-                              background: 'transparent',
-                              border: 'none',
-                              cursor: 'pointer',
-                              color: '#a5b4fc',
-                              fontSize: getResponsiveValue('0.625rem', '0.6875rem', '0.6875rem', deviceType),
-                              fontWeight: '600',
-                              transition: 'color 0.2s ease'
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.color = '#c7d2fe';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.color = '#a5b4fc';
-                            }}
-                          >
-                            <span>{isExpanded ? 'Show Less' : 'Show More'}</span>
-                            <RotateIcon isOpen={isExpanded} />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  );
-                })()}
-                <div style={{ marginTop: 'auto' }}>
-                  {collection && (
-                    <div style={{
-                      display: 'inline-block',
-                      padding: '0.25rem 0.75rem',
-                      borderRadius: '12px',
-                      fontSize: '0.75rem',
-                      fontWeight: '600',
-                      background: 'rgba(139, 92, 246, 0.3)',
-                      color: '#c7d2fe',
-                      marginBottom: '0.5rem',
-                      marginRight: isKioskOwned ? '0.5rem' : 0
-                    }}>
-                      {collection.name}
-                    </div>
-                  )}
-                  {isKioskOwned && (
-                    <div style={{
-                      display: 'inline-block',
-                      padding: '0.25rem 0.75rem',
-                      borderRadius: '12px',
-                      fontSize: '0.7rem',
-                      fontWeight: '600',
-                      background: 'rgba(16, 185, 129, 0.3)',
-                      color: '#6ee7b7',
-                      marginBottom: '0.5rem'
-                    }}>
-                      Kiosk
-                    </div>
-                  )}
-                  <div style={{
-                    fontSize: '0.75rem',
-                    color: '#a5b4fc',
-                    wordBreak: 'break-all',
-                    marginBottom: '0.5rem'
-                  }}>
-                    ID: {nft.objectId.slice(0, 8)}...{nft.objectId.slice(-6)}
-                  </div>
-                  <button
-                    onClick={(e) => handleExternalLinkClick(e, getSuiScanUrl(nft.objectId))}
-                    style={{
-                      fontSize: '0.75rem',
-                      color: '#667eea',
-                      fontWeight: '600',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.25rem',
-                      background: 'transparent',
-                      border: 'none',
-                      cursor: 'pointer',
-                      padding: 0,
-                      textAlign: 'left',
-                      transition: 'color 0.2s ease'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.color = '#818cf8';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.color = '#667eea';
-                    }}
-                  >
-                    View on SuiScan
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                      <polyline points="15 3 21 3 21 9" />
-                      <line x1="10" y1="14" x2="21" y2="3" />
-                    </svg>
-                  </button>
-                </div>
+                {group.name}
               </div>
             </div>
-          );
-          })}
+            <span style={{
+              padding: '0.2rem 0.625rem',
+              borderRadius: '12px',
+              fontSize: '0.6875rem',
+              fontWeight: 700,
+              background: 'rgba(139,92,246,0.25)',
+              color: '#c7d2fe',
+              flexShrink: 0,
+            }}>
+              {group.nfts.length}
+            </span>
+          </div>
+
+          {/* NFT grid */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: getResponsiveValue(
+              'repeat(auto-fill, minmax(150px, 1fr))',
+              'repeat(auto-fill, minmax(220px, 1fr))',
+              'repeat(auto-fill, minmax(260px, 1fr))',
+              deviceType
+            ),
+            gap: getResponsiveValue('0.75rem', '1rem', '1.25rem', deviceType),
+          }}>
+            {group.nfts.map((nft) => {
+              const col = resolve(nft);
+              const eventDate = formatEventDate(nft.display?.event_date);
+              const isKiosk = Boolean(
+                nft.owner?.parent?.address ||
+                (typeof nft.owner?.parent === 'object' && nft.owner?.parent?.address) ||
+                nft.owner?.ObjectOwner
+              );
+
+              return (
+                <div
+                  key={nft.objectId}
+                  style={{
+                    borderRadius: '14px',
+                    overflow: 'hidden',
+                    cursor: 'pointer',
+                    background: 'rgba(30, 27, 75, 0.6)',
+                    border: '1px solid rgba(79, 70, 229, 0.25)',
+                    transition: 'all 0.25s ease',
+                    display: 'flex',
+                    flexDirection: 'column',
+                  }}
+                  onClick={(e) => handleCardClick(e, nft, col?.detailUrl)}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-4px)';
+                    e.currentTarget.style.boxShadow = '0 8px 24px rgba(79, 70, 229, 0.2)';
+                    e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.5)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = 'none';
+                    e.currentTarget.style.borderColor = 'rgba(79, 70, 229, 0.25)';
+                  }}
+                >
+                  {/* Image */}
+                  <div style={{
+                    width: '100%',
+                    aspectRatio: '1 / 1',
+                    background: 'rgba(15, 23, 42, 0.6)',
+                    overflow: 'hidden',
+                    position: 'relative',
+                  }}>
+                    <IpfsImage
+                      url={convertIpfsUrl(nft.display?.image_url)}
+                      alt={nft.display?.name || 'NFT'}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                      fallback={(
+                        <div style={{
+                          width: '100%', height: '100%',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          background: 'linear-gradient(135deg, rgba(79,70,229,0.3), rgba(139,92,246,0.2))',
+                        }}>
+                          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#a5b4fc" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                            <circle cx="8.5" cy="8.5" r="1.5"/>
+                            <polyline points="21 15 16 10 5 21"/>
+                          </svg>
+                        </div>
+                      )}
+                    />
+
+                    {/* Event date badge (top-right overlay) */}
+                    {eventDate && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '0.5rem', right: '0.5rem',
+                        padding: '0.2rem 0.5rem',
+                        borderRadius: '8px',
+                        background: 'rgba(15, 23, 42, 0.85)',
+                        backdropFilter: 'blur(4px)',
+                        fontSize: '0.625rem',
+                        fontWeight: 600,
+                        color: '#a5b4fc',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                      }}>
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                        </svg>
+                        {eventDate}
+                      </div>
+                    )}
+
+                    {/* Kiosk badge */}
+                    {isKiosk && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '0.5rem', left: '0.5rem',
+                        padding: '0.15rem 0.4rem',
+                        borderRadius: '6px',
+                        background: 'rgba(16, 185, 129, 0.85)',
+                        fontSize: '0.5625rem',
+                        fontWeight: 700,
+                        color: '#fff',
+                        letterSpacing: '0.05em',
+                      }}>
+                        KIOSK
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Info */}
+                  <div style={{
+                    padding: isMobile ? '0.625rem' : '0.875rem',
+                    flex: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                  }}>
+                    <h3 style={{
+                      fontSize: isMobile ? '0.8125rem' : '0.9375rem',
+                      fontWeight: 700,
+                      color: '#e0e7ff',
+                      marginBottom: '0.375rem',
+                      lineHeight: 1.3,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {nft.display?.name || 'Unnamed NFT'}
+                    </h3>
+
+                    {nft.display?.description && (
+                      <p style={{
+                        fontSize: isMobile ? '0.6875rem' : '0.75rem',
+                        color: '#94a3b8',
+                        marginBottom: '0.5rem',
+                        lineHeight: 1.4,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                      }}>
+                        {nft.display.description}
+                      </p>
+                    )}
+
+                    <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                      {/* Object ID */}
+                      <div style={{ fontSize: '0.6875rem', color: '#64748b' }}>
+                        {nft.objectId.slice(0, 8)}...{nft.objectId.slice(-6)}
+                      </div>
+
+                      {/* SuiScan link */}
+                      <button
+                        onClick={(e) => handleExternalLinkClick(e, getSuiScanUrl(nft.objectId))}
+                        style={{
+                          fontSize: '0.6875rem',
+                          color: '#818cf8',
+                          fontWeight: 600,
+                          display: 'flex', alignItems: 'center', gap: '0.25rem',
+                          background: 'transparent', border: 'none', cursor: 'pointer', padding: 0,
+                          transition: 'color 0.2s',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = '#a5b4fc'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = '#818cf8'; }}
+                      >
+                        View on SuiScan
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
-      )}
+      ))}
     </div>
   );
 };
 
 export default OwnedNFTsSection;
-

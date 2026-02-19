@@ -1,6 +1,7 @@
 import React, { Suspense, lazy, useCallback, useEffect, useRef } from 'react';
 import { NFTDetailDrawer } from '../features/owned/NFTDetailDrawer';
 import { useHomePageState, type HomeTabType } from '../hooks/useHomePageState';
+import { convertIpfsUrl } from '../utils/ipfs';
 import { HomePageHeader } from '../components/home/HomePageHeader';
 import { HomeTabNavigation } from '../components/home/HomeTabNavigation';
 import { UnifiedLoadingSpinner } from '../components/ui/UnifiedLoadingSpinner';
@@ -46,16 +47,6 @@ const TabFallback = () => (
   </div>
 );
 
-// Convert IPFS URLs to HTTP gateway
-const convertIpfsUrl = (url: string | undefined): string | undefined => {
-  if (!url) return undefined;
-  if (url.startsWith('ipfs://')) {
-    const hash = url.replace('ipfs://', '');
-    return `https://ipfs.io/ipfs/${hash}`;
-  }
-  return url;
-};
-
 const HomePage: React.FC = () => {
   const {
     // ウォレット
@@ -90,9 +81,8 @@ const HomePage: React.FC = () => {
     collections,
     events: filteredEvents,
     eventNFTs,
-    nonEventNFTs,
+    allOwnedNFTs,
     ownedTabNFTs,
-    hasSelectionFilters,
     onchainCounts,
     collectionLayoutGroups,
     eventNFTGroups,
@@ -159,13 +149,7 @@ const HomePage: React.FC = () => {
     };
   }, [prefetchTab]);
 
-  const ownedNFTsForDisplay =
-    ownedTabNFTs.length === 0 &&
-    nonEventNFTs.length > 0 &&
-    !hasSelectionFilters &&
-    !nftLoading
-      ? nonEventNFTs
-      : ownedTabNFTs;
+  const ownedNFTsForDisplay = ownedTabNFTs;
 
   const renderTabContent = () => {
     const panelId = `${activeTab}-panel`;
@@ -254,7 +238,7 @@ const HomePage: React.FC = () => {
                  connected={connected}
                  nftLoading={nftLoading}
                  convertIpfsUrl={convertIpfsUrl}
-                 allOwnedNFTs={eventNFTs}
+                 allOwnedNFTs={allOwnedNFTs}
                />
              </Suspense>
            </div>
@@ -266,7 +250,7 @@ const HomePage: React.FC = () => {
              <Suspense fallback={<TabFallback />}>
                <ActivityTab
                  deviceType={deviceType}
-                 allOwnedNFTs={ownedTabNFTs}
+                 allOwnedNFTs={allOwnedNFTs}
                  events={filteredEvents}
                />
              </Suspense>

@@ -12,6 +12,7 @@ interface OwnedNFT {
     description?: string;
     image_url?: string;
     event_date?: string;
+    collection_name?: string;
   };
   owner?: unknown;
 }
@@ -67,7 +68,7 @@ export function OwnedTab({
       ) : (
         <OwnedNFTsSection
           nftLoading={nftLoading}
-          nonEventNFTs={allOwnedNFTs}
+          nfts={allOwnedNFTs}
           collections={collections}
           deviceType={deviceType}
           setSelectedNFT={(nft) => setSelectedNFT(nft)}

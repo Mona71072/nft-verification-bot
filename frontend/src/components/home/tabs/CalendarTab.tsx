@@ -15,6 +15,7 @@ interface Event {
   eventDate?: string;
   detailUrl?: string;
   collectionId: string;
+  collectionName?: string;
   totalCap?: number;
   mintedCount?: number;
   moveCall: {
@@ -31,6 +32,7 @@ interface OwnedNFT {
     description?: string;
     image_url?: string;
     event_date?: string;
+    collection_name?: string;
   };
   owner?: unknown;
 }
@@ -77,43 +79,56 @@ export function CalendarTab({
     return grid;
   }, [currentMonth]);
 
-  // NFTデータを日付別にグループ化（useActivityStatsと同じ厳密なフィルタリングロジックを使用）
+  // NFTデータを日付別にグループ化
   const nftsByDate = useMemo(() => {
     const map = new Map<string, typeof allOwnedNFTs>();
-    
-    // イベント名のセットを作成
+
     const eventNames = new Set(events.map(e => e.name));
-    
+    const eventCollectionIds = new Set(
+      events.map(e => e.collectionId?.trim()).filter((id): id is string => Boolean(id))
+    );
+    const eventCollectionNamesLower = new Set(
+      events.map(e => e.collectionName?.trim().toLowerCase()).filter((n): n is string => Boolean(n))
+    );
+
     allOwnedNFTs.forEach((nft) => {
       const eventDate = nft.display?.event_date;
       const nftName = nft.display?.name;
-      
-      // より厳密なフィルタリング：イベント名とNFT名の完全一致 + 有効なevent_date
+      const nftCollectionName = nft.display?.collection_name?.trim();
+      const nftType = nft.type?.trim();
+
       const nameMatches = nftName && eventNames.has(nftName);
-      const hasValidEventDate = eventDate && 
-        eventDate !== '{eventDate}' && 
-        eventDate !== 'null' && 
+      const collectionMatches = nftCollectionName && eventCollectionNamesLower.has(nftCollectionName.toLowerCase());
+      const collectionIdMatches = Boolean(
+        nftType &&
+        Array.from(eventCollectionIds).some(collectionId =>
+          collectionId === nftType ||
+          collectionId.includes(nftType) ||
+          nftType.includes(collectionId)
+        )
+      );
+      const hasValidEventDate = eventDate &&
+        eventDate.trim() !== '' &&
+        eventDate !== '{eventDate}' &&
+        eventDate !== 'null' &&
         eventDate !== 'Unknown' &&
         !isNaN(new Date(eventDate).getTime());
-      
-      if (nameMatches && hasValidEventDate) {
+
+      if ((nameMatches || collectionMatches || collectionIdMatches) && hasValidEventDate) {
         try {
           const date = new Date(eventDate);
           const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-          
+
           if (!map.has(dateStr)) {
             map.set(dateStr, []);
           }
           map.get(dateStr)!.push(nft);
-        } catch (error) {
-          // 開発環境のみエラーをログ出力
-          if (import.meta.env.DEV) {
-            console.warn('Failed to parse event date:', eventDate, error);
-          }
+        } catch {
+          // skip invalid dates
         }
       }
     });
-    
+
     return map;
   }, [allOwnedNFTs, events]);
 

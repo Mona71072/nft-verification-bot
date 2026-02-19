@@ -39,15 +39,8 @@ interface ActivityTimelineProps {
   onExport?: () => void;
 }
 
-// Convert IPFS URLs to HTTP gateway
-const convertIpfsUrl = (url: string | undefined): string | undefined => {
-  if (!url) return undefined;
-  if (url.startsWith('ipfs://')) {
-    const hash = url.replace('ipfs://', '');
-    return `https://ipfs.io/ipfs/${hash}`;
-  }
-  return url;
-};
+import { convertIpfsUrl } from '../../utils/ipfs';
+import { IpfsImage } from '../../components/ui/IpfsImage';
 
 // Display relative time
 const getRelativeTime = (timestamp: number): string => {
@@ -489,9 +482,9 @@ export function ActivityTimeline({
                     {/* Thumbnail */}
                     {(activity.mint?.image_url || activity.transfer?.image_url) && (
                       <div style={{ flexShrink: 0 }}>
-                        <img
-                          src={convertIpfsUrl(activity.mint?.image_url || activity.transfer?.image_url)}
-                          alt=""
+                        <IpfsImage
+                          url={convertIpfsUrl(activity.mint?.image_url || activity.transfer?.image_url)}
+                          alt={activity.mint?.name || activity.transfer?.name || 'NFT image'}
                           style={{
                             width: isMobile ? '3.5rem' : '4rem',
                             height: isMobile ? '3.5rem' : '4rem',
@@ -499,7 +492,15 @@ export function ActivityTimeline({
                             objectFit: 'cover',
                             border: '2px solid rgba(79, 70, 229, 0.3)'
                           }}
-                          loading="lazy"
+                          fallback={(
+                            <div style={{
+                              width: isMobile ? '3.5rem' : '4rem',
+                              height: isMobile ? '3.5rem' : '4rem',
+                              borderRadius: '0.75rem',
+                              background: 'linear-gradient(135deg, rgba(79,70,229,0.3), rgba(139,92,246,0.2))',
+                              border: '2px solid rgba(79, 70, 229, 0.3)',
+                            }} />
+                          )}
                         />
                       </div>
                     )}
@@ -525,6 +526,33 @@ export function ActivityTimeline({
                           {getActivityTitle(activity)}
                         </h4>
                       </div>
+
+                      {(() => {
+                        const objectId = activity.mint?.objectId || activity.transfer?.objectId;
+                        const activityName = activity.mint?.name || activity.transfer?.name || '';
+                        const isUnnamed = !activityName || activityName.trim().toLowerCase() === 'unnamed nft';
+                        if (!objectId) return null;
+                        return (
+                          <div style={{ marginBottom: '0.5rem' }}>
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.375rem',
+                              padding: '0.2rem 0.55rem',
+                              borderRadius: '8px',
+                              background: isUnnamed ? 'rgba(245, 158, 11, 0.18)' : 'rgba(99, 102, 241, 0.18)',
+                              border: isUnnamed ? '1px solid rgba(245, 158, 11, 0.35)' : '1px solid rgba(99, 102, 241, 0.3)',
+                              color: isUnnamed ? '#fcd34d' : '#c7d2fe',
+                              fontSize: isMobile ? '0.6875rem' : '0.75rem',
+                              fontWeight: 600,
+                              fontFamily: 'monospace',
+                            }}>
+                              NFT
+                              {objectId.slice(0, 8)}...{objectId.slice(-6)}
+                            </span>
+                          </div>
+                        );
+                      })()}
                       
                       {/* Timestamp */}
                       <div style={{
@@ -534,48 +562,77 @@ export function ActivityTimeline({
                         flexWrap: 'wrap',
                         marginBottom: '0.375rem'
                       }}>
-                        {activity.timestamp && !isNaN(new Date(activity.timestamp).getTime()) && (
-                          <div style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '0.375rem',
-                            padding: '0.25rem 0.625rem',
-                            background: 'rgba(79, 70, 229, 0.2)',
-                            borderRadius: '6px',
-                            fontSize: isMobile ? '0.6875rem' : '0.75rem',
-                            color: '#c7d2fe',
-                            fontWeight: '600'
-                          }}>
-                            <Clock className="w-3 h-3" />
-                            <span>
-                              {new Date(activity.timestamp).toLocaleString('en-US', {
-                                month: 'short',
-                                day: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                                timeZone: 'Asia/Tokyo'
-                              })} JST
+                        {activity.timestamp > 0 && !isNaN(new Date(activity.timestamp).getTime()) ? (
+                          <>
+                            <div style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.375rem',
+                              padding: '0.25rem 0.625rem',
+                              background: 'rgba(79, 70, 229, 0.2)',
+                              borderRadius: '6px',
+                              fontSize: isMobile ? '0.6875rem' : '0.75rem',
+                              color: '#c7d2fe',
+                              fontWeight: '600'
+                            }}>
+                              <Clock className="w-3 h-3" />
+                              <span>
+                                {new Date(activity.timestamp).toLocaleString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                  timeZone: 'Asia/Tokyo'
+                                })} JST
+                              </span>
+                            </div>
+                            <span style={{
+                              fontSize: isMobile ? '0.6875rem' : '0.75rem',
+                              color: '#a5b4fc'
+                            }}>
+                              {getRelativeTime(activity.timestamp)}
                             </span>
-                          </div>
-                        )}
-                        {activity.timestamp && !isNaN(new Date(activity.timestamp).getTime()) && (
+                          </>
+                        ) : (
                           <span style={{
                             fontSize: isMobile ? '0.6875rem' : '0.75rem',
-                            color: '#a5b4fc'
+                            color: '#64748b',
+                            fontStyle: 'italic',
                           }}>
-                            {getRelativeTime(activity.timestamp)}
+                            Unknown date
                           </span>
                         )}
                       </div>
                       
-                      {/* Event Name (for mints) */}
-                      {activity.type === 'mint' && activity.mint?.eventName && (
+                      {/* Collection & Event info (for mints) */}
+                      {activity.type === 'mint' && (activity.mint?.collection || activity.mint?.eventName) && (
                         <div style={{
-                          fontSize: isMobile ? '0.8125rem' : '0.875rem',
-                          color: '#a5b4fc',
-                          marginBottom: '0.5rem'
+                          display: 'flex',
+                          flexWrap: 'wrap',
+                          gap: '0.375rem',
+                          marginBottom: '0.5rem',
                         }}>
-                          {activity.mint.eventName}
+                          {activity.mint?.collection && (
+                            <span style={{
+                              display: 'inline-block',
+                              padding: '0.15rem 0.5rem',
+                              borderRadius: '8px',
+                              fontSize: isMobile ? '0.625rem' : '0.6875rem',
+                              fontWeight: 600,
+                              background: 'rgba(139, 92, 246, 0.25)',
+                              color: '#c7d2fe',
+                            }}>
+                              {activity.mint.collection}
+                            </span>
+                          )}
+                          {activity.mint?.eventName && (
+                            <span style={{
+                              fontSize: isMobile ? '0.75rem' : '0.8125rem',
+                              color: '#a5b4fc',
+                            }}>
+                              {activity.mint.eventName}
+                            </span>
+                          )}
                         </div>
                       )}
                       

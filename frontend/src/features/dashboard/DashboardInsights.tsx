@@ -138,11 +138,6 @@ export function DashboardInsights({
     const resolveCanonical = (value?: string | null): string | undefined => {
       if (!value) return undefined;
       if (synonyms.has(value)) return synonyms.get(value);
-      for (const [synonym, canonical] of synonyms.entries()) {
-        if (value.includes(synonym) || synonym.includes(value)) {
-          return canonical;
-        }
-      }
       return collectionMap.has(value) ? value : undefined;
     };
     const resolveCanonicalByCollectionName = (name?: string | null): string | undefined => {
@@ -190,7 +185,9 @@ export function DashboardInsights({
     const eventsWithMetadata = safeEvents.map((event) => {
       const mintedCount = Number.isFinite(event.mintedCount) ? Number(event.mintedCount) : Number(event.mintedCount) || 0;
       const parsedDate = parseEventDate(event.eventDate);
-      const canonicalCollectionId = event.selectedCollectionId
+      const canonicalCollectionId =
+        resolveCanonical(event.selectedCollectionId)
+        || (event.selectedCollectionId && collectionMap.has(event.selectedCollectionId) ? event.selectedCollectionId : null)
         || resolveCanonicalByCollectionName(event.collectionName)
         || resolveCanonical(event.collectionId)
         || event.collectionId
@@ -224,10 +221,9 @@ export function DashboardInsights({
     });
 
     safeCollections.forEach((collection) => {
-      if (!mintedByCollection.has(collection.id)) {
-        const fallbackCount = fallbackMinted.get(collection.id) ?? 0;
-        mintedByCollection.set(collection.id, fallbackCount);
-      }
+      const onchainCount = mintedByCollection.get(collection.id) ?? 0;
+      const fallbackCount = fallbackMinted.get(collection.id) ?? 0;
+      mintedByCollection.set(collection.id, Math.max(onchainCount, fallbackCount));
     });
 
     safeCollections.forEach((collection) => {
@@ -237,9 +233,8 @@ export function DashboardInsights({
         .reduce((sum, item) => sum + item.mintedCount, 0);
 
       const additionalMinted = Math.max(0, totalOnchain - totalEventMinted);
-      const hasEvents = (eventsCountByCollection.get(collection.id) ?? 0) > 0;
 
-      if (!hasEvents && additionalMinted > 0) {
+      if (additionalMinted > 0) {
         const fallbackDate = eventsWithMetadata
           .filter((item) => item.canonicalCollectionId === collection.id && item.parsedDate)
           .map((item) => item.parsedDate as Date)
@@ -302,8 +297,7 @@ export function DashboardInsights({
           return sum + cap;
         }, 0);
         const mintedFromEvents = relatedEvents.reduce((sum, item) => sum + (Number.isFinite(item.mintedCount) ? item.mintedCount : 0), 0);
-        const hasEvents = (eventsCountByCollection.get(collection.id) ?? 0) > 0;
-        const tradeportMinted = hasEvents ? 0 : Math.max(0, minted - mintedFromEvents);
+        const tradeportMinted = Math.max(0, minted - mintedFromEvents);
         const latestEventDateLabel = relatedEvents
           .filter((item) => item.parsedDate)
           .sort((a, b) => (b.parsedDate?.getTime() ?? 0) - (a.parsedDate?.getTime() ?? 0))

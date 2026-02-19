@@ -28,15 +28,7 @@ interface NFTDetailDrawerProps {
   onClose: () => void;
 }
 
-// Convert IPFS URLs to HTTP gateway
-const convertIpfsUrl = (url: string | undefined): string | undefined => {
-  if (!url) return undefined;
-  if (url.startsWith('ipfs://')) {
-    const hash = url.replace('ipfs://', '');
-    return `https://ipfs.io/ipfs/${hash}`;
-  }
-  return url;
-};
+import { convertIpfsUrl } from '../../utils/ipfs';
 
 // Copy to clipboard
 const copyToClipboard = async (text: string) => {
