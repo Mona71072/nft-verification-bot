@@ -306,7 +306,8 @@ export function DisplaySettingsSection({
       if (collection) {
         packageId = collection.packageId || '';
         name = collection.name || enabledId;
-        if (packageId && !nftType) nftType = `${packageId}::sxt_nft::EventNFT`;
+        const collectionTypePath = (collection as any).typePath || '';
+        if (collectionTypePath && !nftType) nftType = collectionTypePath;
       }
 
       if (mintCollection) {
@@ -347,6 +348,9 @@ export function DisplaySettingsSection({
       const nftType = eventCollectionId;
       let collectionName = '';
       const mc = mintCollections.find((mc: any) => {
+        if ((event as any).selectedCollectionId && String(mc.id || '') === String((event as any).selectedCollectionId)) {
+          return true;
+        }
         const typePath = (mc as any).typePath || '';
         return typePath === eventCollectionId ||
                normalizeCollectionId(typePath) === normalizedEventCollectionId;
@@ -558,7 +562,12 @@ export function DisplaySettingsSection({
             events.map(event => {
               const eventCollectionId = event.collectionId || '';
               const eventPackageId = event.moveCall?.target ? event.moveCall.target.split('::')[0] : (eventCollectionId.includes('::') ? eventCollectionId.split('::')[0] : '');
-              const eventNFTType = eventCollectionId || (event.moveCall?.target ? event.moveCall.target.replace('::mint_to', '::EventNFT') : '');
+              const selectedMintCollection = (event as any).selectedCollectionId
+                ? mintCollections.find((mc: any) => String(mc.id || '') === String((event as any).selectedCollectionId))
+                : undefined;
+              const eventNFTType = eventCollectionId
+                || (selectedMintCollection as any)?.typePath
+                || (event.moveCall?.target ? event.moveCall.target : '');
               const isExpanded = expandedEventIds.has(event.id);
               return (
                 <div key={event.id} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', padding: '0.5rem', borderRadius: '4px', border: '1px solid #e5e7eb', background: '#f9fafb' }}>

@@ -12,7 +12,9 @@ import {
   isMintCapReached,
   delegateToSponsor,
   saveMintRecord,
-  incrementMintCount
+  incrementMintCount,
+  setMintInProgress,
+  clearMintInProgress
 } from '../services/mint';
 import { logError, logWarning } from '../utils/logger';
 
@@ -20,6 +22,7 @@ import { logError, logWarning } from '../utils/logger';
 interface Env {
   EVENT_STORE?: KVNamespace;
   MINTED_STORE?: KVNamespace;
+  COLLECTION_STORE?: KVNamespace;
   MINT_SPONSOR_API_URL?: string;
   DISCORD_BOT_API_URL?: string;
   ADMIN_API_KEY?: string;
@@ -110,6 +113,26 @@ app.post('/api/mint', async (c) => {
     if (!ev) {
       return c.json({ success: false, error: 'Event not found' }, 404);
     }
+    if (!ev.collectionName && ev.selectedCollectionId && c.env.COLLECTION_STORE) {
+      const collectionStr = await c.env.COLLECTION_STORE.get('mint_collections');
+      const collections = collectionStr ? JSON.parse(collectionStr) : [];
+      if (Array.isArray(collections)) {
+        const matched = collections.find((col: any) => String(col?.id || '').trim() === String(ev.selectedCollectionId).trim());
+        if (matched?.name) {
+          ev.collectionName = matched.name;
+        }
+      }
+    }
+
+    // 新パッケージ(0x7883f18a...)の mint_to は7引数必要。{collectionName} がないと ArityMismatch になるため正規化
+    const mc = ev.moveCall || {};
+    const target = String(mc.target || '').toLowerCase();
+    const isNewPackage = target.includes('0x7883f18a9764824858f831615df9269dcbe6c6158a4b7e426eaba96a04cd0e89');
+    const tpl = Array.isArray(mc.argumentsTemplate) ? [...mc.argumentsTemplate] : [];
+    if (isNewPackage && !tpl.includes('{collectionName}')) {
+      tpl.push('{collectionName}');
+      ev.moveCall = { ...mc, argumentsTemplate: tpl };
+    }
 
     // イベント期間チェック
     if (!isEventActive(ev)) {
@@ -146,11 +169,15 @@ app.post('/api/mint', async (c) => {
       return c.json({ success: false, error: 'Sponsor API URL is not configured' }, 500);
     }
 
+    // スポンサー委譲前にロックを設定（並列リクエストによる重複ミント防止）
+    await setMintInProgress(eventId, address, mintedStore);
+
     // スポンサーAPIへ委譲
     let mintResult;
     try {
       mintResult = await delegateToSponsor(ev, address, sponsorUrl);
     } catch (sponsorError: any) {
+      await clearMintInProgress(eventId, address, mintedStore);
       logError('Sponsor API delegation failed', sponsorError);
       const errorMsg = sponsorError?.message || 'Unknown error';
       return c.json({ 

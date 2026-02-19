@@ -28,6 +28,7 @@ export interface OwnedNFT {
     description?: string;
     image_url?: string;
     event_date?: string;
+    collection_name?: string;
   };
   owner?: unknown;
 }
@@ -57,6 +58,8 @@ export interface EventConfig {
   endAt?: string;
   eventDate?: string;
   collectionId: string;
+  selectedCollectionId?: string;
+  collectionName?: string;
   displayName?: string;
   totalCap?: number;
   mintedCount?: number;
@@ -818,10 +821,21 @@ export function useHomePageState() {
       collectionMap.set(col.id, { ...col, displayName });
     });
 
+    const synonymCount = new Map<string, number>();
+    filteredCollections.forEach(col => {
+      const synonyms = [col.id, col.packageId, (col as any).originalId, (col as any).roleId].filter(Boolean) as string[];
+      synonyms.forEach(value => {
+        synonymCount.set(value, (synonymCount.get(value) || 0) + 1);
+      });
+    });
     const synonymToCanonical = new Map<string, string>();
     filteredCollections.forEach(col => {
       const synonyms = [col.id, col.packageId, (col as any).originalId, (col as any).roleId].filter(Boolean) as string[];
-      synonyms.forEach(value => synonymToCanonical.set(value, col.id));
+      synonyms.forEach(value => {
+        if ((synonymCount.get(value) || 0) === 1) {
+          synonymToCanonical.set(value, col.id);
+        }
+      });
     });
 
     const resolveCanonical = (value?: string) => {
@@ -835,6 +849,16 @@ export function useHomePageState() {
         }
       }
       return undefined;
+    };
+    const resolveCanonicalByCollectionName = (name?: string) => {
+      if (!name) return undefined;
+      const trimmed = name.trim();
+      if (!trimmed) return undefined;
+      const matched = filteredCollections.find(col => {
+        const displayName = (col.displayName || normalizedCollectionNames[col.id] || col.name || '').trim();
+        return col.name === trimmed || displayName === trimmed;
+      });
+      return matched?.id;
     };
 
     const eventsByCollection = new Map<string, EventConfig[]>();
@@ -851,6 +875,8 @@ export function useHomePageState() {
       endAt: event.endAt,
       eventDate: event.eventDate,
       collectionId: canonicalId,
+      selectedCollectionId: event.selectedCollectionId,
+      collectionName: event.collectionName,
       displayName: event.displayName,
       totalCap: event.totalCap,
       mintedCount: event.mintedCount,
@@ -867,7 +893,10 @@ export function useHomePageState() {
     });
 
     filteredEvents.forEach(event => {
-      const canonical = resolveCanonical(event.collectionId);
+      const canonical = (event.selectedCollectionId && collectionMap.has(event.selectedCollectionId))
+        ? event.selectedCollectionId
+        : resolveCanonicalByCollectionName(event.collectionName)
+          || resolveCanonical(event.collectionId);
       if (canonical && collectionMap.has(canonical)) {
         if (!eventsByCollection.has(canonical)) {
           eventsByCollection.set(canonical, []);
@@ -879,7 +908,7 @@ export function useHomePageState() {
     const nftsByCollection = new Map<string, OwnedNFT[]>();
     allOwnedNFTs.forEach(nft => {
       if (!nft.type) return;
-      const canonical = resolveCanonical(nft.type);
+      const canonical = resolveCanonicalByCollectionName(nft.display?.collection_name) || resolveCanonical(nft.type);
       if (canonical && collectionMap.has(canonical)) {
         if (!nftsByCollection.has(canonical)) {
           nftsByCollection.set(canonical, []);
@@ -1142,10 +1171,21 @@ export function useHomePageState() {
       collectionMap.set(col.id, { ...col, displayName });
     });
 
+    const synonymCount = new Map<string, number>();
+    filteredCollections.forEach(col => {
+      const synonyms = [col.id, col.packageId, (col as any).originalId, (col as any).roleId].filter(Boolean) as string[];
+      synonyms.forEach(value => {
+        synonymCount.set(value, (synonymCount.get(value) || 0) + 1);
+      });
+    });
     const synonymToCanonical = new Map<string, string>();
     filteredCollections.forEach(col => {
       const synonyms = [col.id, col.packageId, (col as any).originalId, (col as any).roleId].filter(Boolean) as string[];
-      synonyms.forEach(value => synonymToCanonical.set(value, col.id));
+      synonyms.forEach(value => {
+        if ((synonymCount.get(value) || 0) === 1) {
+          synonymToCanonical.set(value, col.id);
+        }
+      });
     });
 
     const resolveCanonical = (value?: string) => {
@@ -1159,6 +1199,16 @@ export function useHomePageState() {
         }
       }
       return undefined;
+    };
+    const resolveCanonicalByCollectionName = (name?: string) => {
+      if (!name) return undefined;
+      const trimmed = name.trim();
+      if (!trimmed) return undefined;
+      const matched = filteredCollections.find(col => {
+        const displayName = (col.displayName || normalizedCollectionNames[col.id] || col.name || '').trim();
+        return col.name === trimmed || displayName === trimmed;
+      });
+      return matched?.id;
     };
 
     const eventsByCollection = new Map<string, EventConfig[]>();
@@ -1175,6 +1225,8 @@ export function useHomePageState() {
       endAt: event.endAt,
       eventDate: event.eventDate,
       collectionId: canonicalId,
+      selectedCollectionId: event.selectedCollectionId,
+      collectionName: event.collectionName,
       displayName: event.displayName,
       totalCap: event.totalCap,
       mintedCount: event.mintedCount,
@@ -1191,7 +1243,10 @@ export function useHomePageState() {
     });
 
     filteredEvents.forEach(event => {
-      const canonical = resolveCanonical(event.collectionId);
+      const canonical = (event.selectedCollectionId && collectionMap.has(event.selectedCollectionId))
+        ? event.selectedCollectionId
+        : resolveCanonicalByCollectionName(event.collectionName)
+          || resolveCanonical(event.collectionId);
       if (canonical && collectionMap.has(canonical)) {
         if (!eventsByCollection.has(canonical)) {
           eventsByCollection.set(canonical, []);
@@ -1203,7 +1258,7 @@ export function useHomePageState() {
     const nftsByCollection = new Map<string, OwnedNFT[]>();
     allOwnedNFTs.forEach(nft => {
       if (!nft.type) return;
-      const canonical = resolveCanonical(nft.type);
+      const canonical = resolveCanonicalByCollectionName(nft.display?.collection_name) || resolveCanonical(nft.type);
       if (canonical && collectionMap.has(canonical)) {
         if (!nftsByCollection.has(canonical)) {
           nftsByCollection.set(canonical, []);

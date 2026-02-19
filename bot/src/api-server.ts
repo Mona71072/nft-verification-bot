@@ -562,7 +562,7 @@ app.post('/api/batch-process', async (req, res) => {
 // スポンサー実行: Suiでのミント処理を代理送信（Walrus.pdf準拠）
 app.post('/api/mint', async (req, res) => {
   try {
-    const { eventId, recipient, moveCall, imageCid, imageMimeType, eventName, eventDescription, eventDate } = req.body || {};
+    const { eventId, recipient, moveCall, imageCid, imageMimeType, eventName, eventDescription, eventDate, collectionName } = req.body || {};
     if (!eventId || !recipient || !moveCall?.target) {
       return res.status(400).json({ success: false, error: 'Missing eventId/recipient/moveCall.target' });
     }
@@ -587,6 +587,7 @@ app.post('/api/mint', async (req, res) => {
         if (a === '{imageCid}') return tx.pure.string(imageCid || '');
         if (a === '{imageMimeType}') return tx.pure.string(imageMimeType || '');
         if (a === '{eventDate}') return tx.pure.string(eventDate || new Date().toISOString());
+        if (a === '{collectionName}') return tx.pure.string(collectionName || '');
         return tx.pure.string(String(a));
       } catch (argError) {
         throw new Error(`Invalid argument template: ${a}`);
@@ -781,7 +782,7 @@ app.post('/api/move-call', async (req, res) => {
             }
             return tx.pure.address(val);
           }
-          // それ以外は基本 string として渡す（必要に応じて拡張）
+          // それ以外は基本 string として渡す（collectionName などに対応）
           return tx.pure.string(val == null ? '' : String(val));
         }
         // リテラル

@@ -31,6 +31,15 @@ export default function MintHistory() {
   const [historyPage, setHistoryPage] = useState(1);
   const [message, setMessage] = useState('');
   const historyPageSize = 20;
+  const resolveEventTypePath = useCallback((event: AdminMintEvent | undefined): string => {
+    if (!event) return '';
+    if ((event as any).selectedCollectionId) {
+      const selectedCollection = mintCollections.find((col: any) => String(col.id || '') === String((event as any).selectedCollectionId));
+      const selectedTypePath = String((selectedCollection as any)?.typePath || selectedCollection?.packageId || '').trim();
+      if (selectedTypePath) return selectedTypePath;
+    }
+    return String(event.collectionId || '').trim();
+  }, [mintCollections]);
 
   const fetchMintCollections = useCallback(async () => {
     try {
@@ -129,7 +138,7 @@ export default function MintHistory() {
     setMessage('全イベントの履歴を取得中...');
     try {
       // 全イベントのユニークなcollectionIdを取得
-      const uniqueCollectionIds = Array.from(new Set(events.map(ev => ev.collectionId).filter(Boolean)));
+      const uniqueCollectionIds = Array.from(new Set(events.map(ev => resolveEventTypePath(ev)).filter(Boolean)));
       
       // DEBUG: 開発時のみログ出力
       if (import.meta.env.DEV) {
@@ -381,7 +390,7 @@ export default function MintHistory() {
                 >
                   <option value="">コレクションを選択</option>
                   {mintCollections.map(col => (
-                    <option key={col.id} value={col.packageId}>
+                    <option key={col.id} value={(col as any).typePath || col.packageId}>
                       {col.name}
                     </option>
                   ))}
@@ -406,11 +415,12 @@ export default function MintHistory() {
                     setSelectedEventId(eventId);
                     const selectedEvent = events.find(ev => ev.id === eventId);
                     if (selectedEvent) {
-                      setHistoryCollection(selectedEvent.collectionId);
+                      const resolvedTypePath = resolveEventTypePath(selectedEvent);
+                      setHistoryCollection(resolvedTypePath);
                       setHistoryItems([]);
                       setHistoryPage(1);
                       // イベント選択時に自動的に履歴を取得
-                      fetchCollectionHistory(selectedEvent.collectionId, eventId, 100);
+                      fetchCollectionHistory(resolvedTypePath, eventId, 100);
                     } else {
                       setHistoryCollection('');
                       setHistoryItems([]);

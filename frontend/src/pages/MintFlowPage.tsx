@@ -22,6 +22,7 @@ interface MintEvent {
 
 function MintFlowPageInner() {
   const { showToast } = useToast();
+  const mintInProgressRef = React.useRef(false); // 二重送信防止（stateは非同期で反映されるためrefを使用）
   const [step, setStep] = React.useState<Step>('wallet');
   const [status, setStatus] = React.useState<Status>('idle');
   const [selectedEvent, setSelectedEvent] = React.useState<MintEvent | null>(null);
@@ -57,7 +58,12 @@ function MintFlowPageInner() {
       showToast('ウォレットが接続されていません', 'error');
       return;
     }
-
+    // 二重クリック防止: refで即座にチェック（stateは次のレンダリングまで反映されない）
+    if (mintInProgressRef.current) {
+      showToast('ミント処理中です。しばらくお待ちください。', 'info');
+      return;
+    }
+    mintInProgressRef.current = true;
     setStatus('loading');
     setErrorMessage('');
 
@@ -146,6 +152,8 @@ function MintFlowPageInner() {
       setErrorMessage(e.message || 'ミント処理中にエラーが発生しました');
       setStep('result');
       showToast(e.message || 'ミントに失敗しました', 'error');
+    } finally {
+      mintInProgressRef.current = false; // 処理完了時は必ずリセット（成功・失敗どちらでも）
     }
   };
 

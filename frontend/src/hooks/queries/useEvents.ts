@@ -15,11 +15,13 @@ interface Event {
   endAt?: string;
   eventDate?: string;
   collectionId: string;
+  selectedCollectionId?: string;
+  collectionName?: string;
   totalCap?: number;
   mintedCount?: number;
   moveCall: {
     target: string;
-    argumentsTemplate: string;
+    argumentsTemplate: string[] | string;
   };
 }
 

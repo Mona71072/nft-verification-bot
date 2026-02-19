@@ -332,11 +332,17 @@ function EventEditorInner({ event, collections: externalCollections, onSave, onC
       // collectionId（typePath）から selectedCollectionId を補完
       if (prev.collectionId) {
         const cid = String(prev.collectionId).trim();
-        const matched = mintCollections.find(c => {
+        const byId = mintCollections.find(c => String(c.id || '').trim() === cid);
+        if (byId) {
+          return { ...prev, selectedCollectionId: byId.id, collectionId: ((byId as any).typePath || byId.packageId || '').trim() };
+        }
+        const matchedByTypePath = mintCollections.filter(c => {
           const tp = ((c as any).typePath || c.packageId || '').trim();
-          return tp === cid || c.id === cid;
+          return tp === cid;
         });
-        if (matched) {
+        // typePath一致が1件に定まる場合のみ補完する（複数一致は曖昧なので補完しない）
+        if (matchedByTypePath.length === 1) {
+          const matched = matchedByTypePath[0];
           return { ...prev, selectedCollectionId: matched.id, collectionId: ((matched as any).typePath || matched.packageId || '').trim() };
         }
       }
@@ -364,10 +370,15 @@ function EventEditorInner({ event, collections: externalCollections, onSave, onC
     }
     if (colId) {
       const cid = String(colId).trim();
-      return mintCollections.find(c => {
+      const byId = mintCollections.find(c => String(c.id || '').trim() === cid);
+      if (byId) return byId;
+      const byTypePath = mintCollections.filter(c => {
         const tp = ((c as any).typePath || c.packageId || '').trim();
         return tp === cid;
-      }) || mintCollections.find(c => c.id === cid);
+      });
+      if (byTypePath.length === 1) {
+        return byTypePath[0];
+      }
     }
     return undefined;
   }, [mintCollections]);

@@ -26,6 +26,7 @@ export interface EventData {
   id: string;
   name?: string;
   description?: string;
+  collectionName?: string;
   active: boolean;
   startAt: string;
   endAt: string;
@@ -229,6 +230,7 @@ export async function delegateToSponsor(
     imageCid: event.imageCid,
     imageMimeType: event.imageMimeType,
     collectionId: event.collectionId,
+    collectionName: event.collectionName || '',
     eventName: event.name || 'Event NFT',
     eventDescription: event.description || 'Event NFT',
     eventDate: event.eventDate || event.startAt || new Date().toISOString()
@@ -288,6 +290,39 @@ export async function delegateToSponsor(
       throw new Error('Sponsor API request timeout. The sponsor service may be slow or unavailable. Please try again.');
     }
     throw error;
+  }
+}
+
+/** ミント進行中ロック用の値（isAlreadyMintedで既存チェックに含まれる） */
+const MINT_IN_PROGRESS = 'in_progress';
+
+/**
+ * ミント開始前にロックを設定（並列リクエストによる重複ミント防止）
+ * delegateToSponsorの前に呼び、失敗時はclearMintInProgressで解除すること
+ */
+export async function setMintInProgress(
+  eventId: string,
+  address: string,
+  mintedStore: KVNamespace
+): Promise<void> {
+  const addrLower = address.toLowerCase();
+  const mintedKey = `minted:${eventId}:${addrLower}`;
+  await mintedStore.put(mintedKey, MINT_IN_PROGRESS, { expirationTtl: 60 * 5 }); // 5分で自動解放（異常終了時の保険）
+}
+
+/**
+ * ミント失敗時にロックを解除（ユーザーが再試行できるようにする）
+ */
+export async function clearMintInProgress(
+  eventId: string,
+  address: string,
+  mintedStore: KVNamespace
+): Promise<void> {
+  const addrLower = address.toLowerCase();
+  const mintedKey = `minted:${eventId}:${addrLower}`;
+  const existing = await mintedStore.get(mintedKey);
+  if (existing === MINT_IN_PROGRESS) {
+    await mintedStore.delete(mintedKey);
   }
 }
 

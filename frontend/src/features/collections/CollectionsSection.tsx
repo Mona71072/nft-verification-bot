@@ -4,7 +4,7 @@ import { walrusUrlFromCid } from '../../utils/walrus';
 import { Accordion, RotateIcon } from '../../components/motion/Accordion';
 
 interface Collection { id: string; name: string; packageId?: string; typePath?: string; displayName?: string; imageUrl?: string; detailUrl?: string }
-interface EventItem { id: string; name: string; description?: string; startAt?: string; endAt?: string; eventDate?: string; mintedCount?: number; collectionId?: string; detailUrl?: string; imageCid?: string; imageMimeType?: string }
+interface EventItem { id: string; name: string; description?: string; startAt?: string; endAt?: string; eventDate?: string; mintedCount?: number; collectionId?: string; selectedCollectionId?: string; collectionName?: string; detailUrl?: string; imageCid?: string; imageMimeType?: string }
 interface OwnedNFT { objectId: string; type: string; display?: { name?: string; description?: string; image_url?: string; event_date?: string }; owner?: any }
 
 interface Props {
@@ -223,6 +223,30 @@ export const CollectionsSection: React.FC<Props> = ({
         ].filter(Boolean) as string[];
       }
     }
+    const resolveCollectionFromEvent = (event: EventItem): Collection | undefined => {
+      if (event.selectedCollectionId) {
+        const bySelectedId = collections.find(c => c.id === event.selectedCollectionId);
+        if (bySelectedId) return bySelectedId;
+      }
+      if (event.collectionName) {
+        const byName = collections.find(c => {
+          const displayName = c.displayName || c.name;
+          return c.name === event.collectionName || displayName === event.collectionName;
+        });
+        if (byName) return byName;
+      }
+      return collections.find(c => {
+        const collectionTypePath = (c as any).typePath || c.packageId;
+        return collectionTypePath === event.collectionId;
+      }) || collections.find(c =>
+        c.id === event.collectionId ||
+        c.packageId === event.collectionId ||
+        (c as any).originalId === event.collectionId ||
+        (c as any).roleId === event.collectionId ||
+        (event.collectionId && c.packageId && event.collectionId.includes(c.packageId)) ||
+        (event.collectionId && c.packageId && c.packageId.includes(event.collectionId))
+      );
+    };
     
     // 日付フィルターが適用されている場合の処理
     const shouldFilterByDate = selectedDateFilter || selectedMonthFilter;
@@ -253,9 +277,15 @@ export const CollectionsSection: React.FC<Props> = ({
     const filteredEvents = events.filter(event => {
       // コレクション名フィルターが適用されている場合
       if (sortBy === 'collection' && selectedCollectionFilter && collectionFilterIds.length > 0) {
+        const resolvedCollection = resolveCollectionFromEvent(event);
         const eventCollectionId = event.collectionId;
+        const selectedCollectionId = event.selectedCollectionId;
+        const resolvedCollectionTypePath = resolvedCollection ? ((resolvedCollection as any).typePath || resolvedCollection.packageId || '') : '';
         const matchesCollectionFilter = collectionFilterIds.some(id => 
           id === eventCollectionId ||
+          id === selectedCollectionId ||
+          id === resolvedCollection?.id ||
+          id === resolvedCollectionTypePath ||
           (eventCollectionId && id && eventCollectionId.includes(id)) ||
           (eventCollectionId && id && id.includes(eventCollectionId))
         );
@@ -272,10 +302,7 @@ export const CollectionsSection: React.FC<Props> = ({
       const matchesDescription = event.description?.toLowerCase().includes(query) || false;
       
       // コレクション名も検索対象に含める
-      const collection = collections.find(c => {
-        const collectionTypePath = (c as any).typePath || c.packageId;
-        return collectionTypePath === event.collectionId;
-      });
+      const collection = resolveCollectionFromEvent(event);
       const matchesCollection = collection && (
         collection.name.toLowerCase().includes(query) ||
         collection.displayName?.toLowerCase().includes(query) ||
@@ -289,23 +316,7 @@ export const CollectionsSection: React.FC<Props> = ({
     const eventCollections = new Set<string>();
     const result: Array<{ collection: Collection; event: EventItem | null; collectionTypePath: string }> = filteredEvents
       .map(event => {
-        // 複数の方法でコレクションをマッチング
-        let collection = collections.find(c => {
-          const collectionTypePath = (c as any).typePath || c.packageId;
-          return collectionTypePath === event.collectionId;
-        });
-        
-        // 直接一致しない場合、追加のマッチングを試行
-        if (!collection) {
-          collection = collections.find(c => 
-            c.id === event.collectionId ||
-            c.packageId === event.collectionId ||
-            (c as any).originalId === event.collectionId ||
-            (c as any).roleId === event.collectionId ||
-            (event.collectionId && c.packageId && event.collectionId.includes(c.packageId)) ||
-            (event.collectionId && c.packageId && c.packageId.includes(event.collectionId))
-          );
-        }
+        const collection = resolveCollectionFromEvent(event);
         
         if (collection) {
           eventCollections.add(collection.id);
@@ -321,7 +332,7 @@ export const CollectionsSection: React.FC<Props> = ({
             detailUrl: undefined
           } as Collection,
           event,
-          collectionTypePath: event.collectionId || ''
+          collectionTypePath: ((collection as any)?.typePath || collection?.packageId || event.collectionId || '')
         };
       })
       .filter(({ collection }) => collection && collection.id !== 'unknown');

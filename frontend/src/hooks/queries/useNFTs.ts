@@ -12,6 +12,7 @@ interface OwnedNFT {
     description?: string;
     image_url?: string;
     event_date?: string;
+    collection_name?: string;
   };
   owner?: unknown;
   previousTransaction?: string;

@@ -31,6 +31,8 @@ interface EventSummary {
   mintedCount?: number | null;
   totalCap?: number | null;
   collectionId?: string | null;
+  selectedCollectionId?: string | null;
+  collectionName?: string | null;
   active?: boolean | null;
 }
 
@@ -113,11 +115,24 @@ export function DashboardInsights({
       collectionMap.set(collection.id, collection);
     });
 
+    const synonymCount = new Map<string, number>();
+    safeCollections.forEach((collection) => {
+      const candidates = [collection.id, collection.packageId, collection.roleId, collection.originalId]
+        .filter((value): value is string => Boolean(value));
+      candidates.forEach((value) => {
+        synonymCount.set(value, (synonymCount.get(value) || 0) + 1);
+      });
+    });
+
     const synonyms = new Map<string, string>();
     safeCollections.forEach((collection) => {
       const candidates = [collection.id, collection.packageId, collection.roleId, collection.originalId]
         .filter((value): value is string => Boolean(value));
-      candidates.forEach((value) => synonyms.set(value, collection.id));
+      candidates.forEach((value) => {
+        if ((synonymCount.get(value) || 0) === 1) {
+          synonyms.set(value, collection.id);
+        }
+      });
     });
 
     const resolveCanonical = (value?: string | null): string | undefined => {
@@ -129,6 +144,16 @@ export function DashboardInsights({
         }
       }
       return collectionMap.has(value) ? value : undefined;
+    };
+    const resolveCanonicalByCollectionName = (name?: string | null): string | undefined => {
+      if (!name) return undefined;
+      const trimmed = name.trim();
+      if (!trimmed) return undefined;
+      const matched = safeCollections.find((collection) => {
+        const displayName = collection.displayName || collection.name;
+        return collection.name === trimmed || displayName === trimmed;
+      });
+      return matched?.id;
     };
 
     const onchainMap = onchainCounts instanceof Map
@@ -165,7 +190,11 @@ export function DashboardInsights({
     const eventsWithMetadata = safeEvents.map((event) => {
       const mintedCount = Number.isFinite(event.mintedCount) ? Number(event.mintedCount) : Number(event.mintedCount) || 0;
       const parsedDate = parseEventDate(event.eventDate);
-      const canonicalCollectionId = resolveCanonical(event.collectionId) ?? event.collectionId ?? null;
+      const canonicalCollectionId = event.selectedCollectionId
+        || resolveCanonicalByCollectionName(event.collectionName)
+        || resolveCanonical(event.collectionId)
+        || event.collectionId
+        || null;
 
       if (mintedCount > 0 && canonicalCollectionId) {
         const current = fallbackMinted.get(canonicalCollectionId) ?? 0;

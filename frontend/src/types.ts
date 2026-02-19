@@ -118,6 +118,7 @@ export interface AdminMintEvent {
   description?: string;
   collectionId: string;
   selectedCollectionId?: string;
+  collectionName?: string;
   imageUrl?: string;
   imageCid?: string;
   imageMimeType?: string;

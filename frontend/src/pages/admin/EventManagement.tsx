@@ -64,9 +64,11 @@ export default function EventManagement() {
     }
     const eventCollectionId = String(event?.collectionId || '').trim();
     if (!eventCollectionId) return undefined;
+    const byCollectionId = mintCollections.find(col => String(col.id || '').trim() === eventCollectionId);
+    if (byCollectionId) return byCollectionId;
     return mintCollections.find(col => {
       const typePath = String(((col as any).typePath || col.packageId || '')).trim();
-      return typePath === eventCollectionId || String(col.id || '').trim() === eventCollectionId;
+      return typePath === eventCollectionId;
     });
   }, [mintCollections]);
 
@@ -146,6 +148,7 @@ export default function EventManagement() {
         name: createColName || 'Event Collection',
         packageId: packageId,
         typePath: autoTypePath,
+        moveTarget: defaultMoveTarget,
         description: `Symbol: ${createColSymbol || 'EVENT'}`
       };
 
@@ -215,12 +218,13 @@ export default function EventManagement() {
       if (!payload.moveCall || !payload.moveCall.target) {
         try {
           const mt = await fetch(`${API_BASE_URL}/api/move-targets`).then(r => r.json()).catch(() => null);
-          const target = mt?.data?.defaultMoveTarget || '';
+          const selectedCollection = mintCollections.find(col => String(col.id || '').trim() === String(payload.selectedCollectionId || '').trim());
+          const target = String((selectedCollection as any)?.moveTarget || mt?.data?.defaultMoveTarget || '').trim();
           if (target) {
             payload.moveCall = {
               target,
               typeArguments: [],
-              argumentsTemplate: ['{recipient}', '{name}', '{description}', '{imageCid}', '{imageMimeType}', '{eventDate}'],
+              argumentsTemplate: ['{recipient}', '{name}', '{description}', '{imageCid}', '{imageMimeType}', '{eventDate}', '{collectionName}'],
               gasBudget: 50_000_000
             };
           }
@@ -419,205 +423,14 @@ export default function EventManagement() {
         </div>
       )}
 
-      {/* コレクション作成 */}
-      <div style={{
-        background: 'white',
-        borderRadius: getResponsiveValue('8px', '10px', '12px', deviceType),
-        padding: getResponsiveValue('1rem', '1.25rem', '1.5rem', deviceType),
-        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-        marginBottom: getResponsiveValue('1rem', '1.25rem', '1.5rem', deviceType),
-        border: '1px solid #e5e7eb'
-      }}>
-        <div style={{ marginBottom: getResponsiveValue('0.75rem', '0.875rem', '1rem', deviceType) }}>
-          <h3 style={{ 
-            margin: 0, 
-            fontSize: getResponsiveValue('0.875rem', '0.9375rem', '1rem', deviceType), 
-            fontWeight: 700, 
-            color: '#111827' 
-          }}>
-            ミント用コレクション作成
-          </h3>
-          <p style={{ 
-            margin: '0.25rem 0 0 0', 
-            fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType), 
-            color: '#6b7280' 
-          }}>
-            イベントで使用するNFTコレクションを作成します
-          </p>
-        </div>
-        <div style={{ 
-          display: 'grid', 
-          gap: getResponsiveValue('0.75rem', '0.875rem', '1rem', deviceType), 
-          gridTemplateColumns: getResponsiveValue(
-            'repeat(1, 1fr)', 
-            'repeat(2, 1fr)', 
-            'repeat(auto-fit, minmax(200px, 1fr))', 
-            deviceType
-          ), 
-          marginBottom: getResponsiveValue('0.75rem', '0.875rem', '1rem', deviceType) 
-        }}>
-          <div>
-            <label style={{ 
-              display: 'block', 
-              fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType), 
-              fontWeight: 600, 
-              color: '#374151', 
-              marginBottom: '0.5rem' 
-            }}>
-              コレクション名
-            </label>
-            <input
-              type="text"
-              value={createColName}
-              onChange={(e) => setCreateColName(e.target.value)}
-              placeholder="例: Event Collection"
-              style={{
-                width: '100%',
-                padding: getResponsiveValue('0.5rem', '0.5625rem', '0.625rem', deviceType),
-                border: '1px solid #d1d5db',
-                borderRadius: getResponsiveValue('6px', '7px', '8px', deviceType),
-                fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType),
-                outline: 'none'
-              }}
-            />
-          </div>
-          <div>
-            <label style={{ 
-              display: 'block', 
-              fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType), 
-              fontWeight: 600, 
-              color: '#374151', 
-              marginBottom: '0.5rem' 
-            }}>
-              シンボル
-            </label>
-            <input
-              type="text"
-              value={createColSymbol}
-              onChange={(e) => setCreateColSymbol(e.target.value)}
-              placeholder="例: EVENT"
-              style={{
-                width: '100%',
-                padding: getResponsiveValue('0.5rem', '0.5625rem', '0.625rem', deviceType),
-                border: '1px solid #d1d5db',
-                borderRadius: getResponsiveValue('6px', '7px', '8px', deviceType),
-                fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType),
-                outline: 'none'
-              }}
-            />
-          </div>
-        </div>
-        <div style={{ 
-          display: 'flex', 
-          flexDirection: getResponsiveValue('column', 'row', 'row', deviceType),
-          alignItems: getResponsiveValue('stretch', 'center', 'center', deviceType), 
-          gap: getResponsiveValue('0.75rem', '0.875rem', '1rem', deviceType) 
-        }}>
-          <button
-            onClick={handleCreateCollectionViaMove}
-            disabled={creatingCollection || !createColName}
-            style={{
-              padding: getResponsiveValue('0.5rem 1rem', '0.5625rem 1.25rem', '0.625rem 1.5rem', deviceType),
-              background: creatingCollection || !createColName ? '#d1d5db' : '#3b82f6',
-              color: 'white',
-              border: 'none',
-              borderRadius: getResponsiveValue('6px', '7px', '8px', deviceType),
-              cursor: creatingCollection || !createColName ? 'not-allowed' : 'pointer',
-              fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType),
-              fontWeight: 600,
-              transition: 'all 0.2s',
-              whiteSpace: 'nowrap'
-            }}
-          >
-            {creatingCollection ? '作成中...' : 'コレクション作成'}
-          </button>
-          {createColMessage && (
-            <div style={{ 
-              fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType), 
-              color: '#374151' 
-            }}>
-              {createColMessage}
-            </div>
-          )}
-        </div>
-        {mintCollections.length > 0 && (
-          <div style={{ 
-            marginTop: getResponsiveValue('0.75rem', '0.875rem', '1rem', deviceType), 
-            padding: getResponsiveValue('0.5rem', '0.625rem', '0.75rem', deviceType), 
-            background: '#f9fafb', 
-            borderRadius: getResponsiveValue('6px', '7px', '8px', deviceType), 
-            border: '1px solid #e5e7eb' 
-          }}>
-            <div style={{ 
-              fontSize: getResponsiveValue('0.625rem', '0.6875rem', '0.75rem', deviceType), 
-              fontWeight: 600, 
-              color: '#6b7280', 
-              marginBottom: '0.5rem' 
-            }}>
-              登録済みコレクション ({mintCollections.length})
-            </div>
-            <div style={{ 
-              display: 'flex', 
-              flexDirection: 'column', 
-              gap: getResponsiveValue('0.375rem', '0.4375rem', '0.5rem', deviceType) 
-            }}>
-              {mintCollections.map((col) => (
-                <div 
-                  key={col.id} 
-                  style={{ 
-                    display: 'flex', 
-                    flexDirection: getResponsiveValue('column', 'row', 'row', deviceType),
-                    justifyContent: 'space-between', 
-                    alignItems: getResponsiveValue('flex-start', 'center', 'center', deviceType),
-                    gap: getResponsiveValue('0.5rem', '0.25rem', '0', deviceType),
-                    padding: getResponsiveValue('0.375rem', '0.4375rem', '0.5rem', deviceType),
-                    background: 'white',
-                    borderRadius: getResponsiveValue('4px', '5px', '6px', deviceType),
-                    border: '1px solid #e5e7eb'
-                  }}
-                >
-                  <div style={{ 
-                    fontSize: getResponsiveValue('0.6875rem', '0.75rem', '0.8125rem', deviceType), 
-                    color: '#374151', 
-                    fontWeight: 500,
-                    wordBreak: 'break-all',
-                    flex: 1
-                  }}>
-                    {col.name}
-                  </div>
-                  <button
-                    onClick={() => handleDeleteCollection(col.id, col.name)}
-                    style={{
-                      padding: getResponsiveValue('0.1875rem 0.5rem', '0.21875rem 0.625rem', '0.25rem 0.75rem', deviceType),
-                      background: '#ef4444',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: getResponsiveValue('3px', '4px', '4px', deviceType),
-                      cursor: 'pointer',
-                      fontSize: getResponsiveValue('0.625rem', '0.6875rem', '0.75rem', deviceType),
-                      fontWeight: 600,
-                      transition: 'all 0.2s',
-                      whiteSpace: 'nowrap',
-                      flexShrink: 0
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = '#dc2626'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = '#ef4444'}
-                  >
-                    削除
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-
       {/* イベント一覧 */}
       <div style={{
         background: 'white',
         borderRadius: getResponsiveValue('8px', '10px', '12px', deviceType),
         padding: getResponsiveValue('1rem', '1.5rem', '2rem', deviceType),
-        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+        marginTop: getResponsiveValue('1rem', '1.25rem', '1.5rem', deviceType),
+        border: '1px solid #e5e7eb'
       }}>
         <div style={{ 
           display: 'flex', 
@@ -1167,7 +980,199 @@ export default function EventManagement() {
           </div>
         )}
       </div>
-    </AdminLayout>
+
+      {/* コレクション作成 */}
+      <div style={{
+        background: 'white',
+        borderRadius: getResponsiveValue('8px', '10px', '12px', deviceType),
+        padding: getResponsiveValue('1rem', '1.25rem', '1.5rem', deviceType),
+        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+        marginBottom: getResponsiveValue('1rem', '1.25rem', '1.5rem', deviceType),
+        border: '1px solid #e5e7eb'
+      }}>
+        <div style={{ marginBottom: getResponsiveValue('0.75rem', '0.875rem', '1rem', deviceType) }}>
+          <h3 style={{ 
+            margin: 0, 
+            fontSize: getResponsiveValue('0.875rem', '0.9375rem', '1rem', deviceType), 
+            fontWeight: 700, 
+            color: '#111827' 
+          }}>
+            ミント用コレクション作成
+          </h3>
+          <p style={{ 
+            margin: '0.25rem 0 0 0', 
+            fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType), 
+            color: '#6b7280' 
+          }}>
+            イベントで使用するNFTコレクションを作成します
+          </p>
+        </div>
+        <div style={{ 
+          display: 'grid', 
+          gap: getResponsiveValue('0.75rem', '0.875rem', '1rem', deviceType), 
+          gridTemplateColumns: getResponsiveValue(
+            'repeat(1, 1fr)', 
+            'repeat(2, 1fr)', 
+            'repeat(auto-fit, minmax(200px, 1fr))', 
+            deviceType
+          ), 
+          marginBottom: getResponsiveValue('0.75rem', '0.875rem', '1rem', deviceType) 
+        }}>
+          <div>
+            <label style={{ 
+              display: 'block', 
+              fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType), 
+              fontWeight: 600, 
+              color: '#374151', 
+              marginBottom: '0.5rem' 
+            }}>
+              コレクション名
+            </label>
+            <input
+              type="text"
+              value={createColName}
+              onChange={(e) => setCreateColName(e.target.value)}
+              placeholder="例: Event Collection"
+              style={{
+                width: '100%',
+                padding: getResponsiveValue('0.5rem', '0.5625rem', '0.625rem', deviceType),
+                border: '1px solid #d1d5db',
+                borderRadius: getResponsiveValue('6px', '7px', '8px', deviceType),
+                fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType),
+                outline: 'none'
+              }}
+            />
+          </div>
+          <div>
+            <label style={{ 
+              display: 'block', 
+              fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType), 
+              fontWeight: 600, 
+              color: '#374151', 
+              marginBottom: '0.5rem' 
+            }}>
+              シンボル
+            </label>
+            <input
+              type="text"
+              value={createColSymbol}
+              onChange={(e) => setCreateColSymbol(e.target.value)}
+              placeholder="例: EVENT"
+              style={{
+                width: '100%',
+                padding: getResponsiveValue('0.5rem', '0.5625rem', '0.625rem', deviceType),
+                border: '1px solid #d1d5db',
+                borderRadius: getResponsiveValue('6px', '7px', '8px', deviceType),
+                fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType),
+                outline: 'none'
+              }}
+            />
+          </div>
+        </div>
+        <div style={{ 
+          display: 'flex', 
+          flexDirection: getResponsiveValue('column', 'row', 'row', deviceType),
+          alignItems: getResponsiveValue('stretch', 'center', 'center', deviceType), 
+          gap: getResponsiveValue('0.75rem', '0.875rem', '1rem', deviceType) 
+        }}>
+          <button
+            onClick={handleCreateCollectionViaMove}
+            disabled={creatingCollection || !createColName}
+            style={{
+              padding: getResponsiveValue('0.5rem 1rem', '0.5625rem 1.25rem', '0.625rem 1.5rem', deviceType),
+              background: creatingCollection || !createColName ? '#d1d5db' : '#3b82f6',
+              color: 'white',
+              border: 'none',
+              borderRadius: getResponsiveValue('6px', '7px', '8px', deviceType),
+              cursor: creatingCollection || !createColName ? 'not-allowed' : 'pointer',
+              fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType),
+              fontWeight: 600,
+              transition: 'all 0.2s',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {creatingCollection ? '作成中...' : 'コレクション作成'}
+          </button>
+          {createColMessage && (
+            <div style={{ 
+              fontSize: getResponsiveValue('0.75rem', '0.8125rem', '0.875rem', deviceType), 
+              color: '#374151' 
+            }}>
+              {createColMessage}
+            </div>
+          )}
+        </div>
+        {mintCollections.length > 0 && (
+          <div style={{ 
+            marginTop: getResponsiveValue('0.75rem', '0.875rem', '1rem', deviceType), 
+            padding: getResponsiveValue('0.5rem', '0.625rem', '0.75rem', deviceType), 
+            background: '#f9fafb', 
+            borderRadius: getResponsiveValue('6px', '7px', '8px', deviceType), 
+            border: '1px solid #e5e7eb' 
+          }}>
+            <div style={{ 
+              fontSize: getResponsiveValue('0.625rem', '0.6875rem', '0.75rem', deviceType), 
+              fontWeight: 600, 
+              color: '#6b7280', 
+              marginBottom: '0.5rem' 
+            }}>
+              登録済みコレクション ({mintCollections.length})
+            </div>
+            <div style={{ 
+              display: 'flex', 
+              flexDirection: 'column', 
+              gap: getResponsiveValue('0.375rem', '0.4375rem', '0.5rem', deviceType) 
+            }}>
+              {mintCollections.map((col) => (
+                <div 
+                  key={col.id} 
+                  style={{ 
+                    display: 'flex', 
+                    flexDirection: getResponsiveValue('column', 'row', 'row', deviceType),
+                    justifyContent: 'space-between', 
+                    alignItems: getResponsiveValue('flex-start', 'center', 'center', deviceType),
+                    gap: getResponsiveValue('0.5rem', '0.25rem', '0', deviceType),
+                    padding: getResponsiveValue('0.375rem', '0.4375rem', '0.5rem', deviceType),
+                    background: 'white',
+                    borderRadius: getResponsiveValue('4px', '5px', '6px', deviceType),
+                    border: '1px solid #e5e7eb'
+                  }}
+                >
+                  <div style={{ 
+                    fontSize: getResponsiveValue('0.6875rem', '0.75rem', '0.8125rem', deviceType), 
+                    color: '#374151', 
+                    fontWeight: 500,
+                    wordBreak: 'break-all',
+                    flex: 1
+                  }}>
+                    {col.name}
+                  </div>
+                  <button
+                    onClick={() => handleDeleteCollection(col.id, col.name)}
+                    style={{
+                      padding: getResponsiveValue('0.1875rem 0.5rem', '0.21875rem 0.625rem', '0.25rem 0.75rem', deviceType),
+                      background: '#ef4444',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: getResponsiveValue('3px', '4px', '4px', deviceType),
+                      cursor: 'pointer',
+                      fontSize: getResponsiveValue('0.625rem', '0.6875rem', '0.75rem', deviceType),
+                      fontWeight: 600,
+                      transition: 'all 0.2s',
+                      whiteSpace: 'nowrap',
+                      flexShrink: 0
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#dc2626'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = '#ef4444'}
+                  >
+                    削除
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>    </AdminLayout>
   );
 }
 

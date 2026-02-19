@@ -12,6 +12,7 @@ interface OwnedNFT {
     description?: string;
     image_url?: string;
     event_date?: string;
+    collection_name?: string;
   };
   owner?: any;
 }
@@ -76,10 +77,18 @@ export const OwnedNFTsSection: React.FC<Props> = ({
       return { collection, synonyms };
     });
 
-    return (nftType?: string) => {
-      if (!nftType) {
-        return undefined;
+    return (nft?: OwnedNFT) => {
+      const collectionName = nft?.display?.collection_name?.trim();
+      if (collectionName) {
+        for (const { collection } of entries) {
+          const displayName = String(collection.displayName || collection.name || '').trim();
+          if (collection.name === collectionName || displayName === collectionName) {
+            return collection;
+          }
+        }
       }
+      const nftType = nft?.type;
+      if (!nftType) return undefined;
 
       for (const { collection, synonyms } of entries) {
         if (synonyms.includes(nftType)) {
@@ -170,7 +179,7 @@ export const OwnedNFTsSection: React.FC<Props> = ({
             return name.includes(query);
           case 'collection':
             // コレクション名だけで検索
-            const collection = collections.find(c => c.id === nft.type);
+            const collection = resolveCollectionForNFT(nft);
             const collectionName = collection?.name?.toLowerCase() || '';
             return collectionName.includes(query);
           case 'date':
@@ -182,7 +191,7 @@ export const OwnedNFTsSection: React.FC<Props> = ({
             // デフォルトは名前、説明、コレクション名で検索
             const defaultName = nft.display?.name?.toLowerCase() || '';
             const defaultDescription = nft.display?.description?.toLowerCase() || '';
-            const defaultCollection = collections.find(c => c.id === nft.type);
+            const defaultCollection = resolveCollectionForNFT(nft);
             const defaultCollectionName = defaultCollection?.name?.toLowerCase() || '';
             return defaultName.includes(query) || defaultDescription.includes(query) || defaultCollectionName.includes(query);
         }
@@ -200,8 +209,8 @@ export const OwnedNFTsSection: React.FC<Props> = ({
           comparison = nameA.localeCompare(nameB);
           break;
         case 'collection':
-          const collectionA = collections.find(c => c.id === a.type)?.name || '';
-          const collectionB = collections.find(c => c.id === b.type)?.name || '';
+          const collectionA = resolveCollectionForNFT(a)?.name || '';
+          const collectionB = resolveCollectionForNFT(b)?.name || '';
           comparison = collectionA.localeCompare(collectionB);
           break;
         case 'date':
@@ -234,7 +243,7 @@ export const OwnedNFTsSection: React.FC<Props> = ({
     });
 
     return filtered;
-  }, [nonEventNFTs, searchQuery, sortBy, sortOrder, collections, selectedDateFilter, selectedMonthFilter]);
+  }, [nonEventNFTs, searchQuery, sortBy, sortOrder, resolveCollectionForNFT, selectedDateFilter, selectedMonthFilter]);
 
   if (nftLoading) {
     return <GridSkeleton count={6} columns={{ mobile: 1, tablet: 2, desktop: 3 }} />;
@@ -561,7 +570,7 @@ export const OwnedNFTsSection: React.FC<Props> = ({
           maxWidth: '100%'
         }}>
           {filteredAndSortedNFTs.map((nft) => {
-        const collection = resolveCollectionForNFT(nft.type);
+        const collection = resolveCollectionForNFT(nft);
         const collectionDetailUrl = collection?.detailUrl;
         const isKioskOwned = Boolean(
           nft.owner?.parent?.address ||

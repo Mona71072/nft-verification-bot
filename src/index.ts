@@ -125,6 +125,21 @@ app.get('/api/events', async (c) => {
 
     const listStr = await store.get('events');
     const list = listStr ? JSON.parse(listStr) : [];
+    const collectionStore = c.env.COLLECTION_STORE as KVNamespace | undefined;
+    const collectionNameById = new Map<string, string>();
+    if (collectionStore) {
+      const collectionsStr = await collectionStore.get('mint_collections');
+      const collections = collectionsStr ? JSON.parse(collectionsStr) : [];
+      if (Array.isArray(collections)) {
+        for (const col of collections) {
+          const id = String(col?.id || '').trim();
+          const name = String(col?.name || '').trim();
+          if (id && name) {
+            collectionNameById.set(id, name);
+          }
+        }
+      }
+    }
     
     // 各イベントにmintedCountを並列取得で追加（パフォーマンス最適化）
     const mintedStore = c.env.MINTED_STORE as KVNamespace | undefined;
@@ -135,9 +150,24 @@ app.get('/api/events', async (c) => {
           const mintedCountStr = await mintedStore.get(mintedCountKey);
           event.mintedCount = mintedCountStr ? Number(mintedCountStr) : 0;
         }
+        if (event?.selectedCollectionId && !event?.collectionName) {
+          const collectionName = collectionNameById.get(String(event.selectedCollectionId));
+          if (collectionName) {
+            event.collectionName = collectionName;
+          }
+        }
         return event;
       });
       await Promise.all(mintedCountPromises);
+    } else if (Array.isArray(list)) {
+      for (const event of list) {
+        if (event?.selectedCollectionId && !event?.collectionName) {
+          const collectionName = collectionNameById.get(String(event.selectedCollectionId));
+          if (collectionName) {
+            event.collectionName = collectionName;
+          }
+        }
+      }
     }
     
     return c.json({ success: true, data: list });
@@ -167,6 +197,19 @@ app.get('/api/events/:id/public', async (c) => {
       const mintedCountKey = `minted_count:${id}`;
       const mintedCountStr = await mintedStore.get(mintedCountKey);
       ev.mintedCount = mintedCountStr ? Number(mintedCountStr) : 0;
+    }
+    if (ev?.selectedCollectionId && !ev?.collectionName) {
+      const collectionStore = c.env.COLLECTION_STORE as KVNamespace | undefined;
+      if (collectionStore) {
+        const collectionsStr = await collectionStore.get('mint_collections');
+        const collections = collectionsStr ? JSON.parse(collectionsStr) : [];
+        if (Array.isArray(collections)) {
+          const matched = collections.find((col: any) => String(col?.id || '').trim() === String(ev.selectedCollectionId).trim());
+          if (matched?.name) {
+            ev.collectionName = matched.name;
+          }
+        }
+      }
     }
 
     const now = Date.now();
@@ -528,6 +571,12 @@ function resolveDisplayTemplates(displayData: any, contentFields: any): any {
   if (contentFields.event_date) {
     if (resolved.event_date === '{event_date}' || resolved.event_date === '{eventDate}') {
       resolved.event_date = contentFields.event_date;
+    }
+  }
+  // collection_nameのテンプレートを置換
+  if (contentFields.collection_name) {
+    if (resolved.collection_name === '{collection_name}' || resolved.collection_name === '{collectionName}') {
+      resolved.collection_name = contentFields.collection_name;
     }
   }
   
@@ -1577,6 +1626,21 @@ app.get('/api/admin/events', async (c) => {
 
     const listStr = await store.get('events');
     const list = listStr ? JSON.parse(listStr) : [];
+    const collectionStore = c.env.COLLECTION_STORE as KVNamespace | undefined;
+    const collectionNameById = new Map<string, string>();
+    if (collectionStore) {
+      const collectionsStr = await collectionStore.get('mint_collections');
+      const collections = collectionsStr ? JSON.parse(collectionsStr) : [];
+      if (Array.isArray(collections)) {
+        for (const col of collections) {
+          const id = String(col?.id || '').trim();
+          const name = String(col?.name || '').trim();
+          if (id && name) {
+            collectionNameById.set(id, name);
+          }
+        }
+      }
+    }
     
     // 各イベントにmintedCountを追加
     const mintedStore = c.env.MINTED_STORE as KVNamespace | undefined;
@@ -1586,6 +1650,21 @@ app.get('/api/admin/events', async (c) => {
           const mintedCountKey = `minted_count:${event.id}`;
           const mintedCountStr = await mintedStore.get(mintedCountKey);
           event.mintedCount = mintedCountStr ? Number(mintedCountStr) : 0;
+        }
+        if (event?.selectedCollectionId && !event?.collectionName) {
+          const collectionName = collectionNameById.get(String(event.selectedCollectionId));
+          if (collectionName) {
+            event.collectionName = collectionName;
+          }
+        }
+      }
+    } else if (Array.isArray(list)) {
+      for (const event of list) {
+        if (event?.selectedCollectionId && !event?.collectionName) {
+          const collectionName = collectionNameById.get(String(event.selectedCollectionId));
+          if (collectionName) {
+            event.collectionName = collectionName;
+          }
         }
       }
     }
@@ -2151,11 +2230,11 @@ app.post('/api/mint-collections', async (c) => {
     const admin = c.req.header('X-Admin-Address');
     if (!admin || !(await isAdmin(c, admin))) return c.json({ success: false, error: 'forbidden' }, 403);
     const body = await c.req.json();
-    const { name, packageId, typePath, description = '' } = body || {};
+    const { name, packageId, typePath, description = '', moveTarget = '' } = body || {};
     if (!name || !packageId) return c.json({ success: false, error: 'Missing name/packageId' }, 400);
     
-    // typePathがない場合、packageIdから生成（デフォルトで::sxt_nft::SxtNFT）
-    const finalTypePath = typePath || `${packageId}::sxt_nft::SxtNFT`;
+    // typePathがない場合、packageIdから生成（デフォルトで::sxt_nft::EventNFT）
+    const finalTypePath = typePath || `${packageId}::sxt_nft::EventNFT`;
     
     const s = await c.env.COLLECTION_STORE.get('mint_collections');
     const list = s ? JSON.parse(s) : [];
@@ -2164,6 +2243,7 @@ app.post('/api/mint-collections', async (c) => {
       name,
       packageId,
       typePath: finalTypePath,  // 完全なtype pathを保存
+      moveTarget,
       description,
       isActive: true,
       createdAt: new Date().toISOString(),

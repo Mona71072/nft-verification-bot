@@ -21,6 +21,7 @@ module sxt_nft::sxt_nft {
         image_cid: String,
         image_mime: String,
         event_date: String,
+        collection_name: String,
     }
 
     /// On-chain collection metadata
@@ -42,6 +43,7 @@ module sxt_nft::sxt_nft {
         display.add(string::utf8(b"image_url"), string::utf8(b"https://wal-aggregator-mainnet.staketab.org/v1/blobs/{image_cid}"));
         display.add(string::utf8(b"description"), string::utf8(b"{description}"));
         display.add(string::utf8(b"event_date"), string::utf8(b"{event_date}"));
+        display.add(string::utf8(b"collection_name"), string::utf8(b"{collection_name}"));
         display.update_version();
         
         transfer::public_transfer(publisher, ctx.sender());
@@ -56,6 +58,7 @@ module sxt_nft::sxt_nft {
         image_cid: String,
         image_mime: String,
         event_date: String,
+        collection_name: String,
         ctx: &mut TxContext
     ) {
         let nft = EventNFT {
@@ -65,6 +68,7 @@ module sxt_nft::sxt_nft {
             image_cid,
             image_mime,
             event_date,
+            collection_name,
         };
         transfer::public_transfer(nft, recipient);
     }
