@@ -11,12 +11,6 @@ export { MintManagementSection } from './admin/MintManagementSection';
 export { AdminPageLayout } from './admin/AdminPageLayout';
 export { TabNavigation } from './admin/TabNavigation';
 
-// Admin Tab Components
-export { CollectionsTab } from './admin/tabs/CollectionsTab';
-export { EventsTab } from './admin/tabs/EventsTab';
-export { BatchTab } from './admin/tabs/BatchTab';
-export { AdminsTab } from './admin/tabs/AdminsTab';
-
 // Home Components
 export { HomePageHeader } from './home/HomePageHeader';
 export { HomeTabNavigation } from './home/HomeTabNavigation';

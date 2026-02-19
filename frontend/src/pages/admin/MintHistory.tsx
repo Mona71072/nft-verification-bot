@@ -52,13 +52,7 @@ export default function MintHistory() {
 
   const fetchEvents = useCallback(async () => {
     try {
-      const addr = typeof window !== 'undefined'
-        ? localStorage.getItem('currentWalletAddress') || (window as any).currentWalletAddress
-        : undefined;
-      const headers: HeadersInit = {
-        ...(addr ? { 'X-Admin-Address': addr } : {})
-      };
-      const res = await fetch(`${API_BASE_URL}/api/admin/events`, { headers });
+      const res = await fetch(`${API_BASE_URL}/api/events`);
       const data = await res.json();
       if (data.success) setEvents(data.data || []);
     } catch (e) {
@@ -79,20 +73,12 @@ export default function MintHistory() {
     return () => clearTimeout(timer);
   }, [historySearch]);
 
-  // デバッグ: イベントとコレクションの関連を表示（開発時のみ）
+  // イベントとコレクションが読み込まれたら、まだ何も選択されていなければ全履歴を自動取得
   useEffect(() => {
-    if (import.meta.env.DEV) {
-      if (events.length > 0) {
-        events.forEach(ev => {
-        });
-      }
-      if (mintCollections.length > 0) {
-        mintCollections.forEach(col => {
-           
-        });
-      }
+    if (events.length > 0 && mintCollections.length > 0 && !historyCollection && historyItems.length === 0 && !historyLoading) {
+      fetchAllEventsHistory(100);
     }
-  }, [events, mintCollections]);
+  }, [events.length, mintCollections.length]);
 
   const fetchCollectionHistory = async (typePath: string, eventId?: string, limit: number = 100) => {
     if (!typePath) return;
