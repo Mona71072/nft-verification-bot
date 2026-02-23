@@ -70,6 +70,11 @@ Discord → フロントエンド → Cloudflare Workers → Discord Bot → Dis
 - 📱 **ユーザビリティ向上**: より分かりやすいエラーメッセージ
 - 🎯 **管理者機能拡張**: コレクション管理、ユーザー管理機能
 
+### 🎪 SCXT イベントサイト（統合済み）
+- **ルート**: `/scxt` 配下（ホーム、イベント一覧/詳細、About、Contact）
+- **デザイン**: 黒基調ミニマル、クラブカルチャー寄り
+- **運用**: イベント追加は [docs/scxt-events.md](docs/scxt-events.md) を参照
+
 ### 🎯 現在のNFT設定
 - **コレクション**: Claynosaurz Popkins
 - **Package ID**: `0xb908f3c6fea6865d32e2048c520cdfe3b5c5bbcebb658117c41bad70f52b7ccc::popkins_nft::Popkins`

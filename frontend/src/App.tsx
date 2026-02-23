@@ -5,6 +5,8 @@ import { useWalletWithErrorHandling } from './hooks/useWallet';
 import { useResponsive } from './hooks/useResponsive';
 import { UnifiedLoadingSpinner } from './components/ui/UnifiedLoadingSpinner';
 import { AppHeader } from './components/AppHeader';
+import { GlobalFooter } from './components/GlobalFooter';
+import { ScxtNavProvider } from './contexts/ScxtNavContext';
 
 // 主要コンポーネントを遅延読み込み（コード分割）
 const HomePage = lazy(() => import('./pages/HomePage'));
@@ -18,6 +20,13 @@ const MintHistory = lazy(() => import('./pages/admin/MintHistory'));
 const RolesManagement = lazy(() => import('./pages/admin/RolesManagement'));
 const AdminMintPage = lazy(() => import('./pages/AdminMintPage'));
 const MintFlowPage = lazy(() => import('./pages/MintFlowPage'));
+
+// SCXT ページの遅延読み込み
+const ScxtHomePage = lazy(() => import('./pages/scxt/ScxtHomePage').then(m => ({ default: m.ScxtHomePage })));
+const ScxtEventsPage = lazy(() => import('./pages/scxt/ScxtEventsPage').then(m => ({ default: m.ScxtEventsPage })));
+const ScxtEventDetailPage = lazy(() => import('./pages/scxt/ScxtEventDetailPage').then(m => ({ default: m.ScxtEventDetailPage })));
+const ScxtAboutPage = lazy(() => import('./pages/scxt/ScxtAboutPage').then(m => ({ default: m.ScxtAboutPage })));
+const ScxtContactPage = lazy(() => import('./pages/scxt/ScxtContactPage').then(m => ({ default: m.ScxtContactPage })));
 
 // APIベースURLの設定（本番環境用）
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://nft-verification-production.mona-syndicatextokyo.workers.dev';
@@ -133,6 +142,18 @@ function App() {
       title = 'Mint NFT - SyndicateXTokyo Portal';
     } else if (path.startsWith('/admin')) {
       title = 'Admin Panel - SyndicateXTokyo Portal';
+    } else if (path.startsWith('/scxt')) {
+      if (path.match(/^\/scxt\/events\/[^/]+$/)) {
+        title = 'イベント詳細 - SCXT | SyndicateXTokyo';
+      } else if (path === '/scxt/events') {
+        title = 'イベント - SCXT | SyndicateXTokyo';
+      } else if (path === '/scxt/about') {
+        title = 'About - SCXT | SyndicateXTokyo';
+      } else if (path === '/scxt/contact') {
+        title = 'Contact - SCXT | SyndicateXTokyo';
+      } else {
+        title = 'SCXT | SyndicateXTokyo';
+      }
     }
     
     document.title = title;
@@ -180,6 +201,20 @@ function App() {
                   }
   }, []);
 
+  const handleNavigateScxt = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', '/scxt');
+      setRenderKey(prev => prev + 1);
+    }
+  }, []);
+
+  const handleNavigate = useCallback((path: string) => {
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', path);
+      setRenderKey(prev => prev + 1);
+    }
+  }, []);
+
   // ページコンテンツをレンダリングする関数（重複を排除）
   const renderPageContent = () => {
     const path = typeof window !== 'undefined' ? window.location.pathname : '/';
@@ -218,6 +253,46 @@ function App() {
           <MintFlowPage />
         </Suspense>
       );
+    }
+
+    // SCXT ページ
+    if (path.startsWith('/scxt')) {
+      if (path === '/scxt') {
+        return (
+          <Suspense fallback={<UnifiedLoadingSpinner size="medium" message="Loading..." />}>
+            <ScxtHomePage />
+          </Suspense>
+        );
+      }
+      if (path === '/scxt/events') {
+        return (
+          <Suspense fallback={<UnifiedLoadingSpinner size="medium" message="Loading..." />}>
+            <ScxtEventsPage />
+          </Suspense>
+        );
+      }
+      const eventDetailMatch = path.match(/^\/scxt\/events\/([^/]+)$/);
+      if (eventDetailMatch) {
+        return (
+          <Suspense fallback={<UnifiedLoadingSpinner size="medium" message="Loading..." />}>
+            <ScxtEventDetailPage slug={eventDetailMatch[1]} />
+          </Suspense>
+        );
+      }
+      if (path === '/scxt/about') {
+        return (
+          <Suspense fallback={<UnifiedLoadingSpinner size="medium" message="Loading..." />}>
+            <ScxtAboutPage />
+          </Suspense>
+        );
+      }
+      if (path === '/scxt/contact') {
+        return (
+          <Suspense fallback={<UnifiedLoadingSpinner size="medium" message="Loading..." />}>
+            <ScxtContactPage />
+          </Suspense>
+        );
+      }
     }
               
               // 管理者ページ
@@ -284,11 +359,21 @@ function App() {
         connected={connected}
         onNavigateHome={handleNavigateHome}
         onNavigateAdmin={handleNavigateAdmin}
+        onNavigateScxt={handleNavigateScxt}
       />
 
       {/* ページレイアウト分岐 */}
       {isHomePage ? (
         renderPageContent()
+      ) : currentPath.startsWith('/scxt') ? (
+        <ScxtNavProvider onNavigate={handleNavigate}>
+          <div style={{ minHeight: '100vh', background: '#0a0a0a', display: 'flex', flexDirection: 'column' }}>
+            <main role="main" key={renderKey} style={{ flex: 1 }}>
+              {renderPageContent()}
+            </main>
+            <GlobalFooter onNavigate={handleNavigate} />
+          </div>
+        </ScxtNavProvider>
       ) : currentPath.startsWith('/admin') ? (
         <main role="main" key={renderKey} style={{ minHeight: 'calc(100vh - 56px)' }}>
           {renderPageContent()}

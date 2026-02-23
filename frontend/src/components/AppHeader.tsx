@@ -8,6 +8,7 @@ interface AppHeaderProps {
   connected: boolean;
   onNavigateHome: () => void;
   onNavigateAdmin: () => void;
+  onNavigateScxt?: () => void;
 }
 
 /**
@@ -19,7 +20,8 @@ export function AppHeader({
   isAdmin, 
   connected, 
   onNavigateHome, 
-  onNavigateAdmin 
+  onNavigateAdmin,
+  onNavigateScxt 
 }: AppHeaderProps) {
   return (
     <nav 
@@ -43,29 +45,56 @@ export function AppHeader({
         alignItems: 'center',
         gap: getResponsiveValue('0.5rem', '0.75rem', '1rem', deviceType)
       }}>
-        <button
-          type="button"
-          onClick={onNavigateHome}
-          aria-label="Go to home page"
-          style={{
-            fontSize: getResponsiveValue('0.875rem', '1rem', '1.125rem', deviceType),
-            fontWeight: 700,
-            color: '#f9fafb',
-            margin: 0,
-            cursor: 'pointer',
-            whiteSpace: 'nowrap',
-            background: 'none',
-            border: 'none',
-            padding: getResponsiveValue('0.5rem', '0.5rem', '0', deviceType),
-            minHeight: deviceType === 'mobile' ? '44px' : 'auto',
-            minWidth: deviceType === 'mobile' ? '44px' : 'auto',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-        >
-          SyndicateXTokyo
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: getResponsiveValue('0.75rem', '1rem', '1.25rem', deviceType) }}>
+          <button
+            type="button"
+            onClick={onNavigateHome}
+            aria-label="Go to home page"
+            style={{
+              fontSize: getResponsiveValue('0.875rem', '1rem', '1.125rem', deviceType),
+              fontWeight: 700,
+              color: '#f9fafb',
+              margin: 0,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              background: 'none',
+              border: 'none',
+              padding: getResponsiveValue('0.5rem', '0.5rem', '0', deviceType),
+              minHeight: deviceType === 'mobile' ? '44px' : 'auto',
+              minWidth: deviceType === 'mobile' ? '44px' : 'auto',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            SyndicateXTokyo
+          </button>
+          {onNavigateScxt && (
+            <button
+              type="button"
+              onClick={onNavigateScxt}
+              aria-label="Go to SCXT"
+              style={{
+                fontSize: getResponsiveValue('0.8rem', '0.9rem', '1rem', deviceType),
+                fontWeight: 600,
+                color: 'rgba(249, 250, 251, 0.85)',
+                margin: 0,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                background: 'none',
+                border: 'none',
+                padding: getResponsiveValue('0.5rem', '0.5rem', '0', deviceType),
+                minHeight: deviceType === 'mobile' ? '44px' : 'auto',
+                minWidth: deviceType === 'mobile' ? '44px' : 'auto',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              SCXT
+            </button>
+          )}
+        </div>
         <div style={{ 
           display: 'flex', 
           alignItems: 'center', 
