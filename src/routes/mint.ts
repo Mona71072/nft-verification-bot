@@ -330,6 +330,46 @@ async function logMintDetails(txDigest: string, ev: any, address: string, env: a
     } else {
       logError('Failed to log mint details', e);
     }
+    // enrichmentに失敗しても履歴自体は残す（objectIdsは空）
+    try {
+      const mintedStore = env.MINTED_STORE as KVNamespace | undefined;
+      const collectionType = String(ev?.collectionId || '');
+      const eventId = String(ev?.id || '');
+      if (mintedStore && collectionType) {
+        const fallbackLog = {
+          txDigest,
+          eventId,
+          collectionType,
+          recipient: address,
+          objectIds: [],
+          at: new Date().toISOString(),
+          note: 'enrichment_failed'
+        };
+        await mintedStore.put(`mint_tx:${txDigest}`, JSON.stringify(fallbackLog), {
+          expirationTtl: 60 * 60 * 24 * 365
+        });
+
+        const idxKeyAll = `mint_index:${collectionType}`;
+        const idxAllStr = await mintedStore.get(idxKeyAll);
+        const idxAll = idxAllStr ? JSON.parse(idxAllStr) : [];
+        if (!idxAll.includes(txDigest)) idxAll.unshift(txDigest);
+        await mintedStore.put(idxKeyAll, JSON.stringify(idxAll.slice(0, 1000)), {
+          expirationTtl: 60 * 60 * 24 * 365
+        });
+
+        if (eventId) {
+          const idxKeyEvt = `mint_index:${collectionType}:${eventId}`;
+          const idxEvtStr = await mintedStore.get(idxKeyEvt);
+          const idxEvt = idxEvtStr ? JSON.parse(idxEvtStr) : [];
+          if (!idxEvt.includes(txDigest)) idxEvt.unshift(txDigest);
+          await mintedStore.put(idxKeyEvt, JSON.stringify(idxEvt.slice(0, 1000)), {
+            expirationTtl: 60 * 60 * 24 * 365
+          });
+        }
+      }
+    } catch (persistError) {
+      logWarning('Failed to persist fallback mint history', persistError);
+    }
     return [];
   }
 }

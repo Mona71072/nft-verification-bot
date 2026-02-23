@@ -2346,7 +2346,117 @@ app.get('/api/mint-collections/:typePath/mints', async (c) => {
       const rec = await mintedStore.get(`mint_tx:${tx}`);
       return rec ? JSON.parse(rec) : { txDigest: tx };
     }));
-    
+
+    // 既存インデックスが空の場合、オンチェーンから暫定履歴を再構築
+    // （過去データの取りこぼし救済。eventIdは不明なため付与しない）
+    if (items.length === 0 && typePath) {
+      try {
+        const { graphqlEndpoint, fullnode } = getSuiEndpoints(c.env as any);
+        const first = Math.min(limit, 50);
+        const gqlResp = await fetch(graphqlEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: `
+              query GetObjects($type: String!, $first: Int!) {
+                objects(filter: { type: $type }, first: $first) {
+                  nodes {
+                    address
+                    owner {
+                      __typename
+                      ... on AddressOwner {
+                        address { address }
+                      }
+                      ... on ObjectOwner {
+                        address { address }
+                      }
+                    }
+                  }
+                }
+              }
+            `,
+            variables: { type: typePath, first }
+          })
+        });
+
+        if (gqlResp.ok) {
+          const gqlJson: any = await gqlResp.json().catch(() => null);
+          const nodes: any[] = gqlJson?.data?.objects?.nodes || [];
+
+          const rebuilt = await Promise.all(nodes.map(async (node) => {
+            const objectId = String(node?.address || '');
+            if (!objectId) return null;
+
+            let txDigest = '';
+            let timestampMs = 0;
+            try {
+              const objResp = await fetch(fullnode, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  jsonrpc: '2.0',
+                  id: 1,
+                  method: 'sui_getObject',
+                  params: [
+                    objectId,
+                    { showPreviousTransaction: true, showOwner: true, showType: false, showContent: false }
+                  ]
+                })
+              });
+              const objJson: any = await objResp.json().catch(() => null);
+              txDigest = String(objJson?.result?.data?.previousTransaction || '');
+            } catch {}
+
+            if (txDigest) {
+              try {
+                const txResp = await fetch(fullnode, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: 1,
+                    method: 'sui_getTransactionBlock',
+                    params: [txDigest, { showEffects: false, showInput: false, showEvents: false, showObjectChanges: false, showBalanceChanges: false }]
+                  })
+                });
+                const txJson: any = await txResp.json().catch(() => null);
+                timestampMs = Number(txJson?.result?.timestampMs || 0);
+              } catch {}
+            }
+
+            const recipient = String(node?.owner?.address?.address || '');
+            return {
+              txDigest: txDigest || `object:${objectId}`,
+              recipient: recipient || undefined,
+              objectIds: [objectId],
+              at: timestampMs > 0 ? new Date(timestampMs).toISOString() : undefined
+            };
+          }));
+
+          const uniq = new Map<string, any>();
+          for (const row of rebuilt) {
+            if (!row) continue;
+            if (!uniq.has(row.txDigest)) {
+              uniq.set(row.txDigest, row);
+            } else {
+              const ex = uniq.get(row.txDigest);
+              ex.objectIds = Array.from(new Set([...(ex.objectIds || []), ...(row.objectIds || [])]));
+              if (!ex.recipient && row.recipient) ex.recipient = row.recipient;
+              if (!ex.at && row.at) ex.at = row.at;
+            }
+          }
+
+          const fallbackItems = Array.from(uniq.values())
+            .sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')))
+            .slice(0, limit);
+
+          if (fallbackItems.length > 0) {
+            return c.json({ success: true, data: fallbackItems, note: 'fallback_from_onchain' });
+          }
+        }
+      } catch {}
+    }
+
     return c.json({ success: true, data: items });
   } catch (error) {
     return c.json({ success: false, error: 'Failed to get collection mints' }, 500);
